@@ -86,6 +86,20 @@ function SubmissionPreview({
     queryFn: () =>
       fetchSubmissionPageImageBlob(examId, submission.id, pageNumber),
   })
+  const regionsQuery = useQuery({
+    queryKey: [
+      "student-submission-template-regions",
+      examId,
+      submission.id,
+      pageNumber,
+    ],
+    queryFn: () =>
+      ExamsService.readStudentSubmissionTemplateRegions({
+        examId,
+        submissionId: submission.id,
+        pageNumber,
+      }),
+  })
 
   useEffect(() => {
     if (!data) {
@@ -143,15 +157,42 @@ function SubmissionPreview({
           Loading preview
         </div>
       ) : (
-        <div className="overflow-hidden rounded-md border bg-muted/20">
+        <div
+          className="relative overflow-hidden rounded-md border bg-muted/20"
+          data-testid="submission-preview-canvas"
+        >
           <img
             alt={submission.stored_file.original_filename}
             className="block w-full select-none"
             draggable={false}
             src={contentUrl}
           />
+          {(regionsQuery.data?.data ?? []).map((region) => (
+            <div
+              key={region.id}
+              className="absolute border-2 border-sky-500 bg-sky-500/10"
+              data-testid={`submission-overlay-region-${region.label}`}
+              style={{
+                left: `${region.x * 100}%`,
+                top: `${region.y * 100}%`,
+                width: `${region.width * 100}%`,
+                height: `${region.height * 100}%`,
+              }}
+            >
+              <span className="absolute left-1 top-1 rounded-sm bg-sky-600 px-1.5 py-0.5 text-xs font-medium text-white">
+                {region.label}
+              </span>
+            </div>
+          ))}
         </div>
       )}
+      {!regionsQuery.isLoading &&
+        !regionsQuery.isError &&
+        (regionsQuery.data?.data ?? []).length === 0 && (
+          <div className="text-xs text-muted-foreground">
+            No template regions on this page yet.
+          </div>
+        )}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
+from PIL import Image
 from sqlmodel import Session
 from starlette.datastructures import Headers
 from fastapi.testclient import TestClient
@@ -16,7 +17,14 @@ from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
 
 
+def build_test_png() -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (4, 4), color=(255, 255, 255)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 PNG_BYTES = b"\x89PNG\r\n\x1a\nexam image bytes"
+VALID_PNG_BYTES = build_test_png()
 PDF_BYTES = b"""%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -633,6 +641,89 @@ def test_student_submission_page_image_requires_authorization_header(
     )
 
     assert response.status_code == 401
+
+
+def test_read_student_submission_template_regions(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Regions Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 0.5,
+        },
+    )
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions",
+        headers=superuser_token_headers,
+        params={"page_number": 1},
+    )
+
+    assert region_response.status_code == 200
+    assert response.status_code == 200
+    content = response.json()
+    assert content["count"] == 1
+    assert content["data"][0]["label"] == "Q1"
+    assert content["data"][0]["page_number"] == 1
+
+
+def test_read_student_submission_region_crop(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Crop Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 0.5,
+        },
+    )
+    region_id = region_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "image/png"
+    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_upload_student_submission_rejects_invalid_pdf(

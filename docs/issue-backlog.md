@@ -257,7 +257,7 @@
 - 状态：Done
 - 所属周期：周期 3 前置
 - 目标：在真实模板配准和 OCR 前，先建立学生答卷上传、归属、登记信息和页面预览能力。
-- 验证：后端 `bash scripts/tests-start.sh` 已通过，78 passed，coverage 91%；全量 Playwright Chromium 已通过，56 passed。
+- 验证：后端 `bash scripts/tests-start.sh` 已通过，80 passed，coverage 90%；全量 Playwright Chromium 已通过，56 passed。
 - 验收标准：
   - 新增 StudentSubmission 数据模型和 Alembic migration。已完成。
   - 后端提供上传、列表、读取单份答卷和按页预览接口。已完成。
@@ -265,6 +265,21 @@
   - 跨用户访问和 superuser 代上传归属行为与考试文件一致。已完成。
   - 前端提供 Submissions 入口，支持学生姓名/编号、文件上传、状态显示和预览。已完成。
   - 当前状态为配准占位，真实自动配准、OCR 判分和批注导出后续实现。
+
+### AEG-022 学生答卷模板题区叠加和单题裁剪接口
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 3 前置
+- 目标：在真实自动配准前，先用已标定模板题区对学生答卷做同页叠加，并提供单题裁剪 PNG 接口。
+- 验证：`pytest tests/api/routes/test_exams.py -q` 已通过，28 passed；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，4 passed。
+- 验收标准：
+  - 后端可读取某份学生答卷对应考试的模板题区，支持按页过滤。已完成。
+  - 后端可按 `ExamRegion` 从学生答卷同页裁剪 PNG。已完成。
+  - 裁剪接口继续使用 `Authorization: Bearer`，不把 token 放 URL。已完成。
+  - 前端答卷预览可显示模板题区叠加层。已完成。
+  - 当前不做自动 homography；默认学生卷已和模板同页同坐标系。已明确。
 
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 

@@ -338,6 +338,23 @@ export type ExamsReadStudentSubmissionPageImageData = {
 
 export type ExamsReadStudentSubmissionPageImageResponse = (unknown);
 
+export type ExamsReadStudentSubmissionTemplateRegionsData = {
+    examId: string;
+    pageNumber?: (number | null);
+    submissionId: string;
+};
+
+export type ExamsReadStudentSubmissionTemplateRegionsResponse = (ExamRegionsPublic);
+
+export type ExamsReadStudentSubmissionRegionCropData = {
+    authorization?: (string | null);
+    examId: string;
+    regionId: string;
+    submissionId: string;
+};
+
+export type ExamsReadStudentSubmissionRegionCropResponse = (unknown);
+
 export type ExamsReadExamRegionsData = {
     examId: string;
 };

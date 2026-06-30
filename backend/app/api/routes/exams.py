@@ -1,4 +1,5 @@
 import uuid
+from io import BytesIO
 from typing import Any
 
 import jwt
@@ -6,6 +7,7 @@ from fastapi import APIRouter, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse
 from fastapi.responses import Response
 from jwt.exceptions import InvalidTokenError
+from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
 from sqlmodel import col, func, select
 
@@ -196,6 +198,52 @@ def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> R
         media_type=stored_file.content_type or "application/octet-stream",
         filename=stored_file.original_filename,
     )
+
+
+def render_stored_file_page_image(*, stored_file: StoredFile, page_number: int) -> Image.Image:
+    path = get_stored_file_path(stored_file)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stored file not found")
+    if page_number < 1:
+        raise HTTPException(status_code=422, detail="Page number must be at least 1")
+
+    if stored_file.content_type == "application/pdf":
+        try:
+            contents = render_pdf_page_png(path, page_number)
+        except InvalidPdfError:
+            raise HTTPException(status_code=415, detail="Stored PDF could not be opened")
+        except IndexError:
+            raise HTTPException(status_code=404, detail="PDF page not found")
+        return Image.open(BytesIO(contents)).convert("RGB")
+
+    if page_number != 1:
+        raise HTTPException(status_code=404, detail="Image file has only one page")
+    try:
+        return Image.open(path).convert("RGB")
+    except UnidentifiedImageError:
+        raise HTTPException(status_code=415, detail="Stored image could not be opened")
+
+
+def crop_region_from_stored_file(
+    *, stored_file: StoredFile, region: ExamRegion
+) -> bytes:
+    image = render_stored_file_page_image(
+        stored_file=stored_file, page_number=region.page_number
+    )
+    try:
+        image_width, image_height = image.size
+        left = round(region.x * image_width)
+        top = round(region.y * image_height)
+        right = round((region.x + region.width) * image_width)
+        bottom = round((region.y + region.height) * image_height)
+        if right <= left or bottom <= top:
+            raise HTTPException(status_code=422, detail="Region crop is empty")
+        cropped = image.crop((left, top, right, bottom))
+        buffer = BytesIO()
+        cropped.save(buffer, format="PNG")
+        return buffer.getvalue()
+    finally:
+        image.close()
 
 
 def get_user_from_authorization_header(
@@ -501,6 +549,70 @@ def read_student_submission_page_image(
         submission_id=submission_id,
     )
     return build_page_image_response(stored_file=stored_file, page_number=page_number)
+
+
+@router.get(
+    "/{exam_id}/submissions/{submission_id}/regions",
+    response_model=ExamRegionsPublic,
+)
+def read_student_submission_template_regions(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    page_number: int | None = None,
+) -> Any:
+    get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    statement = (
+        select(ExamRegion)
+        .where(ExamRegion.exam_id == exam_id)
+        .order_by(col(ExamRegion.created_at).asc())
+    )
+    if page_number is not None:
+        if page_number < 1:
+            raise HTTPException(status_code=422, detail="Page number must be at least 1")
+        statement = statement.where(ExamRegion.page_number == page_number)
+    regions = session.exec(statement).all()
+    return ExamRegionsPublic(
+        data=[ExamRegionPublic.model_validate(region) for region in regions],
+        count=len(regions),
+    )
+
+
+@router.get("/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop")
+def read_student_submission_region_crop(
+    session: SessionDep,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    region_id: uuid.UUID,
+    authorization: str | None = Header(default=None),
+) -> Response:
+    user = get_user_from_authorization_header(
+        session=session, authorization=authorization
+    )
+    _submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    region = get_exam_region_for_user(
+        session=session,
+        current_user=user,
+        exam_id=exam_id,
+        region_id=region_id,
+    )
+    return Response(
+        content=crop_region_from_stored_file(
+            stored_file=stored_file, region=region
+        ),
+        media_type="image/png",
+    )
 
 
 @router.get("/{exam_id}/regions", response_model=ExamRegionsPublic)

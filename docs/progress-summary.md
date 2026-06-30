@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传和答卷预览最小闭环已实现。真实自动配准、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加和单题裁剪接口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -32,7 +32,7 @@
 - 标定画布已支持多页 PDF 页码切换，题区保存时记录 `page_number`，页面切换时只显示当前页题区。
 - 已通过 Windows Docker CLI 启动 PostgreSQL 18 和 Redis 7。
 - Alembic migration 已升级到 `d4f9a2b7c601`。
-- 后端集成测试脚本已通过：`bash scripts/tests-start.sh`，78 passed，coverage 91%。
+- 后端集成测试脚本已通过：`bash scripts/tests-start.sh`，80 passed，coverage 90%。
 - 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
 - OpenAPI smoke 路径存在性检查已通过，包含考试文件、标定区域、学生答卷和分页图片预览路径。
 - Playwright 标定交互测试已补齐：创建考试、上传空白卷、进入标定页、拖框保存、重命名和删除题区。
@@ -40,16 +40,18 @@
 - Playwright Chromium E2E 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test --project=chromium --reporter=line`，56 passed。
 - 已新增 StudentSubmission 模型和 API：上传学生答卷、列出答卷、读取单份答卷、按页获取答卷图片。
 - `/exams` 页面已新增 Submissions 入口，支持学生姓名/编号、PDF/JPG/PNG 答卷上传、列表和预览。
+- 已新增学生答卷模板题区接口：读取答卷对应的 ExamRegion 列表，并可按单个题区导出裁剪 PNG。
+- 学生答卷预览已支持按模板题区叠加显示，当前使用同页归一化坐标，不做自动透视配准。
 
 ## 进行中
 
-- 周期 3 下一块能力：模板配准、答卷裁题和批注数据结构。
+- 周期 3 下一块能力：真实模板配准状态、批注数据结构和复核页雏形。
 
 ## 下一步
 
-1. 实现学生答卷与空白卷模板的自动或手动配准占位结果，保存 homography/质量状态。
-2. 基于 ExamRegion 对学生答卷做题区叠加和单题裁剪接口。
-3. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
+1. 实现学生答卷与空白卷模板的配准状态模型，保存 homography/质量状态。
+2. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
+3. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
 4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
 
 ## 风险与阻塞
