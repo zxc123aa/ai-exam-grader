@@ -560,6 +560,7 @@ def test_upload_student_submission(
     assert content["student_name"] == "Student A"
     assert content["student_identifier"] == "A001"
     assert content["status"] == "registration_pending"
+    assert content["registration_status"] == "pending"
     assert content["stored_file"]["original_filename"] == "student-a.pdf"
     assert content["stored_file"]["content_type"] == "application/pdf"
     assert content["page_count"] == 1
@@ -618,6 +619,78 @@ def test_read_student_submission_page_image(
     assert response.status_code == 200
     assert response.content == PNG_BYTES
     assert response.headers["content-type"] == "image/png"
+
+
+def test_update_student_submission_registration_manual_confirmed(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Registration Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+
+    response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/registration",
+        headers=superuser_token_headers,
+        json={
+            "registration_status": "manual_confirmed",
+            "registration_quality": 1,
+            "registration_notes": "Teacher confirmed same-layout scan",
+            "registration_homography": {
+                "matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["status"] == "ready_for_review"
+    assert content["registration_status"] == "manual_confirmed"
+    assert content["registration_quality"] == 1
+    assert content["registration_homography"]["matrix"][0] == [1, 0, 0]
+    assert content["registered_at"] is not None
+
+
+def test_update_student_submission_registration_failed(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Registration Failed Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+
+    response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/registration",
+        headers=superuser_token_headers,
+        json={
+            "registration_status": "failed",
+            "registration_quality": 0,
+            "registration_notes": "Wrong exam template",
+        },
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["status"] == "registration_failed"
+    assert content["registration_status"] == "failed"
+    assert content["registration_quality"] == 0
+    assert content["registration_notes"] == "Wrong exam template"
 
 
 def test_student_submission_page_image_requires_authorization_header(

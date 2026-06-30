@@ -170,13 +170,29 @@ export type StudentSubmissionPublic = {
     student_name?: (string | null);
     student_identifier?: (string | null);
     status?: StudentSubmissionStatus;
+    registration_status?: SubmissionRegistrationStatus;
+    registration_quality?: (number | null);
+    registration_notes?: (string | null);
     id: string;
     exam_id: string;
     stored_file_id: string;
     stored_file: StoredFilePublic;
     page_count?: number;
+    registration_homography?: ({
+    [key: string]: unknown;
+} | null);
+    registered_at?: (string | null);
     created_at?: (string | null);
     updated_at?: (string | null);
+};
+
+export type StudentSubmissionRegistrationUpdate = {
+    registration_status: SubmissionRegistrationStatus;
+    registration_quality?: (number | null);
+    registration_notes?: (string | null);
+    registration_homography?: ({
+    [key: string]: unknown;
+} | null);
 };
 
 export type StudentSubmissionsPublic = {
@@ -185,6 +201,8 @@ export type StudentSubmissionsPublic = {
 };
 
 export type StudentSubmissionStatus = 'uploaded' | 'registration_pending' | 'registration_failed' | 'ready_for_review';
+
+export type SubmissionRegistrationStatus = 'pending' | 'manual_confirmed' | 'failed';
 
 export type Token = {
     access_token: string;
@@ -328,6 +346,14 @@ export type ExamsReadStudentSubmissionData = {
 };
 
 export type ExamsReadStudentSubmissionResponse = (StudentSubmissionPublic);
+
+export type ExamsUpdateStudentSubmissionRegistrationData = {
+    examId: string;
+    requestBody: StudentSubmissionRegistrationUpdate;
+    submissionId: string;
+};
+
+export type ExamsUpdateStudentSubmissionRegistrationResponse = (StudentSubmissionPublic);
 
 export type ExamsReadStudentSubmissionPageImageData = {
     authorization?: (string | null);

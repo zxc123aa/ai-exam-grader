@@ -34,8 +34,10 @@ from app.models import (
     StoredFilePublic,
     StudentSubmission,
     StudentSubmissionPublic,
+    StudentSubmissionRegistrationUpdate,
     StudentSubmissionsPublic,
     StudentSubmissionStatus,
+    SubmissionRegistrationStatus,
     TokenPayload,
     User,
     get_datetime_utc,
@@ -113,6 +115,11 @@ def build_student_submission_public(
         student_name=submission.student_name,
         student_identifier=submission.student_identifier,
         status=submission.status,
+        registration_status=submission.registration_status,
+        registration_quality=submission.registration_quality,
+        registration_notes=submission.registration_notes,
+        registration_homography=submission.registration_homography,
+        registered_at=submission.registered_at,
         created_at=submission.created_at,
         updated_at=submission.updated_at,
         stored_file=StoredFilePublic.model_validate(stored_file),
@@ -471,6 +478,7 @@ async def upload_student_submission(
             student_name=student_name,
             student_identifier=student_identifier,
             status=StudentSubmissionStatus.REGISTRATION_PENDING,
+            registration_status=SubmissionRegistrationStatus.PENDING,
         )
         session.add(submission)
         session.commit()
@@ -526,6 +534,49 @@ def read_student_submission(
         exam_id=exam_id,
         submission_id=submission_id,
     )
+    return build_student_submission_public(
+        submission=submission, stored_file=stored_file
+    )
+
+
+@router.patch(
+    "/{exam_id}/submissions/{submission_id}/registration",
+    response_model=StudentSubmissionPublic,
+)
+def update_student_submission_registration(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    registration_in: StudentSubmissionRegistrationUpdate,
+) -> Any:
+    submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    updated_at = get_datetime_utc()
+    submission.registration_status = registration_in.registration_status
+    submission.registration_quality = registration_in.registration_quality
+    submission.registration_notes = registration_in.registration_notes
+    submission.registration_homography = registration_in.registration_homography
+    submission.registered_at = updated_at
+    submission.updated_at = updated_at
+    if registration_in.registration_status == SubmissionRegistrationStatus.FAILED:
+        submission.status = StudentSubmissionStatus.REGISTRATION_FAILED
+    elif (
+        registration_in.registration_status
+        == SubmissionRegistrationStatus.MANUAL_CONFIRMED
+    ):
+        submission.status = StudentSubmissionStatus.READY_FOR_REVIEW
+    else:
+        submission.status = StudentSubmissionStatus.REGISTRATION_PENDING
+        submission.registered_at = None
+    session.add(submission)
+    session.commit()
+    session.refresh(submission)
     return build_student_submission_public(
         submission=submission, stored_file=stored_file
     )

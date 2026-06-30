@@ -281,6 +281,22 @@
   - 前端答卷预览可显示模板题区叠加层。已完成。
   - 当前不做自动 homography；默认学生卷已和模板同页同坐标系。已明确。
 
+### AEG-023 学生答卷配准状态和人工确认流程
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 3 前置
+- 目标：在自动配准算法接入前，先建立学生答卷与模板对齐结果的状态记录、质量字段和教师人工确认入口。
+- 验证：`pytest tests/api/routes/test_exams.py -q` 已通过，30 passed；`bash scripts/tests-start.sh` 已通过，82 passed，coverage 90%；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，17 paths；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，4 passed。
+- 验收标准：
+  - `StudentSubmission` 保存配准状态、质量分、备注、homography 和确认时间。已完成。
+  - 后端提供 `PATCH /api/v1/exams/{exam_id}/submissions/{submission_id}/registration`。已完成。
+  - 人工确认后答卷状态进入 `ready_for_review`。已完成。
+  - 标记失败后答卷状态进入 `registration_failed`。已完成。
+  - 前端学生答卷列表可显示配准状态和质量，并支持 Confirm/Fail 操作。已完成。
+  - 当前人工确认写入 identity homography，后续替换为自动配准算法输出。已明确。
+
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
 - 类型：Verification

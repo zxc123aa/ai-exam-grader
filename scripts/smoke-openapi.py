@@ -13,6 +13,7 @@ REQUIRED_PATHS = {
     "/api/v1/exams/{exam_id}/regions/{region_id}",
     "/api/v1/exams/{exam_id}/submissions",
     "/api/v1/exams/{exam_id}/submissions/{submission_id}",
+    "/api/v1/exams/{exam_id}/submissions/{submission_id}/registration",
     "/api/v1/exams/{exam_id}/submissions/{submission_id}/pages/{page_number}/image",
     "/api/v1/exams/{exam_id}/submissions/{submission_id}/regions",
     "/api/v1/exams/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop",

@@ -111,6 +111,12 @@ class StudentSubmissionStatus(StrEnum):
     READY_FOR_REVIEW = "ready_for_review"
 
 
+class SubmissionRegistrationStatus(StrEnum):
+    PENDING = "pending"
+    MANUAL_CONFIRMED = "manual_confirmed"
+    FAILED = "failed"
+
+
 class ExamBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
@@ -326,11 +332,23 @@ class StudentSubmissionBase(SQLModel):
     student_name: str | None = Field(default=None, max_length=255)
     student_identifier: str | None = Field(default=None, max_length=100)
     status: StudentSubmissionStatus = StudentSubmissionStatus.REGISTRATION_PENDING
+    registration_status: SubmissionRegistrationStatus = (
+        SubmissionRegistrationStatus.PENDING
+    )
+    registration_quality: float | None = Field(default=None, ge=0, le=1)
+    registration_notes: str | None = Field(default=None, max_length=1000)
 
 
 class StudentSubmissionCreate(SQLModel):
     student_name: str | None = Field(default=None, max_length=255)
     student_identifier: str | None = Field(default=None, max_length=100)
+
+
+class StudentSubmissionRegistrationUpdate(SQLModel):
+    registration_status: SubmissionRegistrationStatus
+    registration_quality: float | None = Field(default=None, ge=0, le=1)
+    registration_notes: str | None = Field(default=None, max_length=1000)
+    registration_homography: dict | None = None
 
 
 class StudentSubmission(StudentSubmissionBase, table=True):
@@ -354,6 +372,19 @@ class StudentSubmission(StudentSubmissionBase, table=True):
             nullable=False,
         ),
     )
+    registration_status: SubmissionRegistrationStatus = Field(
+        default=SubmissionRegistrationStatus.PENDING,
+        sa_column=Column(
+            SAEnum(
+                SubmissionRegistrationStatus,
+                name="submissionregistrationstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    registration_homography: dict | None = Field(default=None, sa_column=Column(JSONB))
+    registered_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
     exam_id: uuid.UUID = Field(
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
@@ -370,6 +401,8 @@ class StudentSubmissionPublic(StudentSubmissionBase):
     stored_file_id: uuid.UUID
     stored_file: StoredFilePublic
     page_count: int = 1
+    registration_homography: dict | None = None
+    registered_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

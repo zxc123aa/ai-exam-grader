@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Eye, FileUp, Loader2, Users } from "lucide-react"
+import {
+  CheckCircle2,
+  Eye,
+  FileUp,
+  Loader2,
+  Users,
+  XCircle,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 
 import {
@@ -32,6 +39,11 @@ function formatBytes(size: number) {
 
 function formatStatus(status?: string) {
   return (status || "registration_pending").replace(/_/g, " ")
+}
+
+function formatQuality(quality?: number | null) {
+  if (quality == null) return null
+  return `${Math.round(quality * 100)}%`
 }
 
 async function fetchSubmissionPageImageBlob(
@@ -240,6 +252,47 @@ export default function StudentSubmissionsDialog({
     },
   })
 
+  const registrationMutation = useMutation({
+    mutationFn: ({
+      submission,
+      registrationStatus,
+    }: {
+      submission: StudentSubmissionPublic
+      registrationStatus: "manual_confirmed" | "failed"
+    }) =>
+      ExamsService.updateStudentSubmissionRegistration({
+        examId: exam.id,
+        submissionId: submission.id,
+        requestBody:
+          registrationStatus === "manual_confirmed"
+            ? {
+                registration_status: "manual_confirmed",
+                registration_quality: 1,
+                registration_notes:
+                  "Teacher confirmed same-layout registration",
+                registration_homography: {
+                  matrix: [
+                    [1, 0, 0],
+                    [0, 1, 0],
+                    [0, 0, 1],
+                  ],
+                },
+              }
+            : {
+                registration_status: "failed",
+                registration_quality: 0,
+                registration_notes: "Teacher marked registration as failed",
+              },
+      }),
+    onSuccess: () => {
+      showSuccessToast("Registration status updated")
+    },
+    onError: handleError.bind(showErrorToast),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
   const submissions = data?.data ?? []
 
   return (
@@ -334,6 +387,42 @@ export default function StudentSubmissionsDialog({
                       <Badge variant="outline" className="capitalize">
                         {formatStatus(submission.status)}
                       </Badge>
+                      <Badge variant="secondary" className="capitalize">
+                        {formatStatus(submission.registration_status)}
+                        {formatQuality(submission.registration_quality)
+                          ? ` · ${formatQuality(submission.registration_quality)}`
+                          : ""}
+                      </Badge>
+                      <Button
+                        data-testid={`confirm-registration-${submission.id}`}
+                        variant="outline"
+                        size="sm"
+                        disabled={registrationMutation.isPending}
+                        onClick={() =>
+                          registrationMutation.mutate({
+                            submission,
+                            registrationStatus: "manual_confirmed",
+                          })
+                        }
+                      >
+                        <CheckCircle2 />
+                        Confirm
+                      </Button>
+                      <Button
+                        data-testid={`fail-registration-${submission.id}`}
+                        variant="outline"
+                        size="sm"
+                        disabled={registrationMutation.isPending}
+                        onClick={() =>
+                          registrationMutation.mutate({
+                            submission,
+                            registrationStatus: "failed",
+                          })
+                        }
+                      >
+                        <XCircle />
+                        Fail
+                      </Button>
                       <Button
                         data-testid={`submission-preview-button-${submission.id}`}
                         variant="outline"

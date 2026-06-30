@@ -903,6 +903,35 @@ export const StudentSubmissionPublicSchema = {
             '$ref': '#/components/schemas/StudentSubmissionStatus',
             default: 'registration_pending'
         },
+        registration_status: {
+            '$ref': '#/components/schemas/SubmissionRegistrationStatus',
+            default: 'pending'
+        },
+        registration_quality: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Quality'
+        },
+        registration_notes: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 1000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Notes'
+        },
         id: {
             type: 'string',
             format: 'uuid',
@@ -925,6 +954,30 @@ export const StudentSubmissionPublicSchema = {
             type: 'integer',
             title: 'Page Count',
             default: 1
+        },
+        registration_homography: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Homography'
+        },
+        registered_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registered At'
         },
         created_at: {
             anyOf: [
@@ -956,6 +1009,54 @@ export const StudentSubmissionPublicSchema = {
     title: 'StudentSubmissionPublic'
 } as const;
 
+export const StudentSubmissionRegistrationUpdateSchema = {
+    properties: {
+        registration_status: {
+            '$ref': '#/components/schemas/SubmissionRegistrationStatus'
+        },
+        registration_quality: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Quality'
+        },
+        registration_notes: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 1000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Notes'
+        },
+        registration_homography: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Homography'
+        }
+    },
+    type: 'object',
+    required: ['registration_status'],
+    title: 'StudentSubmissionRegistrationUpdate'
+} as const;
+
 export const StudentSubmissionStatusSchema = {
     type: 'string',
     enum: ['uploaded', 'registration_pending', 'registration_failed', 'ready_for_review'],
@@ -979,6 +1080,12 @@ export const StudentSubmissionsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'StudentSubmissionsPublic'
+} as const;
+
+export const SubmissionRegistrationStatusSchema = {
+    type: 'string',
+    enum: ['pending', 'manual_confirmed', 'failed'],
+    title: 'SubmissionRegistrationStatus'
 } as const;
 
 export const TokenSchema = {

@@ -9,7 +9,9 @@ const pngBuffer = Buffer.from(
 
 test("Exams page is accessible and shows initial copy", async ({ page }) => {
   await page.goto("/exams")
-  await expect(page.getByRole("heading", { name: "Exams" })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "Exams", exact: true }),
+  ).toBeVisible()
   await expect(
     page.getByText(
       "Create exams and upload blank paper files for template marking",
@@ -132,6 +134,12 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByText("Student submission uploaded")).toBeVisible()
   await expect(page.getByText("Student A", { exact: true })).toBeVisible()
   await expect(page.getByText(/registration pending/i)).toBeVisible()
+  await expect(page.getByText(/^pending$/i)).toBeVisible()
+
+  await page.getByRole("button", { name: "Confirm" }).click()
+  await expect(page.getByText("Registration status updated")).toBeVisible()
+  await expect(page.getByText(/ready for review/i)).toBeVisible()
+  await expect(page.getByText(/manual confirmed · 100%/i)).toBeVisible()
 
   await page.getByRole("button", { name: "Preview" }).click()
   await expect(page.getByText("Page 1 of 1")).toBeVisible()

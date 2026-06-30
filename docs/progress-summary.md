@@ -1,10 +1,10 @@
 # 进度摘要
 
-更新时间：2026-06-30
+更新时间：2026-07-01
 
 ## 当前阶段
 
-周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加和单题裁剪接口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录和人工确认流程已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -42,16 +42,22 @@
 - `/exams` 页面已新增 Submissions 入口，支持学生姓名/编号、PDF/JPG/PNG 答卷上传、列表和预览。
 - 已新增学生答卷模板题区接口：读取答卷对应的 ExamRegion 列表，并可按单个题区导出裁剪 PNG。
 - 学生答卷预览已支持按模板题区叠加显示，当前使用同页归一化坐标，不做自动透视配准。
+- 已新增学生答卷配准状态模型和 API：可记录 `pending`、`manual_confirmed`、`failed`，保存质量分、备注、homography 和确认时间。
+- 学生答卷列表已支持人工确认/失败标记，人工确认后答卷进入 `ready_for_review`，失败后进入 `registration_failed`。
+- Alembic migration 已升级到 `e8c3b2a1f904`。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，82 passed，coverage 90%。
+- OpenAPI smoke 路径存在性检查已通过，包含 17 个关键路径。
+- Playwright 考试流程 smoke 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
 
 ## 进行中
 
-- 周期 3 下一块能力：真实模板配准状态、批注数据结构和复核页雏形。
+- 周期 3/6 下一块能力：批注数据结构和教师复核页雏形。
 
 ## 下一步
 
-1. 实现学生答卷与空白卷模板的配准状态模型，保存 homography/质量状态。
-2. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
-3. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
+1. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
+2. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
+3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
 4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
 
 ## 风险与阻塞
