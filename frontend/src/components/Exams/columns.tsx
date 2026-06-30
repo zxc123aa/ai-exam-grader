@@ -4,6 +4,7 @@ import { Check, Copy, SquareMousePointer } from "lucide-react"
 
 import type { ExamPublic } from "@/client"
 import ExamFilesDialog from "@/components/Exams/ExamFilesDialog"
+import StudentSubmissionsDialog from "@/components/Exams/StudentSubmissionsDialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard"
@@ -80,6 +81,7 @@ export const columns: ColumnDef<ExamPublic>[] = [
           </Link>
         </Button>
         <ExamFilesDialog exam={row.original} />
+        <StudentSubmissionsDialog exam={row.original} />
       </div>
     ),
   },

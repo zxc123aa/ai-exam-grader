@@ -30,6 +30,10 @@ from app.models import (
     Message,
     StoredFile,
     StoredFilePublic,
+    StudentSubmission,
+    StudentSubmissionPublic,
+    StudentSubmissionsPublic,
+    StudentSubmissionStatus,
     TokenPayload,
     User,
     get_datetime_utc,
@@ -59,9 +63,7 @@ def get_exam_for_user(
     return exam
 
 
-def build_exam_document_public(
-    *, exam_document: ExamDocument, stored_file: StoredFile
-) -> ExamDocumentPublic:
+def get_stored_file_page_count(stored_file: StoredFile) -> int:
     page_count = 1
     path = get_stored_file_path(stored_file)
     if stored_file.content_type == "application/pdf" and path.exists():
@@ -69,6 +71,25 @@ def build_exam_document_public(
             page_count = get_pdf_page_count(path)
         except InvalidPdfError:
             page_count = 1
+    return page_count
+
+
+def validate_uploaded_pdf(stored_file: StoredFile) -> None:
+    if stored_file.content_type != "application/pdf":
+        return
+    try:
+        get_pdf_page_count(get_stored_file_path(stored_file))
+    except InvalidPdfError:
+        cleanup_stored_file_path(get_stored_file_path(stored_file))
+        raise HTTPException(
+            status_code=415,
+            detail="Uploaded PDF could not be opened",
+        )
+
+
+def build_exam_document_public(
+    *, exam_document: ExamDocument, stored_file: StoredFile
+) -> ExamDocumentPublic:
     return ExamDocumentPublic(
         id=exam_document.id,
         exam_id=exam_document.exam_id,
@@ -76,7 +97,24 @@ def build_exam_document_public(
         document_type=exam_document.document_type,
         created_at=exam_document.created_at,
         stored_file=StoredFilePublic.model_validate(stored_file),
-        page_count=page_count,
+        page_count=get_stored_file_page_count(stored_file),
+    )
+
+
+def build_student_submission_public(
+    *, submission: StudentSubmission, stored_file: StoredFile
+) -> StudentSubmissionPublic:
+    return StudentSubmissionPublic(
+        id=submission.id,
+        exam_id=submission.exam_id,
+        stored_file_id=submission.stored_file_id,
+        student_name=submission.student_name,
+        student_identifier=submission.student_identifier,
+        status=submission.status,
+        created_at=submission.created_at,
+        updated_at=submission.updated_at,
+        stored_file=StoredFilePublic.model_validate(stored_file),
+        page_count=get_stored_file_page_count(stored_file),
     )
 
 
@@ -99,6 +137,28 @@ def get_exam_document_for_user(
     return row
 
 
+def get_student_submission_for_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+) -> tuple[StudentSubmission, StoredFile]:
+    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    statement = (
+        select(StudentSubmission, StoredFile)
+        .join(StoredFile, StudentSubmission.stored_file_id == StoredFile.id)
+        .where(
+            StudentSubmission.id == submission_id,
+            StudentSubmission.exam_id == exam_id,
+        )
+    )
+    row = session.exec(statement).first()
+    if not row:
+        raise HTTPException(status_code=404, detail="Student submission not found")
+    return row
+
+
 def get_exam_region_for_user(
     *,
     session: SessionDep,
@@ -111,6 +171,31 @@ def get_exam_region_for_user(
     if not region or region.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Exam region not found")
     return region
+
+
+def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> Response:
+    path = get_stored_file_path(stored_file)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stored file not found")
+    if page_number < 1:
+        raise HTTPException(status_code=422, detail="Page number must be at least 1")
+
+    if stored_file.content_type == "application/pdf":
+        try:
+            contents = render_pdf_page_png(path, page_number)
+        except InvalidPdfError:
+            raise HTTPException(status_code=415, detail="Stored PDF could not be opened")
+        except IndexError:
+            raise HTTPException(status_code=404, detail="PDF page not found")
+        return Response(content=contents, media_type="image/png")
+
+    if page_number != 1:
+        raise HTTPException(status_code=404, detail="Image file has only one page")
+    return FileResponse(
+        path=path,
+        media_type=stored_file.content_type or "application/octet-stream",
+        filename=stored_file.original_filename,
+    )
 
 
 def get_user_from_authorization_header(
@@ -209,16 +294,11 @@ async def upload_exam_file(
         commit=False,
         validate_exam_file=True,
     )
-    if stored_file.content_type == "application/pdf":
-        try:
-            get_pdf_page_count(get_stored_file_path(stored_file))
-        except InvalidPdfError:
-            cleanup_stored_file_path(get_stored_file_path(stored_file))
-            session.rollback()
-            raise HTTPException(
-                status_code=415,
-                detail="Uploaded PDF could not be opened",
-            )
+    try:
+        validate_uploaded_pdf(stored_file)
+    except HTTPException:
+        session.rollback()
+        raise
     try:
         exam_document = ExamDocument(
             exam_id=exam.id,
@@ -307,28 +387,120 @@ def read_exam_file_page_image(
         exam_id=exam_id,
         document_id=document_id,
     )
-    path = get_stored_file_path(stored_file)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Stored file not found")
-    if page_number < 1:
-        raise HTTPException(status_code=422, detail="Page number must be at least 1")
+    return build_page_image_response(stored_file=stored_file, page_number=page_number)
 
-    if stored_file.content_type == "application/pdf":
-        try:
-            contents = render_pdf_page_png(path, page_number)
-        except InvalidPdfError:
-            raise HTTPException(status_code=415, detail="Stored PDF could not be opened")
-        except IndexError:
-            raise HTTPException(status_code=404, detail="PDF page not found")
-        return Response(content=contents, media_type="image/png")
 
-    if page_number != 1:
-        raise HTTPException(status_code=404, detail="Image file has only one page")
-    return FileResponse(
-        path=path,
-        media_type=stored_file.content_type or "application/octet-stream",
-        filename=stored_file.original_filename,
+@router.post("/{exam_id}/submissions", response_model=StudentSubmissionPublic)
+async def upload_student_submission(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    file: UploadFile,
+    student_name: str | None = Form(default=None),
+    student_identifier: str | None = Form(default=None),
+) -> Any:
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
     )
+    stored_file = await store_upload_file(
+        session=session,
+        current_user=current_user,
+        file=file,
+        owner_id=exam.owner_id,
+        commit=False,
+        validate_exam_file=True,
+    )
+    try:
+        validate_uploaded_pdf(stored_file)
+    except HTTPException:
+        session.rollback()
+        raise
+    try:
+        submission = StudentSubmission(
+            exam_id=exam.id,
+            stored_file_id=stored_file.id,
+            student_name=student_name,
+            student_identifier=student_identifier,
+            status=StudentSubmissionStatus.REGISTRATION_PENDING,
+        )
+        session.add(submission)
+        session.commit()
+    except Exception:
+        session.rollback()
+        cleanup_stored_file_path(get_stored_file_path(stored_file))
+        raise
+    session.refresh(submission)
+    session.refresh(stored_file)
+    return build_student_submission_public(
+        submission=submission, stored_file=stored_file
+    )
+
+
+@router.get("/{exam_id}/submissions", response_model=StudentSubmissionsPublic)
+def read_student_submissions(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> Any:
+    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    count_statement = (
+        select(func.count())
+        .select_from(StudentSubmission)
+        .where(StudentSubmission.exam_id == exam_id)
+    )
+    statement = (
+        select(StudentSubmission, StoredFile)
+        .join(StoredFile, StudentSubmission.stored_file_id == StoredFile.id)
+        .where(StudentSubmission.exam_id == exam_id)
+        .order_by(col(StudentSubmission.created_at).desc())
+    )
+    count = session.exec(count_statement).one()
+    rows = session.exec(statement).all()
+    submissions = [
+        build_student_submission_public(submission=submission, stored_file=stored_file)
+        for submission, stored_file in rows
+    ]
+    return StudentSubmissionsPublic(data=submissions, count=count)
+
+
+@router.get(
+    "/{exam_id}/submissions/{submission_id}",
+    response_model=StudentSubmissionPublic,
+)
+def read_student_submission(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+) -> Any:
+    submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    return build_student_submission_public(
+        submission=submission, stored_file=stored_file
+    )
+
+
+@router.get("/{exam_id}/submissions/{submission_id}/pages/{page_number}/image")
+def read_student_submission_page_image(
+    session: SessionDep,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    page_number: int,
+    authorization: str | None = Header(default=None),
+) -> Response:
+    user = get_user_from_authorization_header(
+        session=session, authorization=authorization
+    )
+    _submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    return build_page_image_response(stored_file=stored_file, page_number=page_number)
 
 
 @router.get("/{exam_id}/regions", response_model=ExamRegionsPublic)

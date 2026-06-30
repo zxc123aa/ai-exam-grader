@@ -5,6 +5,12 @@ export type Body_exams_upload_exam_file = {
     document_type?: ExamDocumentType;
 };
 
+export type Body_exams_upload_student_submission = {
+    file: string;
+    student_name?: (string | null);
+    student_identifier?: (string | null);
+};
+
 export type Body_files_upload_file = {
     file: string;
 };
@@ -160,6 +166,26 @@ export type StoredFilePublic = {
     created_at?: (string | null);
 };
 
+export type StudentSubmissionPublic = {
+    student_name?: (string | null);
+    student_identifier?: (string | null);
+    status?: StudentSubmissionStatus;
+    id: string;
+    exam_id: string;
+    stored_file_id: string;
+    stored_file: StoredFilePublic;
+    page_count?: number;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type StudentSubmissionsPublic = {
+    data: Array<StudentSubmissionPublic>;
+    count: number;
+};
+
+export type StudentSubmissionStatus = 'uploaded' | 'registration_pending' | 'registration_failed' | 'ready_for_review';
+
 export type Token = {
     access_token: string;
     token_type?: string;
@@ -282,6 +308,35 @@ export type ExamsReadExamFilePageImageData = {
 };
 
 export type ExamsReadExamFilePageImageResponse = (unknown);
+
+export type ExamsUploadStudentSubmissionData = {
+    examId: string;
+    formData: Body_exams_upload_student_submission;
+};
+
+export type ExamsUploadStudentSubmissionResponse = (StudentSubmissionPublic);
+
+export type ExamsReadStudentSubmissionsData = {
+    examId: string;
+};
+
+export type ExamsReadStudentSubmissionsResponse = (StudentSubmissionsPublic);
+
+export type ExamsReadStudentSubmissionData = {
+    examId: string;
+    submissionId: string;
+};
+
+export type ExamsReadStudentSubmissionResponse = (StudentSubmissionPublic);
+
+export type ExamsReadStudentSubmissionPageImageData = {
+    authorization?: (string | null);
+    examId: string;
+    pageNumber: number;
+    submissionId: string;
+};
+
+export type ExamsReadStudentSubmissionPageImageResponse = (unknown);
 
 export type ExamsReadExamRegionsData = {
     examId: string;

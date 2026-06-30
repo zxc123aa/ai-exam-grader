@@ -4,13 +4,13 @@
 
 ## 当前阶段
 
-周期 1 人工试卷标定基础能力：Web 上传、PDF/图片分页预览和手工题区标定骨架已实现，数据库迁移、后端集成测试和前端构建已通过。
+周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传和答卷预览最小闭环已实现。真实自动配准、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
 - 本地仓库已初始化，当前分支为 `main`。
 - 远程 `origin` 已配置为 `https://github.com/zxc123aa/ai-exam-grader.git`。
-- 远程仓库当前为空，尚无 heads/tags。
+- 远程 `main` 已建立；本地另保留 `local-with-workflows` 分支用于后续恢复 GitHub Actions。
 - 完整开发计划已保存为 `plan.md`。
 - `plan.md` 已完成初始提交：`8630de8 Initial project plan`。
 - 项目文档入口、任务拆解、进度摘要、本地 issue 草稿池和决策记录已建立。
@@ -31,26 +31,30 @@
 - 已新增后端 PDF 渲染能力：PDF 上传时校验可解析性，返回 `page_count`，并提供按页 PNG 预览接口。
 - 标定画布已支持多页 PDF 页码切换，题区保存时记录 `page_number`，页面切换时只显示当前页题区。
 - 已通过 Windows Docker CLI 启动 PostgreSQL 18 和 Redis 7。
-- Alembic migration 已升级到 `c2a8e1b4d903`。
-- 后端集成测试脚本已通过：`bash scripts/tests-start.sh`，71 passed，coverage 91%。
+- Alembic migration 已升级到 `d4f9a2b7c601`。
+- 后端集成测试脚本已通过：`bash scripts/tests-start.sh`，78 passed，coverage 91%。
 - 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
-- OpenAPI smoke 路径存在性检查已通过，包含考试文件内容和分页图片预览路径。
-- Playwright Chromium E2E 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test --project=chromium --reporter=line`，54 passed。
+- OpenAPI smoke 路径存在性检查已通过，包含考试文件、标定区域、学生答卷和分页图片预览路径。
+- Playwright 标定交互测试已补齐：创建考试、上传空白卷、进入标定页、拖框保存、重命名和删除题区。
+- Playwright 学生答卷 smoke 已补齐：创建考试、上传学生答卷、显示配准占位状态并预览答卷页图。
+- Playwright Chromium E2E 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test --project=chromium --reporter=line`，56 passed。
+- 已新增 StudentSubmission 模型和 API：上传学生答卷、列出答卷、读取单份答卷、按页获取答卷图片。
+- `/exams` 页面已新增 Submissions 入口，支持学生姓名/编号、PDF/JPG/PNG 答卷上传、列表和预览。
 
 ## 进行中
 
-- 周期 1 下一块能力：学生答卷上传、模板配准和批注导出前的流程拆解。
+- 周期 3 下一块能力：模板配准、答卷裁题和批注数据结构。
 
 ## 下一步
 
-1. 为标定页面增加 Playwright 路由/交互 smoke 测试。
-2. 拆解学生答卷上传、模板配准和批注导出的最小闭环。
-3. 在模板标定可用后，接学生答卷上传、配准和批注导出。
-4. 继续审核 agent 循环，优先处理 P0/P1，再推进下一块功能。
+1. 实现学生答卷与空白卷模板的自动或手动配准占位结果，保存 homography/质量状态。
+2. 基于 ExamRegion 对学生答卷做题区叠加和单题裁剪接口。
+3. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
+4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
 
 ## 风险与阻塞
 
-- GitHub 远程仓库为空，需要后续首次推送本地提交。
+- GitHub token 缺少 `workflow` scope，远程 `main` 暂未包含 `.github/workflows`；恢复前需要 `gh auth refresh -h github.com -s workflow`。
 - WSL 内 `docker` 命令未进 PATH，但 Windows Docker CLI 可通过 `/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe` 使用。
 - 后端容器 build 拉取 `python:3.13` 时遇到 Docker Hub 网络超时；数据库和 Redis 容器已可用。
 - 当前 Ubuntu 26.04 环境不被 Playwright 官方浏览器下载支持，测试使用系统 Chromium：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`。
@@ -58,11 +62,13 @@
 - 第三方依赖许可证清单已建立，但商业化前必须持续维护。
 - OpenAPI 生成器把 multipart 文件字段生成为 `string` 类型，前端当前在上传组件内做了局部类型转换；后续可统一优化生成配置。
 - 文件预览已改为 authenticated fetch 获取 blob/object URL，后端文件内容和分页图片接口只接受 `Authorization: Bearer ...`，避免把长期 token 拼进 URL。
+- Playwright 本地运行需要后端已启动，且 dev DB 中存在 `.env` 的 `FIRST_SUPERUSER`；本轮已补建 `admin@example.com` 本地测试账号。
 
 ## 最近决策
 
 - 第一阶段优先 Web 系统，移动 App 后置。
 - 第一阶段先支持已有 PDF/JPG/PNG 上传，不先实现手机“扫描王”。
+- 学生答卷采集先走 Web 上传；手机拍照裁边、矫正、增强、合并 PDF 后置。
 - 采用模板驱动流程，不做无模板整卷盲识别。
 - AI 结果作为建议和草稿，教师保留最终确认权。
 - 客观题优先规则和 OCR，主观题再调用视觉大模型。

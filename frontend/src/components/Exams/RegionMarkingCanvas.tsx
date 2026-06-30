@@ -308,6 +308,7 @@ export default function RegionMarkingCanvas({
       </div>
       <div
         className="relative overflow-hidden rounded-md border bg-muted/20"
+        data-testid="region-marking-canvas"
         ref={canvasRef}
         onPointerDown={(event) => {
           if (event.target !== event.currentTarget) return
@@ -374,6 +375,7 @@ export default function RegionMarkingCanvas({
           return (
             <div
               key={region.id}
+              data-testid={`saved-region-${region.label}`}
               className={`absolute border-2 bg-emerald-500/10 ${
                 isSelected ? "border-sky-500" : "border-emerald-500"
               }`}
@@ -474,6 +476,7 @@ export default function RegionMarkingCanvas({
           {selectedRegion && editingRegion ? (
             <div className="grid gap-3">
               <Input
+                data-testid="selected-region-label-input"
                 value={editingLabel}
                 onChange={(event) => setEditingLabel(event.target.value)}
               />
@@ -525,6 +528,7 @@ export default function RegionMarkingCanvas({
                     </div>
                   </div>
                   <Button
+                    data-testid={`delete-region-${region.label}`}
                     variant="ghost"
                     size="icon-sm"
                     onClick={(event) => {

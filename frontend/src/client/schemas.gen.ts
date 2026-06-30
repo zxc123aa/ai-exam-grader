@@ -17,6 +17,41 @@ export const Body_exams_upload_exam_fileSchema = {
     title: 'Body_exams-upload_exam_file'
 } as const;
 
+export const Body_exams_upload_student_submissionSchema = {
+    properties: {
+        file: {
+            type: 'string',
+            contentMediaType: 'application/octet-stream',
+            title: 'File'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        student_identifier: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Identifier'
+        }
+    },
+    type: 'object',
+    required: ['file'],
+    title: 'Body_exams-upload_student_submission'
+} as const;
+
 export const Body_files_upload_fileSchema = {
     properties: {
         file: {
@@ -836,6 +871,114 @@ export const StoredFilePublicSchema = {
     type: 'object',
     required: ['original_filename', 'storage_key', 'size_bytes', 'sha256', 'id', 'uploaded_by_id'],
     title: 'StoredFilePublic'
+} as const;
+
+export const StudentSubmissionPublicSchema = {
+    properties: {
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        student_identifier: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Identifier'
+        },
+        status: {
+            '$ref': '#/components/schemas/StudentSubmissionStatus',
+            default: 'registration_pending'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        stored_file_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Stored File Id'
+        },
+        stored_file: {
+            '$ref': '#/components/schemas/StoredFilePublic'
+        },
+        page_count: {
+            type: 'integer',
+            title: 'Page Count',
+            default: 1
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'exam_id', 'stored_file_id', 'stored_file'],
+    title: 'StudentSubmissionPublic'
+} as const;
+
+export const StudentSubmissionStatusSchema = {
+    type: 'string',
+    enum: ['uploaded', 'registration_pending', 'registration_failed', 'ready_for_review'],
+    title: 'StudentSubmissionStatus'
+} as const;
+
+export const StudentSubmissionsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/StudentSubmissionPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'StudentSubmissionsPublic'
 } as const;
 
 export const TokenSchema = {

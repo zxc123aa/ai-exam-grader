@@ -82,6 +82,7 @@ export default function ExamFilesDialog({ exam }: { exam: ExamPublic }) {
         <div className="grid gap-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input
+              data-testid="exam-file-input"
               type="file"
               accept=".pdf,image/png,image/jpeg"
               onChange={(event) =>
@@ -89,6 +90,7 @@ export default function ExamFilesDialog({ exam }: { exam: ExamPublic }) {
               }
             />
             <LoadingButton
+              data-testid="exam-file-upload-button"
               type="button"
               loading={mutation.isPending}
               disabled={!selectedFile}

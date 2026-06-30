@@ -236,18 +236,75 @@
   - 文件预览不绕过权限控制。已完成。
   - 上传阶段拒绝无法解析的伪 PDF，避免落库后预览 500。已完成。
 
-### AEG-015 手机扫描成 PDF 能力调研与排期
+### AEG-018 标定画布 Playwright 交互覆盖
+
+- 类型：Verification
+- 优先级：P1
+- 状态：Done
+- 所属周期：周期 1
+- 目标：为手工标定页面补齐端到端交互 smoke，避免画布拖拽、保存、重命名和删除回归。
+- 验证：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，4 passed。
+- 验收标准：
+  - 创建考试后可以上传空白卷。
+  - 可以进入 `/exams/$examId/marking`。
+  - 可以拖拽创建题区并保存。
+  - 可以选中、重命名和删除已保存题区。
+
+### AEG-019 学生答卷上传、登记和预览最小闭环
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 3 前置
+- 目标：在真实模板配准和 OCR 前，先建立学生答卷上传、归属、登记信息和页面预览能力。
+- 验证：后端 `bash scripts/tests-start.sh` 已通过，78 passed，coverage 91%；全量 Playwright Chromium 已通过，56 passed。
+- 验收标准：
+  - 新增 StudentSubmission 数据模型和 Alembic migration。已完成。
+  - 后端提供上传、列表、读取单份答卷和按页预览接口。已完成。
+  - 上传复用 PDF/JPG/PNG 类型、签名、大小和伪 PDF 校验。已完成。
+  - 跨用户访问和 superuser 代上传归属行为与考试文件一致。已完成。
+  - 前端提供 Submissions 入口，支持学生姓名/编号、文件上传、状态显示和预览。已完成。
+  - 当前状态为配准占位，真实自动配准、OCR 判分和批注导出后续实现。
+
+### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
+
+- 类型：Verification
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 0/1 验收补齐
+- 目标：验证 Docker Compose 全量构建、后端、前端、数据库、Redis 和 worker 在容器环境中完整运行。
+- 进展：Windows Docker CLI 可用，PostgreSQL、Redis、Mailcatcher 可启动；本地后端和 E2E 已可跑通。
+- 阻塞：后端镜像 build 曾在拉取 `python:3.13` 时遇到 Docker Hub 网络超时，需在网络稳定时重试。
+- 验收标准：
+  - `docker compose up --build` 可以启动前端、后端、PostgreSQL、Redis、Worker。
+  - 后端 health check 和 OpenAPI 可访问。
+  - 前端登录页可访问并能登录管理员。
+  - Worker 可以将测试任务推进到 `succeeded`。
+
+### AEG-021 手机扫描成 PDF 能力调研与排期
 
 - 类型：Design
 - 优先级：P2
 - 状态：Backlog
 - 所属周期：后续 App/采集周期
 - 目标：评估“扫描王”类能力，即手机拍摄试卷后自动裁边、矫正、增强并导出 PDF/图片。
-- 决策：当前 Web MVP 优先支持已有 PDF/JPG/PNG 上传；手机扫描能力后置，不阻塞周期 1 的模板标定和批注流程。
+- 决策：当前 Web MVP 优先支持已有 PDF/JPG/PNG 上传；手机扫描能力后置，不阻塞模板标定、学生答卷上传和批注流程。
 - 验收标准：
   - 明确移动端或 Web 端采集方案。
   - 明确透视矫正、去阴影、增强、合并 PDF 的技术路线。
-  - 明确与后端 StoredFile 和 ExamDocument 的接口边界。
+  - 明确与后端 StoredFile、ExamDocument 和 StudentSubmission 的接口边界。
+
+### AEG-015 手机扫描成 PDF 能力调研与排期
+
+- 类型：Design
+- 优先级：P2
+- 状态：Done
+- 所属周期：后续 App/采集周期
+- 目标：评估“扫描王”类能力，即手机拍摄试卷后自动裁边、矫正、增强并导出 PDF/图片。
+- 决策：已并入 AEG-021 继续跟踪；当前 Web MVP 优先支持已有 PDF/JPG/PNG 上传，手机扫描能力后置。
+- 验收标准：
+  - 不作为周期 1/周期 3 前置能力阻塞项。已完成。
+  - 后续以 AEG-021 为准继续调研。
 
 - 周期 2：AI 一键建立试卷模板。
 - 周期 3：学生答卷处理与模板配准。

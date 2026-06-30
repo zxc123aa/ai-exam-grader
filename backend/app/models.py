@@ -104,6 +104,13 @@ class ExamRegionType(StrEnum):
     OTHER = "other"
 
 
+class StudentSubmissionStatus(StrEnum):
+    UPLOADED = "uploaded"
+    REGISTRATION_PENDING = "registration_pending"
+    REGISTRATION_FAILED = "registration_failed"
+    READY_FOR_REVIEW = "ready_for_review"
+
+
 class ExamBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
@@ -151,6 +158,9 @@ class Exam(ExamBase, table=True):
     regions: list["ExamRegion"] = Relationship(
         back_populates="exam", cascade_delete=True
     )
+    submissions: list["StudentSubmission"] = Relationship(
+        back_populates="exam", cascade_delete=True
+    )
 
 
 class ExamPublic(ExamBase):
@@ -183,6 +193,9 @@ class StoredFile(StoredFileBase, table=True):
     )
     uploaded_by: User | None = Relationship(back_populates="files")
     exam_documents: list["ExamDocument"] = Relationship(
+        back_populates="stored_file", cascade_delete=True
+    )
+    student_submissions: list["StudentSubmission"] = Relationship(
         back_populates="stored_file", cascade_delete=True
     )
 
@@ -306,6 +319,63 @@ class ExamRegionPublic(ExamRegionBase):
 
 class ExamRegionsPublic(SQLModel):
     data: list[ExamRegionPublic]
+    count: int
+
+
+class StudentSubmissionBase(SQLModel):
+    student_name: str | None = Field(default=None, max_length=255)
+    student_identifier: str | None = Field(default=None, max_length=100)
+    status: StudentSubmissionStatus = StudentSubmissionStatus.REGISTRATION_PENDING
+
+
+class StudentSubmissionCreate(SQLModel):
+    student_name: str | None = Field(default=None, max_length=255)
+    student_identifier: str | None = Field(default=None, max_length=100)
+
+
+class StudentSubmission(StudentSubmissionBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    status: StudentSubmissionStatus = Field(
+        default=StudentSubmissionStatus.REGISTRATION_PENDING,
+        sa_column=Column(
+            SAEnum(
+                StudentSubmissionStatus,
+                name="studentsubmissionstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE"
+    )
+    stored_file_id: uuid.UUID = Field(
+        foreign_key="storedfile.id", nullable=False, ondelete="CASCADE"
+    )
+    exam: Exam | None = Relationship(back_populates="submissions")
+    stored_file: StoredFile | None = Relationship(back_populates="student_submissions")
+
+
+class StudentSubmissionPublic(StudentSubmissionBase):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    stored_file_id: uuid.UUID
+    stored_file: StoredFilePublic
+    page_count: int = 1
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class StudentSubmissionsPublic(SQLModel):
+    data: list[StudentSubmissionPublic]
     count: int
 
 

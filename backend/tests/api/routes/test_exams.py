@@ -527,3 +527,187 @@ def test_update_exam_region_rejects_out_of_bounds(
     )
 
     assert response.status_code == 422
+
+
+def test_upload_student_submission(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Upload Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", PDF_BYTES, "application/pdf")},
+        data={"student_name": "Student A", "student_identifier": "A001"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["exam_id"] == exam_id
+    assert content["student_name"] == "Student A"
+    assert content["student_identifier"] == "A001"
+    assert content["status"] == "registration_pending"
+    assert content["stored_file"]["original_filename"] == "student-a.pdf"
+    assert content["stored_file"]["content_type"] == "application/pdf"
+    assert content["page_count"] == 1
+
+
+def test_read_student_submissions(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission List Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+        data={"student_name": "Student A"},
+    )
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["count"] == 1
+    assert content["data"][0]["exam_id"] == exam_id
+    assert content["data"][0]["student_name"] == "Student A"
+    assert content["data"][0]["stored_file"]["original_filename"] == "student-a.png"
+
+
+def test_read_student_submission_page_image(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Preview Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages/1/image",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.content == PNG_BYTES
+    assert response.headers["content-type"] == "image/png"
+
+
+def test_student_submission_page_image_requires_authorization_header(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Protected Preview Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages/1/image"
+    )
+
+    assert response.status_code == 401
+
+
+def test_upload_student_submission_rejects_invalid_pdf(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Invalid Submission PDF Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", b"%PDF-1.4 exam", "application/pdf")},
+    )
+
+    assert response.status_code == 415
+
+
+def test_normal_user_cannot_upload_submission_to_other_users_exam(
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Private Submission Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    password = random_lower_string()
+    user = crud.create_user(
+        session=db,
+        user_create=UserCreate(email=random_email(), password=password),
+    )
+    headers = user_authentication_headers(
+        client=client, email=user.email, password=password
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+
+    assert response.status_code == 403
+
+
+def test_superuser_submission_upload_is_owned_by_exam_owner(
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    password = random_lower_string()
+    user = crud.create_user(
+        session=db,
+        user_create=UserCreate(email=random_email(), password=password),
+    )
+    headers = user_authentication_headers(
+        client=client, email=user.email, password=password
+    )
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=headers,
+        json={"title": "Owned Submission Upload Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", PNG_BYTES, "image/png")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["stored_file"]["uploaded_by_id"] == str(user.id)
