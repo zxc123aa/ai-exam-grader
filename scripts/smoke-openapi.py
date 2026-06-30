@@ -1,0 +1,38 @@
+import sys
+
+from app.main import app
+
+
+REQUIRED_PATHS = {
+    "/api/v1/exams/",
+    "/api/v1/exams/{exam_id}",
+    "/api/v1/exams/{exam_id}/files",
+    "/api/v1/exams/{exam_id}/files/{document_id}/content",
+    "/api/v1/exams/{exam_id}/files/{document_id}/pages/{page_number}/image",
+    "/api/v1/exams/{exam_id}/regions",
+    "/api/v1/exams/{exam_id}/regions/{region_id}",
+    "/api/v1/files/upload",
+    "/api/v1/tasks/test",
+    "/api/v1/tasks/{task_id}",
+    "/api/v1/utils/health",
+}
+
+
+def main() -> int:
+    schema = app.openapi()
+    paths = set(schema.get("paths", {}))
+    missing = sorted(REQUIRED_PATHS - paths)
+    if missing:
+        print("Missing OpenAPI paths:")
+        for path in missing:
+            print(f"- {path}")
+        return 1
+
+    print("OpenAPI smoke check passed.")
+    print(f"Project: {schema.get('info', {}).get('title')}")
+    print(f"Checked paths: {len(REQUIRED_PATHS)}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
