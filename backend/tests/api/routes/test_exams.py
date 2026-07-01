@@ -887,6 +887,64 @@ def test_create_update_and_delete_submission_annotation(
     assert empty_response.json()["count"] == 0
 
 
+def test_create_student_submission_processing_task_generates_annotation_placeholders(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Processing Task Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+        },
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/processing-tasks",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    task = response.json()
+    assert task["task_type"] == "student_submission_processing"
+    assert task["status"] == "succeeded"
+    assert task["progress"] == 100
+    assert task["input_ref"]["exam_id"] == exam_id
+    assert task["input_ref"]["submission_id"] == submission_id
+    assert task["output_ref"]["pipeline"] == "submission_processing_v1"
+    assert task["output_ref"]["region_count"] == 1
+    assert task["output_ref"]["created_annotation_count"] == 1
+
+    annotations_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+    )
+    assert annotations_response.status_code == 200
+    annotations = annotations_response.json()
+    assert annotations["count"] == 1
+    assert annotations["data"][0]["label"] == "Q1"
+    assert annotations["data"][0]["status"] == "needs_review"
+    assert annotations["data"][0]["comment"] == "Awaiting OCR and AI grading result."
+
+
 def test_submission_annotation_rejects_region_from_other_exam(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:

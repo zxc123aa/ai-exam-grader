@@ -314,6 +314,23 @@
   - 教师可选择题区并保存结构化分数/评语/状态。已完成。
   - 当前不做自由手绘批注和题区拖拽微调，后续在复核页继续增强。已明确。
 
+### AEG-025 学生答卷处理任务占位管线
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 3/4 前置
+- 目标：先建立学生答卷处理任务入口和可追踪输出，让后续自动配准、裁题、OCR、判分能挂到同一条任务管线。
+- 验证：`pytest tests/api/routes/test_exams.py -q` 已通过，33 passed；`bash scripts/tests-start.sh` 已通过，85 passed，coverage 90%；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，20 paths；`npm run --workspace frontend lint` 和 `npm run --workspace frontend build` 已通过；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，4 passed。
+- 验收标准：
+  - 后端提供 `POST /api/v1/exams/{exam_id}/submissions/{submission_id}/processing-tasks`。已完成。
+  - 任务 `input_ref` 记录 exam、submission 和 pipeline 标识。已完成。
+  - Worker 支持 `student_submission_processing` 占位流程。已完成。
+  - 占位流程为未批注模板题区生成 `needs_review` 批注草稿。已完成。
+  - 任务 `output_ref` 记录 registration、region crops、OCR、grading 阶段占位状态。已完成。
+  - 复核页可触发处理任务、展示任务状态/进度，并刷新批注列表。已完成。
+  - 本地环境同步执行任务，非 local 环境保留 Dramatiq 入队。已完成。
+
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
 - 类型：Verification

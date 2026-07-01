@@ -150,6 +150,14 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByRole("heading", { name: title })).toBeVisible()
   await expect(page.getByTestId("submission-review-canvas")).toBeVisible()
   await expect(page.getByTestId("review-region-list-Q1")).toBeVisible()
+  await page.getByTestId("run-submission-processing-button").click()
+  await expect(
+    page.getByText(/submission processing task started/i),
+  ).toBeVisible()
+  await expect(page.getByText(/succeeded · 100%/i)).toBeVisible()
+  await expect(page.getByTestId("review-region-list-Q1")).toContainText(
+    /needs review/i,
+  )
   await page.getByTestId("review-score-input").fill("4")
   await page.getByTestId("review-max-score-input").fill("5")
   await page.getByTestId("review-comment-input").fill("Good method")

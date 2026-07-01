@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页和结构化批注最小闭环已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注和学生答卷处理任务占位管线已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -54,16 +54,23 @@
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，84 passed，coverage 91%。
 - OpenAPI smoke 路径存在性检查已通过，包含 19 个关键路径。
 - Playwright 考试流程 smoke 已覆盖复核页批注保存：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
+- 已新增学生答卷处理任务入口：`POST /api/v1/exams/{exam_id}/submissions/{submission_id}/processing-tasks`。
+- Worker 已新增 `student_submission_processing` 占位流程：读取模板题区，为未批注题区生成待复核批注草稿，并记录配准、裁题、OCR、判分阶段占位输出。
+- 复核页已新增 Run Processing 按钮，可触发处理任务、显示任务状态/进度，并在任务完成后刷新批注列表。
+- 本地 `ENVIRONMENT=local` 下处理任务同步执行，避免无 worker 时阻塞本地开发和 E2E；非 local 环境保留 Dramatiq 入队和 fallback。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，85 passed，coverage 90%。
+- OpenAPI smoke 路径存在性检查已通过，包含 20 个关键路径。
+- Playwright 考试流程 smoke 已覆盖处理任务触发、占位批注生成和人工保存：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
 
 ## 进行中
 
-- 周期 3 下一块能力：后台任务管线和自动配准/OCR 接入点。
+- 周期 3/4 下一块能力：真实自动配准、题区裁剪产物和 OCR 初稿接入。
 
 ## 下一步
 
-1. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
-2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-3. 在复核页接入题区裁剪预览和后续 AI/OCR 初稿结果。
+1. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+2. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
+3. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
 4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
 
 ## 风险与阻塞

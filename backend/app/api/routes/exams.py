@@ -30,6 +30,9 @@ from app.models import (
     ExamsPublic,
     ExamUpdate,
     Message,
+    ProcessingTask,
+    ProcessingTaskPublic,
+    ProcessingTaskStatus,
     StoredFile,
     StoredFilePublic,
     SubmissionAnnotation,
@@ -56,6 +59,10 @@ from app.services.pdf_rendering import (
     InvalidPdfError,
     get_pdf_page_count,
     render_pdf_page_png,
+)
+from app.worker import (
+    process_submission_processing_task,
+    run_submission_processing_task,
 )
 
 router = APIRouter(prefix="/exams", tags=["exams"])
@@ -605,6 +612,49 @@ def update_student_submission_registration(
     return build_student_submission_public(
         submission=submission, stored_file=stored_file
     )
+
+
+@router.post(
+    "/{exam_id}/submissions/{submission_id}/processing-tasks",
+    response_model=ProcessingTaskPublic,
+)
+def create_student_submission_processing_task(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+) -> Any:
+    get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    task = ProcessingTask(
+        task_type="student_submission_processing",
+        status=ProcessingTaskStatus.QUEUED,
+        progress=0,
+        created_by_id=current_user.id,
+        input_ref={
+            "exam_id": str(exam_id),
+            "submission_id": str(submission_id),
+            "pipeline": "submission_processing_v1",
+        },
+    )
+    session.add(task)
+    session.commit()
+    session.refresh(task)
+    if settings.ENVIRONMENT == "local":
+        run_submission_processing_task(str(task.id))
+        session.refresh(task)
+        return task
+    try:
+        process_submission_processing_task.send(str(task.id))
+    except Exception:
+        run_submission_processing_task(str(task.id))
+        session.refresh(task)
+    return task
 
 
 @router.get("/{exam_id}/submissions/{submission_id}/pages/{page_number}/image")

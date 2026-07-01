@@ -407,6 +407,13 @@ export type ExamsUpdateStudentSubmissionRegistrationData = {
 
 export type ExamsUpdateStudentSubmissionRegistrationResponse = (StudentSubmissionPublic);
 
+export type ExamsCreateStudentSubmissionProcessingTaskData = {
+    examId: string;
+    submissionId: string;
+};
+
+export type ExamsCreateStudentSubmissionProcessingTaskResponse = (ProcessingTaskPublic);
+
 export type ExamsReadStudentSubmissionPageImageData = {
     authorization?: (string | null);
     examId: string;

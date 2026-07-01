@@ -13,9 +13,11 @@ import {
   type ExamRegionPublic,
   ExamsService,
   OpenAPI,
+  type ProcessingTaskPublic,
   type StudentSubmissionPublic,
   type SubmissionAnnotationPublic,
   type SubmissionAnnotationStatus,
+  TasksService,
 } from "@/client"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -87,6 +89,11 @@ async function fetchSubmissionPageImageBlob(
 
 function formatStatus(status?: string | null) {
   return (status || "needs_review").replace(/_/g, " ")
+}
+
+function formatTaskProgress(task?: ProcessingTaskPublic | null) {
+  if (!task) return "No task yet"
+  return `${formatStatus(task.status)} · ${task.progress ?? 0}%`
 }
 
 function toForm(annotation?: SubmissionAnnotationPublic): AnnotationForm {
@@ -257,6 +264,7 @@ function SubmissionReview() {
   const { examId, submissionId } = Route.useParams()
   const [pageNumber, setPageNumber] = useState(1)
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
+  const [processingTaskId, setProcessingTaskId] = useState<string | null>(null)
   const [form, setForm] = useState<AnnotationForm>(toForm())
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -281,6 +289,16 @@ function SubmissionReview() {
     queryKey: ["submission-annotations", examId, submissionId],
     queryFn: () =>
       ExamsService.readSubmissionAnnotations({ examId, submissionId }),
+  })
+  const processingTaskQuery = useQuery({
+    queryKey: ["processing-task", processingTaskId],
+    queryFn: () =>
+      TasksService.readTask({ taskId: processingTaskId as string }),
+    enabled: Boolean(processingTaskId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status
+      return status === "queued" || status === "running" ? 1000 : false
+    },
   })
 
   const submission = submissionQuery.data
@@ -353,6 +371,31 @@ function SubmissionReview() {
     },
   })
 
+  const processingMutation = useMutation({
+    mutationFn: () =>
+      ExamsService.createStudentSubmissionProcessingTask({
+        examId,
+        submissionId,
+      }),
+    onSuccess: (task) => {
+      setProcessingTaskId(task.id)
+      showSuccessToast("Submission processing task started")
+      queryClient.invalidateQueries({
+        queryKey: ["submission-annotations", examId, submissionId],
+      })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
+  useEffect(() => {
+    const status = processingTaskQuery.data?.status
+    if (status === "succeeded") {
+      queryClient.invalidateQueries({
+        queryKey: ["submission-annotations", examId, submissionId],
+      })
+    }
+  }, [examId, processingTaskQuery.data?.status, queryClient, submissionId])
+
   const isLoading =
     examQuery.isLoading ||
     submissionQuery.isLoading ||
@@ -418,6 +461,36 @@ function SubmissionReview() {
           />
 
           <aside className="grid content-start gap-4">
+            <div className="grid gap-3 rounded-md border p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-medium">Processing pipeline</div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatTaskProgress(
+                      processingTaskQuery.data ?? processingMutation.data,
+                    )}
+                  </div>
+                </div>
+                {(processingMutation.isPending ||
+                  processingTaskQuery.data?.status === "queued" ||
+                  processingTaskQuery.data?.status === "running") && (
+                  <Loader2 className="size-4 animate-spin text-muted-foreground" />
+                )}
+              </div>
+              {processingTaskQuery.data?.error_message && (
+                <div className="rounded-md border border-destructive/30 p-2 text-xs text-destructive">
+                  {processingTaskQuery.data.error_message}
+                </div>
+              )}
+              <LoadingButton
+                data-testid="run-submission-processing-button"
+                loading={processingMutation.isPending}
+                onClick={() => processingMutation.mutate()}
+              >
+                Run Processing
+              </LoadingButton>
+            </div>
+
             <div className="rounded-md border">
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <span className="text-sm font-medium">Template regions</span>
