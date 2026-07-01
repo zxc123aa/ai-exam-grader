@@ -1082,6 +1082,387 @@ export const StudentSubmissionsPublicSchema = {
     title: 'StudentSubmissionsPublic'
 } as const;
 
+export const SubmissionAnnotationCreateSchema = {
+    properties: {
+        label: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Label'
+        },
+        status: {
+            '$ref': '#/components/schemas/SubmissionAnnotationStatus',
+            default: 'needs_review'
+        },
+        page_number: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Page Number',
+            default: 1
+        },
+        x: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'X'
+        },
+        y: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Y'
+        },
+        width: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        comment: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Comment'
+        },
+        exam_region_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Region Id'
+        }
+    },
+    type: 'object',
+    required: ['label', 'x', 'y', 'width', 'height'],
+    title: 'SubmissionAnnotationCreate'
+} as const;
+
+export const SubmissionAnnotationPublicSchema = {
+    properties: {
+        label: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Label'
+        },
+        status: {
+            '$ref': '#/components/schemas/SubmissionAnnotationStatus',
+            default: 'needs_review'
+        },
+        page_number: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Page Number',
+            default: 1
+        },
+        x: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'X'
+        },
+        y: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Y'
+        },
+        width: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        comment: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Comment'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        exam_region_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Region Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['label', 'x', 'y', 'width', 'height', 'id', 'submission_id'],
+    title: 'SubmissionAnnotationPublic'
+} as const;
+
+export const SubmissionAnnotationStatusSchema = {
+    type: 'string',
+    enum: ['needs_review', 'accepted', 'rejected'],
+    title: 'SubmissionAnnotationStatus'
+} as const;
+
+export const SubmissionAnnotationUpdateSchema = {
+    properties: {
+        label: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        status: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/SubmissionAnnotationStatus'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
+        page_number: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Page Number'
+        },
+        x: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'X'
+        },
+        y: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Y'
+        },
+        width: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    exclusiveMinimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Width'
+        },
+        height: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    exclusiveMinimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Height'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        comment: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Comment'
+        }
+    },
+    type: 'object',
+    title: 'SubmissionAnnotationUpdate'
+} as const;
+
+export const SubmissionAnnotationsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/SubmissionAnnotationPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'SubmissionAnnotationsPublic'
+} as const;
+
 export const SubmissionRegistrationStatusSchema = {
     type: 'string',
     enum: ['pending', 'manual_confirmed', 'failed'],

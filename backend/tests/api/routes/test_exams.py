@@ -799,6 +799,148 @@ def test_read_student_submission_region_crop(
     assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_create_update_and_delete_submission_annotation(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Annotation Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+        },
+    )
+    region_id = region_response.json()["id"]
+
+    create_annotation_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+        json={
+            "exam_region_id": region_id,
+            "label": "Q1",
+            "status": "needs_review",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+            "score": 3,
+            "max_score": 5,
+            "comment": "Check method step",
+        },
+    )
+
+    assert create_annotation_response.status_code == 200
+    annotation = create_annotation_response.json()
+    annotation_id = annotation["id"]
+    assert annotation["exam_region_id"] == region_id
+    assert annotation["label"] == "Q1"
+    assert annotation["status"] == "needs_review"
+    assert annotation["score"] == 3
+    assert annotation["max_score"] == 5
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}",
+        headers=superuser_token_headers,
+        json={"status": "accepted", "score": 4, "comment": "Looks correct"},
+    )
+    assert update_response.status_code == 200
+    updated = update_response.json()
+    assert updated["status"] == "accepted"
+    assert updated["score"] == 4
+    assert updated["comment"] == "Looks correct"
+
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}",
+        headers=superuser_token_headers,
+    )
+    assert delete_response.status_code == 200
+
+    empty_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+    )
+    assert empty_response.json()["count"] == 0
+
+
+def test_submission_annotation_rejects_region_from_other_exam(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Annotation Exam A"},
+    )
+    exam_id = create_response.json()["id"]
+    other_create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Annotation Exam B"},
+    )
+    other_exam_id = other_create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    other_region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{other_exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+        },
+    )
+    other_region_id = other_region_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+        json={
+            "exam_region_id": other_region_id,
+            "label": "Q1",
+            "status": "needs_review",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+        },
+    )
+
+    assert response.status_code == 404
+
+
 def test_upload_student_submission_rejects_invalid_pdf(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:

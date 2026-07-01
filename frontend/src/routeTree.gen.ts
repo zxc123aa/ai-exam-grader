@@ -19,6 +19,7 @@ import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutExamsRouteImport } from './routes/_layout/exams'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutExamsExamIdMarkingRouteImport } from './routes/_layout/exams_.$examId.marking'
+import { Route as LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport } from './routes/_layout/exams_.$examId.submissions.$submissionId.review'
 
 const SignupRoute = SignupRouteImport.update({
   id: '/signup',
@@ -70,6 +71,12 @@ const LayoutExamsExamIdMarkingRoute =
     path: '/exams/$examId/marking',
     getParentRoute: () => LayoutRoute,
   } as any)
+const LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute =
+  LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport.update({
+    id: '/exams_/$examId/submissions/$submissionId/review',
+    path: '/exams/$examId/submissions/$submissionId/review',
+    getParentRoute: () => LayoutRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof LayoutIndexRoute
@@ -81,6 +88,7 @@ export interface FileRoutesByFullPath {
   '/exams': typeof LayoutExamsRoute
   '/settings': typeof LayoutSettingsRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
@@ -92,6 +100,7 @@ export interface FileRoutesByTo {
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -105,6 +114,7 @@ export interface FileRoutesById {
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/exams_/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/_layout/exams_/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -118,6 +128,7 @@ export interface FileRouteTypes {
     | '/exams'
     | '/settings'
     | '/exams/$examId/marking'
+    | '/exams/$examId/submissions/$submissionId/review'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
@@ -129,6 +140,7 @@ export interface FileRouteTypes {
     | '/settings'
     | '/'
     | '/exams/$examId/marking'
+    | '/exams/$examId/submissions/$submissionId/review'
   id:
     | '__root__'
     | '/_layout'
@@ -141,6 +153,7 @@ export interface FileRouteTypes {
     | '/_layout/settings'
     | '/_layout/'
     | '/_layout/exams_/$examId/marking'
+    | '/_layout/exams_/$examId/submissions/$submissionId/review'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -223,6 +236,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutExamsExamIdMarkingRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/exams_/$examId/submissions/$submissionId/review': {
+      id: '/_layout/exams_/$examId/submissions/$submissionId/review'
+      path: '/exams/$examId/submissions/$submissionId/review'
+      fullPath: '/exams/$examId/submissions/$submissionId/review'
+      preLoaderRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport
+      parentRoute: typeof LayoutRoute
+    }
   }
 }
 
@@ -232,6 +252,7 @@ interface LayoutRouteChildren {
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutExamsExamIdMarkingRoute: typeof LayoutExamsExamIdMarkingRoute
+  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
@@ -240,6 +261,8 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutExamsExamIdMarkingRoute: LayoutExamsExamIdMarkingRoute,
+  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute:
+    LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute,
 }
 
 const LayoutRouteWithChildren =

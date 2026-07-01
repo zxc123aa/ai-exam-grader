@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录和人工确认流程已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页和结构化批注最小闭环已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -48,16 +48,22 @@
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，82 passed，coverage 90%。
 - OpenAPI smoke 路径存在性检查已通过，包含 17 个关键路径。
 - Playwright 考试流程 smoke 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
+- 已新增 SubmissionAnnotation 模型和 API：支持按学生答卷保存题区级复核状态、分数、满分、评语和归一化坐标。
+- 已新增 `/exams/$examId/submissions/$submissionId/review` 教师复核页：左侧查看答卷和模板题区叠加，右侧选择题区并保存分数/评语/状态。
+- Alembic migration 已升级到 `f3b1d0c9a742`。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，84 passed，coverage 91%。
+- OpenAPI smoke 路径存在性检查已通过，包含 19 个关键路径。
+- Playwright 考试流程 smoke 已覆盖复核页批注保存：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
 
 ## 进行中
 
-- 周期 3/6 下一块能力：批注数据结构和教师复核页雏形。
+- 周期 3 下一块能力：后台任务管线和自动配准/OCR 接入点。
 
 ## 下一步
 
-1. 建立批注数据结构和复核页雏形，为后续 PDF 导出做准备。
-2. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
-3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+1. 接入后台任务，把答卷配准、裁题、OCR 和判分拆成可重试任务。
+2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+3. 在复核页接入题区裁剪预览和后续 AI/OCR 初稿结果。
 4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
 
 ## 风险与阻塞

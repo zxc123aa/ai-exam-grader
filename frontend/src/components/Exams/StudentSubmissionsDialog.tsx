@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
+import { Link } from "@tanstack/react-router"
 import {
   CheckCircle2,
   Eye,
   FileUp,
   Loader2,
+  SquarePen,
   Users,
   XCircle,
 } from "lucide-react"
@@ -431,6 +433,18 @@ export default function StudentSubmissionsDialog({
                       >
                         <Eye />
                         Preview
+                      </Button>
+                      <Button variant="outline" size="sm" asChild>
+                        <Link
+                          to="/exams/$examId/submissions/$submissionId/review"
+                          params={{
+                            examId: exam.id,
+                            submissionId: submission.id,
+                          }}
+                        >
+                          <SquarePen />
+                          Review
+                        </Link>
                       </Button>
                     </div>
                   </div>

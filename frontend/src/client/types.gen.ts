@@ -202,6 +202,58 @@ export type StudentSubmissionsPublic = {
 
 export type StudentSubmissionStatus = 'uploaded' | 'registration_pending' | 'registration_failed' | 'ready_for_review';
 
+export type SubmissionAnnotationCreate = {
+    label: string;
+    status?: SubmissionAnnotationStatus;
+    page_number?: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    score?: (number | null);
+    max_score?: (number | null);
+    comment?: (string | null);
+    exam_region_id?: (string | null);
+};
+
+export type SubmissionAnnotationPublic = {
+    label: string;
+    status?: SubmissionAnnotationStatus;
+    page_number?: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    score?: (number | null);
+    max_score?: (number | null);
+    comment?: (string | null);
+    id: string;
+    submission_id: string;
+    exam_region_id?: (string | null);
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type SubmissionAnnotationsPublic = {
+    data: Array<SubmissionAnnotationPublic>;
+    count: number;
+};
+
+export type SubmissionAnnotationStatus = 'needs_review' | 'accepted' | 'rejected';
+
+export type SubmissionAnnotationUpdate = {
+    label?: (string | null);
+    status?: (SubmissionAnnotationStatus | null);
+    page_number?: (number | null);
+    x?: (number | null);
+    y?: (number | null);
+    width?: (number | null);
+    height?: (number | null);
+    score?: (number | null);
+    max_score?: (number | null);
+    comment?: (string | null);
+};
+
 export type SubmissionRegistrationStatus = 'pending' | 'manual_confirmed' | 'failed';
 
 export type Token = {
@@ -380,6 +432,38 @@ export type ExamsReadStudentSubmissionRegionCropData = {
 };
 
 export type ExamsReadStudentSubmissionRegionCropResponse = (unknown);
+
+export type ExamsReadSubmissionAnnotationsData = {
+    examId: string;
+    submissionId: string;
+};
+
+export type ExamsReadSubmissionAnnotationsResponse = (SubmissionAnnotationsPublic);
+
+export type ExamsCreateSubmissionAnnotationData = {
+    examId: string;
+    requestBody: SubmissionAnnotationCreate;
+    submissionId: string;
+};
+
+export type ExamsCreateSubmissionAnnotationResponse = (SubmissionAnnotationPublic);
+
+export type ExamsUpdateSubmissionAnnotationData = {
+    annotationId: string;
+    examId: string;
+    requestBody: SubmissionAnnotationUpdate;
+    submissionId: string;
+};
+
+export type ExamsUpdateSubmissionAnnotationResponse = (SubmissionAnnotationPublic);
+
+export type ExamsDeleteSubmissionAnnotationData = {
+    annotationId: string;
+    examId: string;
+    submissionId: string;
+};
+
+export type ExamsDeleteSubmissionAnnotationResponse = (Message);
 
 export type ExamsReadExamRegionsData = {
     examId: string;

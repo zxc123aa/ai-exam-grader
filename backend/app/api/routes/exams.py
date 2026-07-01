@@ -32,6 +32,11 @@ from app.models import (
     Message,
     StoredFile,
     StoredFilePublic,
+    SubmissionAnnotation,
+    SubmissionAnnotationCreate,
+    SubmissionAnnotationPublic,
+    SubmissionAnnotationsPublic,
+    SubmissionAnnotationUpdate,
     StudentSubmission,
     StudentSubmissionPublic,
     StudentSubmissionRegistrationUpdate,
@@ -180,6 +185,26 @@ def get_exam_region_for_user(
     if not region or region.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Exam region not found")
     return region
+
+
+def get_submission_annotation_for_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+) -> SubmissionAnnotation:
+    get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    annotation = session.get(SubmissionAnnotation, annotation_id)
+    if not annotation or annotation.submission_id != submission_id:
+        raise HTTPException(status_code=404, detail="Submission annotation not found")
+    return annotation
 
 
 def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> Response:
@@ -664,6 +689,129 @@ def read_student_submission_region_crop(
         ),
         media_type="image/png",
     )
+
+
+@router.get(
+    "/{exam_id}/submissions/{submission_id}/annotations",
+    response_model=SubmissionAnnotationsPublic,
+)
+def read_submission_annotations(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+) -> Any:
+    get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    statement = (
+        select(SubmissionAnnotation)
+        .where(SubmissionAnnotation.submission_id == submission_id)
+        .order_by(col(SubmissionAnnotation.created_at).asc())
+    )
+    annotations = session.exec(statement).all()
+    return SubmissionAnnotationsPublic(
+        data=[
+            SubmissionAnnotationPublic.model_validate(annotation)
+            for annotation in annotations
+        ],
+        count=len(annotations),
+    )
+
+
+@router.post(
+    "/{exam_id}/submissions/{submission_id}/annotations",
+    response_model=SubmissionAnnotationPublic,
+)
+def create_submission_annotation(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_in: SubmissionAnnotationCreate,
+) -> Any:
+    get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    if annotation_in.exam_region_id:
+        get_exam_region_for_user(
+            session=session,
+            current_user=current_user,
+            exam_id=exam_id,
+            region_id=annotation_in.exam_region_id,
+        )
+    annotation = SubmissionAnnotation.model_validate(
+        annotation_in, update={"submission_id": submission_id}
+    )
+    session.add(annotation)
+    session.commit()
+    session.refresh(annotation)
+    return annotation
+
+
+@router.patch(
+    "/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}",
+    response_model=SubmissionAnnotationPublic,
+)
+def update_submission_annotation(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    annotation_in: SubmissionAnnotationUpdate,
+) -> Any:
+    annotation = get_submission_annotation_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+        annotation_id=annotation_id,
+    )
+    update_data = annotation_in.model_dump(exclude_unset=True)
+    next_x = update_data.get("x", annotation.x)
+    next_y = update_data.get("y", annotation.y)
+    next_width = update_data.get("width", annotation.width)
+    next_height = update_data.get("height", annotation.height)
+    if next_x + next_width > 1 or next_y + next_height > 1:
+        raise HTTPException(
+            status_code=422,
+            detail="Annotation bounds must stay within normalized page coordinates",
+        )
+    annotation.sqlmodel_update(update_data)
+    annotation.updated_at = get_datetime_utc()
+    session.add(annotation)
+    session.commit()
+    session.refresh(annotation)
+    return annotation
+
+
+@router.delete("/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}")
+def delete_submission_annotation(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+) -> Message:
+    annotation = get_submission_annotation_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+        annotation_id=annotation_id,
+    )
+    session.delete(annotation)
+    session.commit()
+    return Message(message="Submission annotation deleted successfully")
 
 
 @router.get("/{exam_id}/regions", response_model=ExamRegionsPublic)

@@ -297,6 +297,23 @@
   - 前端学生答卷列表可显示配准状态和质量，并支持 Confirm/Fail 操作。已完成。
   - 当前人工确认写入 identity homography，后续替换为自动配准算法输出。已明确。
 
+### AEG-024 教师复核页和结构化批注最小闭环
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 6 前置
+- 目标：在 OCR/AI 判分接入前，先建立教师可以查看学生答卷、选择模板题区、录入分数/评语/复核状态的工作台。
+- 验证：`pytest tests/api/routes/test_exams.py -q` 已通过，32 passed；`bash scripts/tests-start.sh` 已通过，84 passed，coverage 91%；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，19 paths；`npm run --workspace frontend lint` 和 `npm run --workspace frontend build` 已通过；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，4 passed。
+- 验收标准：
+  - 新增 `SubmissionAnnotation` 数据模型和 Alembic migration。已完成。
+  - 后端提供批注列表、创建、更新和删除 API。已完成。
+  - 批注保存题区归属、页面、归一化坐标、分数、满分、评语和复核状态。已完成。
+  - 前端提供学生答卷 Review 入口。已完成。
+  - 复核页可显示答卷页图、模板题区叠加和题区列表。已完成。
+  - 教师可选择题区并保存结构化分数/评语/状态。已完成。
+  - 当前不做自由手绘批注和题区拖拽微调，后续在复核页继续增强。已明确。
+
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
 - 类型：Verification

@@ -117,6 +117,12 @@ class SubmissionRegistrationStatus(StrEnum):
     FAILED = "failed"
 
 
+class SubmissionAnnotationStatus(StrEnum):
+    NEEDS_REVIEW = "needs_review"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
 class ExamBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
@@ -393,6 +399,9 @@ class StudentSubmission(StudentSubmissionBase, table=True):
     )
     exam: Exam | None = Relationship(back_populates="submissions")
     stored_file: StoredFile | None = Relationship(back_populates="student_submissions")
+    annotations: list["SubmissionAnnotation"] = Relationship(
+        back_populates="submission", cascade_delete=True
+    )
 
 
 class StudentSubmissionPublic(StudentSubmissionBase):
@@ -409,6 +418,87 @@ class StudentSubmissionPublic(StudentSubmissionBase):
 
 class StudentSubmissionsPublic(SQLModel):
     data: list[StudentSubmissionPublic]
+    count: int
+
+
+class SubmissionAnnotationBase(SQLModel):
+    label: str = Field(min_length=1, max_length=100)
+    status: SubmissionAnnotationStatus = SubmissionAnnotationStatus.NEEDS_REVIEW
+    page_number: int = Field(default=1, ge=1)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+    score: float | None = Field(default=None, ge=0)
+    max_score: float | None = Field(default=None, ge=0)
+    comment: str | None = Field(default=None, max_length=2000)
+
+    @model_validator(mode="after")
+    def validate_bounds(self) -> "SubmissionAnnotationBase":
+        if self.x + self.width > 1:
+            raise ValueError("Annotation x + width must be less than or equal to 1")
+        if self.y + self.height > 1:
+            raise ValueError("Annotation y + height must be less than or equal to 1")
+        return self
+
+
+class SubmissionAnnotationCreate(SubmissionAnnotationBase):
+    exam_region_id: uuid.UUID | None = None
+
+
+class SubmissionAnnotationUpdate(SQLModel):
+    label: str | None = Field(default=None, min_length=1, max_length=100)
+    status: SubmissionAnnotationStatus | None = None
+    page_number: int | None = Field(default=None, ge=1)
+    x: float | None = Field(default=None, ge=0, le=1)
+    y: float | None = Field(default=None, ge=0, le=1)
+    width: float | None = Field(default=None, gt=0, le=1)
+    height: float | None = Field(default=None, gt=0, le=1)
+    score: float | None = Field(default=None, ge=0)
+    max_score: float | None = Field(default=None, ge=0)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class SubmissionAnnotation(SubmissionAnnotationBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    status: SubmissionAnnotationStatus = Field(
+        default=SubmissionAnnotationStatus.NEEDS_REVIEW,
+        sa_column=Column(
+            SAEnum(
+                SubmissionAnnotationStatus,
+                name="submissionannotationstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    submission_id: uuid.UUID = Field(
+        foreign_key="studentsubmission.id", nullable=False, ondelete="CASCADE"
+    )
+    exam_region_id: uuid.UUID | None = Field(
+        default=None, foreign_key="examregion.id", nullable=True, ondelete="SET NULL"
+    )
+    submission: StudentSubmission | None = Relationship(back_populates="annotations")
+
+
+class SubmissionAnnotationPublic(SubmissionAnnotationBase):
+    id: uuid.UUID
+    submission_id: uuid.UUID
+    exam_region_id: uuid.UUID | None = None
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class SubmissionAnnotationsPublic(SQLModel):
+    data: list[SubmissionAnnotationPublic]
     count: int
 
 

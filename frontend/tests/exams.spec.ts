@@ -145,4 +145,17 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByText("Page 1 of 1")).toBeVisible()
   await expect(page.getByAltText("student-a.png")).toBeVisible()
   await expect(page.getByTestId("submission-overlay-region-Q1")).toBeVisible()
+
+  await page.getByRole("link", { name: "Review" }).click()
+  await expect(page.getByRole("heading", { name: title })).toBeVisible()
+  await expect(page.getByTestId("submission-review-canvas")).toBeVisible()
+  await expect(page.getByTestId("review-region-list-Q1")).toBeVisible()
+  await page.getByTestId("review-score-input").fill("4")
+  await page.getByTestId("review-max-score-input").fill("5")
+  await page.getByTestId("review-comment-input").fill("Good method")
+  await page.getByTestId("review-save-annotation-button").click()
+  await expect(page.getByText("Annotation saved")).toBeVisible()
+  await expect(page.getByTestId("review-region-list-Q1")).toContainText(
+    /needs review/i,
+  )
 })
