@@ -87,6 +87,38 @@ async function fetchSubmissionPageImageBlob(
   return response.blob()
 }
 
+async function fetchSubmissionAnnotationCropBlob(
+  examId: string,
+  submissionId: string,
+  annotationId: string,
+) {
+  const token = localStorage.getItem("access_token")
+  const base = OpenAPI.BASE || ""
+  const response = await fetch(
+    `${base}/api/v1/exams/${examId}/submissions/${submissionId}/annotations/${annotationId}/crop`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  )
+  if (!response.ok) {
+    throw new ApiError(
+      {
+        method: "GET",
+        url: "/api/v1/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}/crop",
+      },
+      {
+        url: response.url,
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        body: await response.text(),
+      },
+      "Failed to load annotation crop",
+    )
+  }
+  return response.blob()
+}
+
 function formatStatus(status?: string | null) {
   return (status || "needs_review").replace(/_/g, " ")
 }
@@ -260,6 +292,76 @@ function SubmissionPagePreview({
   )
 }
 
+function AnnotationCropPreview({
+  examId,
+  submissionId,
+  annotation,
+}: {
+  examId: string
+  submissionId: string
+  annotation?: SubmissionAnnotationPublic
+}) {
+  const [contentUrl, setContentUrl] = useState<string | null>(null)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: [
+      "submission-annotation-crop",
+      examId,
+      submissionId,
+      annotation?.id,
+    ],
+    queryFn: () =>
+      fetchSubmissionAnnotationCropBlob(
+        examId,
+        submissionId,
+        annotation?.id as string,
+      ),
+    enabled: Boolean(annotation?.id),
+  })
+
+  useEffect(() => {
+    if (!data) {
+      setContentUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(data)
+    setContentUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [data])
+
+  if (!annotation) {
+    return (
+      <div className="rounded-md border p-3 text-xs text-muted-foreground">
+        Run processing to create a question crop for the selected region.
+      </div>
+    )
+  }
+  if (isError) {
+    return (
+      <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+        Question crop is not available yet.
+      </div>
+    )
+  }
+  if (isLoading || !contentUrl) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border p-3 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        Loading question crop
+      </div>
+    )
+  }
+  return (
+    <div className="overflow-hidden rounded-md border bg-muted/20">
+      <img
+        alt={`${annotation.label} crop`}
+        className="block w-full"
+        data-testid="annotation-crop-preview"
+        src={contentUrl}
+      />
+    </div>
+  )
+}
+
 function SubmissionReview() {
   const { examId, submissionId } = Route.useParams()
   const [pageNumber, setPageNumber] = useState(1)
@@ -383,6 +485,9 @@ function SubmissionReview() {
       queryClient.invalidateQueries({
         queryKey: ["submission-annotations", examId, submissionId],
       })
+      queryClient.invalidateQueries({
+        queryKey: ["submission-annotation-crop", examId, submissionId],
+      })
     },
     onError: handleError.bind(showErrorToast),
   })
@@ -392,6 +497,9 @@ function SubmissionReview() {
     if (status === "succeeded") {
       queryClient.invalidateQueries({
         queryKey: ["submission-annotations", examId, submissionId],
+      })
+      queryClient.invalidateQueries({
+        queryKey: ["submission-annotation-crop", examId, submissionId],
       })
     }
   }, [examId, processingTaskQuery.data?.status, queryClient, submissionId])
@@ -560,6 +668,12 @@ function SubmissionReview() {
                   <CheckCircle2 className="size-5 text-emerald-600" />
                 )}
               </div>
+
+              <AnnotationCropPreview
+                examId={examId}
+                submissionId={submissionId}
+                annotation={selectedAnnotation}
+              />
 
               <div className="grid gap-2">
                 <Label htmlFor="review-status">Status</Label>

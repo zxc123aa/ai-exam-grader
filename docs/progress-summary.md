@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务占位管线和手机照片预处理后端入口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物和手机照片预处理后端入口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -70,17 +70,27 @@
 - 扫描预处理已补充真实样本验收：`materials/English/test1.jpg` 识别为双页并按中缝拆分，`materials/English/writing.jpg` 保持单页。
 - 扫描预处理脚本已改为复用后端服务实现，避免 API 和实验脚本算法漂移。
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，88 passed，coverage 90%。
+- Worker 已开始为每个模板题区生成实际 PNG 裁剪产物，保存到 `derived/submissions/{submission_id}/regions/{region_id}.png`。
+- 学生答卷处理任务 `output_ref` 已记录 `region_crops` 明细，包括题区、页码、尺寸、坐标来源和存储 key。
+- 已新增受保护批注裁剪图接口：`GET /api/v1/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}/crop`。
+- 教师复核页已显示当前题区裁剪预览，处理任务完成后会刷新批注和裁剪图缓存。
+- OpenAPI client 与 smoke 检查已同步新增批注裁剪图路径。
+- 后端考试路由测试已通过：`pytest backend/tests/api/routes/test_exams.py -q`，34 passed。
+- OpenAPI smoke 路径存在性检查已通过，包含 22 个关键路径。
+- 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，88 passed，coverage 90%。
+- Playwright 考试流程 smoke 已覆盖处理任务后题区裁剪预览：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
 
 ## 进行中
 
-- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准、题区裁剪产物和 OCR 初稿接入。
+- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准和 OCR 初稿接入。
 
 ## 下一步
 
 1. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
 2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-3. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
-4. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
+3. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
+4. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 
@@ -93,6 +103,7 @@
 - OpenAPI 生成器把 multipart 文件字段生成为 `string` 类型，前端当前在上传组件内做了局部类型转换；后续可统一优化生成配置。
 - 文件预览已改为 authenticated fetch 获取 blob/object URL，后端文件内容和分页图片接口只接受 `Authorization: Bearer ...`，避免把长期 token 拼进 URL。
 - Playwright 本地运行需要后端已启动，且 dev DB 中存在 `.env` 的 `FIRST_SUPERUSER`；本轮已补建 `admin@example.com` 本地测试账号。
+- 批注裁剪图当前从最新处理任务的 JSON `output_ref.region_crops` 查找；MVP 可用，后续数据量上来后应迁移为可索引的派生产物表或 JSONB 查询。
 
 ## 最近决策
 

@@ -453,6 +453,15 @@ export type ExamsReadStudentSubmissionRegionCropData = {
 
 export type ExamsReadStudentSubmissionRegionCropResponse = (unknown);
 
+export type ExamsReadSubmissionAnnotationCropData = {
+    annotationId: string;
+    authorization?: (string | null);
+    examId: string;
+    submissionId: string;
+};
+
+export type ExamsReadSubmissionAnnotationCropResponse = (unknown);
+
 export type ExamsReadSubmissionAnnotationsData = {
     examId: string;
     submissionId: string;

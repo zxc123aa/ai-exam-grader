@@ -993,6 +993,11 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert task["input_ref"]["submission_id"] == submission_id
     assert task["output_ref"]["pipeline"] == "submission_processing_v1"
     assert task["output_ref"]["region_count"] == 1
+    assert task["output_ref"]["stages"]["region_crops"] == "succeeded"
+    assert task["output_ref"]["stages"]["registration"]["source"] == "identity_v1"
+    assert len(task["output_ref"]["region_crops"]) == 1
+    assert task["output_ref"]["region_crops"][0]["label"] == "Q1"
+    assert task["output_ref"]["region_crops"][0]["storage_key"].endswith(".png")
     assert task["output_ref"]["created_annotation_count"] == 1
 
     annotations_response = client.get(
@@ -1005,6 +1010,15 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert annotations["data"][0]["label"] == "Q1"
     assert annotations["data"][0]["status"] == "needs_review"
     assert annotations["data"][0]["comment"] == "Awaiting OCR and AI grading result."
+    annotation_id = annotations["data"][0]["id"]
+
+    crop_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}/crop",
+        headers=superuser_token_headers,
+    )
+    assert crop_response.status_code == 200
+    assert crop_response.headers["content-type"] == "image/png"
+    assert crop_response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_submission_annotation_rejects_region_from_other_exam(

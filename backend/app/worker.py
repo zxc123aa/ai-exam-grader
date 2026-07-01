@@ -1,7 +1,7 @@
-import dramatiq
-from dramatiq.brokers.redis import RedisBroker
 import uuid
 
+import dramatiq
+from dramatiq.brokers.redis import RedisBroker
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -10,11 +10,13 @@ from app.models import (
     ExamRegion,
     ProcessingTask,
     ProcessingTaskStatus,
+    StoredFile,
     StudentSubmission,
     SubmissionAnnotation,
     SubmissionAnnotationStatus,
     get_datetime_utc,
 )
+from app.services.submission_crops import save_region_crop
 
 redis_broker = RedisBroker(url=settings.REDIS_URL)
 dramatiq.set_broker(redis_broker)
@@ -87,6 +89,9 @@ def run_submission_processing_task(task_id: str) -> None:
             submission = session.get(StudentSubmission, submission_id)
             if not submission or submission.exam_id != exam_id:
                 raise ValueError("Student submission not found for processing task")
+            stored_file = session.get(StoredFile, submission.stored_file_id)
+            if not stored_file:
+                raise ValueError("Student submission file not found")
 
             set_task_state(
                 session=session,
@@ -112,7 +117,16 @@ def run_submission_processing_task(task_id: str) -> None:
             }
 
             created_annotations = 0
+            region_crops = []
             for region in regions:
+                crop = save_region_crop(
+                    stored_file=stored_file,
+                    region=region,
+                    owner_id=stored_file.uploaded_by_id,
+                    submission_id=submission.id,
+                    upload_dir=settings.LOCAL_UPLOAD_DIR,
+                )
+                region_crops.append(crop)
                 if region.id in existing_region_ids:
                     continue
                 annotation = SubmissionAnnotation(
@@ -136,12 +150,18 @@ def run_submission_processing_task(task_id: str) -> None:
                 "submission_id": str(submission_id),
                 "exam_id": str(exam_id),
                 "stages": {
-                    "registration": "placeholder",
-                    "region_crops": "placeholder",
+                    "registration": {
+                        "status": "manual_confirmed"
+                        if submission.registration_status == "manual_confirmed"
+                        else "needs_review",
+                        "source": "identity_v1",
+                    },
+                    "region_crops": "succeeded",
                     "ocr": "not_started",
                     "grading": "not_started",
                 },
                 "region_count": len(regions),
+                "region_crops": region_crops,
                 "created_annotation_count": created_annotations,
             }
             set_task_state(

@@ -132,7 +132,7 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await page.getByTestId("submission-file-input").setInputFiles({
     name: "student-a.png",
     mimeType: "image/png",
-    buffer: pngBuffer,
+    buffer: scanPhotoBuffer,
   })
   await page.getByTestId("submission-upload-button").click()
 
@@ -163,6 +163,7 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByTestId("review-region-list-Q1")).toContainText(
     /needs review/i,
   )
+  await expect(page.getByTestId("annotation-crop-preview")).toBeVisible()
   await page.getByTestId("review-score-input").fill("4")
   await page.getByTestId("review-max-score-input").fill("5")
   await page.getByTestId("review-comment-input").fill("Good method")

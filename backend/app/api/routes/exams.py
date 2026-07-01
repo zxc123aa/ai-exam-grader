@@ -1,5 +1,4 @@
 import uuid
-from io import BytesIO
 from pathlib import Path
 from typing import Any
 
@@ -7,7 +6,6 @@ import jwt
 from fastapi import APIRouter, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from jwt.exceptions import InvalidTokenError
-from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
 from sqlmodel import col, func, select
 
@@ -68,6 +66,10 @@ from app.services.pdf_rendering import (
     InvalidPdfError,
     get_pdf_page_count,
     render_pdf_page_png,
+)
+from app.services.submission_crops import (
+    SubmissionCropError,
+    crop_region_png,
 )
 from app.worker import (
     process_submission_processing_task,
@@ -248,50 +250,13 @@ def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> R
     )
 
 
-def render_stored_file_page_image(*, stored_file: StoredFile, page_number: int) -> Image.Image:
-    path = get_stored_file_path(stored_file)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Stored file not found")
-    if page_number < 1:
-        raise HTTPException(status_code=422, detail="Page number must be at least 1")
-
-    if stored_file.content_type == "application/pdf":
-        try:
-            contents = render_pdf_page_png(path, page_number)
-        except InvalidPdfError:
-            raise HTTPException(status_code=415, detail="Stored PDF could not be opened")
-        except IndexError:
-            raise HTTPException(status_code=404, detail="PDF page not found")
-        return Image.open(BytesIO(contents)).convert("RGB")
-
-    if page_number != 1:
-        raise HTTPException(status_code=404, detail="Image file has only one page")
-    try:
-        return Image.open(path).convert("RGB")
-    except UnidentifiedImageError:
-        raise HTTPException(status_code=415, detail="Stored image could not be opened")
-
-
 def crop_region_from_stored_file(
     *, stored_file: StoredFile, region: ExamRegion
 ) -> bytes:
-    image = render_stored_file_page_image(
-        stored_file=stored_file, page_number=region.page_number
-    )
     try:
-        image_width, image_height = image.size
-        left = round(region.x * image_width)
-        top = round(region.y * image_height)
-        right = round((region.x + region.width) * image_width)
-        bottom = round((region.y + region.height) * image_height)
-        if right <= left or bottom <= top:
-            raise HTTPException(status_code=422, detail="Region crop is empty")
-        cropped = image.crop((left, top, right, bottom))
-        buffer = BytesIO()
-        cropped.save(buffer, format="PNG")
-        return buffer.getvalue()
-    finally:
-        image.close()
+        return crop_region_png(stored_file=stored_file, region=region)
+    except SubmissionCropError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
 
 
 def get_user_from_authorization_header(
@@ -834,6 +799,64 @@ def read_student_submission_region_crop(
         ),
         media_type="image/png",
     )
+
+
+@router.get(
+    "/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}/crop"
+)
+def read_submission_annotation_crop(
+    session: SessionDep,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+    authorization: str | None = Header(default=None),
+) -> FileResponse:
+    user = get_user_from_authorization_header(
+        session=session, authorization=authorization
+    )
+    annotation = get_submission_annotation_for_user(
+        session=session,
+        current_user=user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+        annotation_id=annotation_id,
+    )
+    if not annotation.exam_region_id:
+        raise HTTPException(status_code=404, detail="Annotation crop not found")
+
+    tasks = session.exec(
+        select(ProcessingTask)
+        .where(ProcessingTask.task_type == "student_submission_processing")
+        .order_by(col(ProcessingTask.created_at).desc())
+    ).all()
+    matching_crop = None
+    for task in tasks:
+        input_ref = task.input_ref or {}
+        output_ref = task.output_ref or {}
+        if (
+            str(input_ref.get("exam_id")) == str(exam_id)
+            and str(input_ref.get("submission_id")) == str(submission_id)
+        ):
+            for crop in output_ref.get("region_crops", []):
+                if str(crop.get("region_id")) == str(annotation.exam_region_id):
+                    matching_crop = crop
+                    break
+        if matching_crop:
+            break
+
+    if not matching_crop:
+        raise HTTPException(status_code=404, detail="Annotation crop not found")
+
+    storage_key = matching_crop.get("storage_key")
+    if not storage_key:
+        raise HTTPException(status_code=404, detail="Annotation crop not found")
+    upload_root = settings.LOCAL_UPLOAD_DIR.resolve()
+    path = (upload_root / storage_key).resolve()
+    if not path.is_relative_to(upload_root):
+        raise HTTPException(status_code=404, detail="Annotation crop not found")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Annotation crop file not found")
+    return FileResponse(path=path, media_type="image/png", filename=path.name)
 
 
 @router.get(

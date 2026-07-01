@@ -331,6 +331,23 @@
   - 复核页可触发处理任务、展示任务状态/进度，并刷新批注列表。已完成。
   - 本地环境同步执行任务，非 local 环境保留 Dramatiq 入队。已完成。
 
+### AEG-027 题区裁剪产物和复核页裁剪预览
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 3/6 前置
+- 目标：让学生答卷处理任务实际产出每个模板题区的裁剪 PNG，并在教师复核页展示当前题区的证据图。
+- 验证：`pytest backend/tests/api/routes/test_exams.py -q` 已通过，34 passed；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，22 paths；`npm run --workspace frontend lint` 和 `npm run --workspace frontend build` 已通过；`bash scripts/tests-start.sh` 已通过，88 passed，coverage 90%；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，5 passed。
+- 验收标准：
+  - Worker 为每个 `ExamRegion` 生成实际 PNG 裁剪产物。已完成。
+  - 裁剪产物写入统一上传目录下的派生文件路径。已完成。
+  - 处理任务 `output_ref.region_crops` 记录题区、页码、尺寸、坐标和 storage key。已完成。
+  - 后端提供受保护的批注裁剪图读取接口，不使用 URL token。已完成。
+  - 复核页在选中题区时显示对应裁剪预览。已完成。
+  - Playwright 覆盖处理任务后显示裁剪预览。已完成。
+  - 后续把 `output_ref` 中的裁剪产物索引迁移为专门表或 JSONB 查询优化。
+
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
 - 类型：Verification
