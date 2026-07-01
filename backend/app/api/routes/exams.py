@@ -616,6 +616,20 @@ async def preprocess_student_submission_photo(
             registration_homography={
                 "source": "mobile_photo_preprocessing_v1",
                 "detected_quad": preprocessed.detected_quad,
+                "split": {
+                    "strategy": preprocessed.split.strategy,
+                    "gutter_ratio": preprocessed.split.gutter_ratio,
+                    "gutter_confidence": preprocessed.split.gutter_confidence,
+                    "overlap_pixels": preprocessed.split.overlap_pixels,
+                    "pages": [
+                        {
+                            "name": page.name,
+                            "x_start": page.x_start,
+                            "x_end": page.x_end,
+                        }
+                        for page in preprocessed.pages
+                    ],
+                },
             },
         )
         session.add(submission)

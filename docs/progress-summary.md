@@ -67,6 +67,9 @@
 - OpenAPI smoke 路径存在性检查已通过，包含 21 个关键路径。
 - 后端考试路由测试已通过：`pytest backend/tests/api/routes/test_exams.py -q`，34 passed。
 - Playwright 考试流程 smoke 已覆盖手机照片转 PDF 上传入口：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
+- 扫描预处理已补充真实样本验收：`materials/English/test1.jpg` 识别为双页并按中缝拆分，`materials/English/writing.jpg` 保持单页。
+- 扫描预处理脚本已改为复用后端服务实现，避免 API 和实验脚本算法漂移。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，88 passed，coverage 90%。
 
 ## 进行中
 
@@ -74,11 +77,10 @@
 
 ## 下一步
 
-1. 用真实样本做扫描入口人工验收，记录失败样例并补算法回归用例。
-2. 改进双页拆分：检测中缝/页面边界，减少固定 50% 拆页造成的裁切风险。
-3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-4. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
-5. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
+1. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
+2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+3. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
+4. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
 
 ## 风险与阻塞
 

@@ -368,13 +368,15 @@
 
 - 类型：Hardening
 - 优先级：P1
-- 状态：Ready
+- 状态：In Progress
 - 所属周期：周期 3 前置 / 后续 App 采集周期
 - 目标：基于真实手机拍摄样本增强页面边界检测、中缝拆分、阴影/褶皱处理和失败提示。
+- 进展：后端服务已输出拆分策略、中缝比例、置信度、页面 x 范围等元数据；本地实验脚本已改为复用后端服务；`test1.jpg` 双页样本当前识别中缝比例约 0.50，`writing.jpg` 识别为单页。
+- 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py -q` 已通过，36 passed；`bash scripts/tests-start.sh` 已通过，88 passed，coverage 90%。
 - 验收标准：
-  - 用 `materials/English/test1.jpg` 等真实样本建立非提交回归记录。
-  - 双页试卷尽量按真实中缝拆分，而不是固定 50%。
-  - 单页/双页检测有明确输出和错误提示。
+  - 用 `materials/English/test1.jpg` 等真实样本建立非提交回归记录。已完成第一批。
+  - 双页试卷尽量按真实中缝拆分，而不是固定 50%。已完成第一版中心邻域中缝检测和回退策略。
+  - 单页/双页检测有明确输出和错误提示。已完成输出元数据；错误提示仍待增强。
   - 处理失败时前端给出可理解的失败反馈，不生成半成品学生答卷。
 
 ### AEG-015 手机扫描成 PDF 能力调研与排期

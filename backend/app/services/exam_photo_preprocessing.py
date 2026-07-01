@@ -16,6 +16,16 @@ class PhotoPreprocessingError(RuntimeError):
 class PreprocessedPage:
     name: str
     image: np.ndarray
+    x_start: int
+    x_end: int
+
+
+@dataclass(frozen=True)
+class SplitMetadata:
+    strategy: str
+    gutter_ratio: float | None
+    gutter_confidence: float | None
+    overlap_pixels: int
 
 
 @dataclass(frozen=True)
@@ -24,6 +34,10 @@ class PreprocessedExamPhoto:
     pages: list[PreprocessedPage]
     detected_quad: list[list[float]]
     spread_size: tuple[int, int]
+    split: SplitMetadata
+    mask: np.ndarray
+    warped_spread: np.ndarray
+    enhanced_spread: np.ndarray
 
 
 def order_points(points: np.ndarray) -> np.ndarray:
@@ -114,19 +128,73 @@ def enhance_page(image: np.ndarray) -> np.ndarray:
     return cv2.fastNlMeansDenoisingColored(enhanced, None, 3, 3, 7, 21)
 
 
-def split_spread(image: np.ndarray, gutter_ratio: float = 0.5) -> list[PreprocessedPage]:
+def detect_gutter_ratio(image: np.ndarray) -> tuple[float, float]:
+    height, width = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    top = int(height * 0.08)
+    bottom = int(height * 0.92)
+    central_page = gray[top:bottom, :]
+
+    darkness = 255 - central_page
+    projection = darkness.mean(axis=0).astype("float32")
+    window = max(9, int(width * 0.025))
+    kernel = np.ones(window, dtype="float32") / window
+    smoothed = np.convolve(projection, kernel, mode="same")
+
+    left = int(width * 0.45)
+    right = int(width * 0.55)
+    if right <= left:
+        return 0.5, 0.0
+
+    search = smoothed[left:right]
+    local_index = int(np.argmax(search))
+    gutter_x = left + local_index
+
+    baseline_left = int(width * 0.25)
+    baseline_right = int(width * 0.75)
+    baseline = smoothed[baseline_left:baseline_right]
+    baseline_mean = float(baseline.mean())
+    baseline_std = float(baseline.std())
+    peak = float(smoothed[gutter_x])
+    confidence = 0.0
+    if baseline_std > 1e-6:
+        confidence = max(0.0, min(1.0, (peak - baseline_mean) / (baseline_std * 4)))
+
+    if confidence < 0.12:
+        return 0.5, confidence
+    return gutter_x / width, confidence
+
+
+def split_spread(image: np.ndarray) -> tuple[list[PreprocessedPage], SplitMetadata]:
     height, width = image.shape[:2]
     if width < height * 1.2:
-        return [PreprocessedPage(name="page_1.jpg", image=image)]
+        return [
+            PreprocessedPage(name="page_1.jpg", image=image, x_start=0, x_end=width)
+        ], SplitMetadata(
+            strategy="single_page",
+            gutter_ratio=None,
+            gutter_confidence=None,
+            overlap_pixels=0,
+        )
 
+    gutter_ratio, confidence = detect_gutter_ratio(image)
     center = int(width * gutter_ratio)
     overlap = max(16, int(width * 0.025))
-    left = image[:, : min(width, center + overlap)]
-    right = image[:, max(0, center - overlap) :]
+    left_start = 0
+    left_end = min(width, center + overlap)
+    right_start = max(0, center - overlap)
+    right_end = width
+    left = image[:, left_start:left_end]
+    right = image[:, right_start:right_end]
     return [
-        PreprocessedPage(name="page_1_left.jpg", image=left),
-        PreprocessedPage(name="page_2_right.jpg", image=right),
-    ]
+        PreprocessedPage(name="page_1_left.jpg", image=left, x_start=left_start, x_end=left_end),
+        PreprocessedPage(name="page_2_right.jpg", image=right, x_start=right_start, x_end=right_end),
+    ], SplitMetadata(
+        strategy="detected_gutter" if confidence >= 0.12 else "center_fallback",
+        gutter_ratio=round(gutter_ratio, 4),
+        gutter_confidence=round(confidence, 4),
+        overlap_pixels=overlap,
+    )
 
 
 def encode_pdf(pages: list[PreprocessedPage]) -> bytes:
@@ -150,14 +218,18 @@ def preprocess_exam_photo_bytes(contents: bytes) -> PreprocessedExamPhoto:
     if image is None:
         raise PhotoPreprocessingError("Could not decode uploaded image")
 
-    quad, _mask = find_document_quad(image)
+    quad, mask = find_document_quad(image)
     warped = four_point_transform(image, quad)
     enhanced_spread = enhance_page(warped)
-    pages = split_spread(enhanced_spread)
+    pages, split = split_spread(enhanced_spread)
     pdf_bytes = encode_pdf(pages)
     return PreprocessedExamPhoto(
         pdf_bytes=pdf_bytes,
         pages=pages,
         detected_quad=quad.round(1).tolist(),
         spread_size=(warped.shape[1], warped.shape[0]),
+        split=split,
+        mask=mask,
+        warped_spread=warped,
+        enhanced_spread=enhanced_spread,
     )

@@ -638,6 +638,12 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     assert content["registration_homography"]["source"] == (
         "mobile_photo_preprocessing_v1"
     )
+    assert content["registration_homography"]["split"]["strategy"] in {
+        "detected_gutter",
+        "center_fallback",
+    }
+    assert content["registration_homography"]["split"]["gutter_ratio"] is not None
+    assert len(content["registration_homography"]["split"]["pages"]) == 2
     assert content["stored_file"]["original_filename"] == "phone-preprocessed.pdf"
     assert content["stored_file"]["content_type"] == "application/pdf"
     assert content["page_count"] == 2
