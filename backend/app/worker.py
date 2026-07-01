@@ -16,6 +16,7 @@ from app.models import (
     SubmissionAnnotationStatus,
     get_datetime_utc,
 )
+from app.services.ocr import extract_ocr_draft
 from app.services.submission_crops import save_region_crop
 
 redis_broker = RedisBroker(url=settings.REDIS_URL)
@@ -110,14 +111,15 @@ def run_submission_processing_task(task_id: str) -> None:
                     SubmissionAnnotation.submission_id == submission_id
                 )
             ).all()
-            existing_region_ids = {
-                annotation.exam_region_id
+            existing_annotations_by_region_id = {
+                annotation.exam_region_id: annotation
                 for annotation in existing_annotations
                 if annotation.exam_region_id
             }
 
             created_annotations = 0
             region_crops = []
+            ocr_results = []
             for region in regions:
                 crop = save_region_crop(
                     stored_file=stored_file,
@@ -127,23 +129,54 @@ def run_submission_processing_task(task_id: str) -> None:
                     upload_dir=settings.LOCAL_UPLOAD_DIR,
                 )
                 region_crops.append(crop)
-                if region.id in existing_region_ids:
-                    continue
-                annotation = SubmissionAnnotation(
-                    submission_id=submission.id,
-                    exam_region_id=region.id,
-                    label=region.label,
-                    status=SubmissionAnnotationStatus.NEEDS_REVIEW,
-                    page_number=region.page_number,
-                    x=region.x,
-                    y=region.y,
-                    width=region.width,
-                    height=region.height,
-                    comment="Awaiting OCR and AI grading result.",
+                ocr_draft = extract_ocr_draft(
+                    settings.LOCAL_UPLOAD_DIR / crop["storage_key"]
                 )
-                session.add(annotation)
-                created_annotations += 1
+                ocr_results.append(
+                    {
+                        "region_id": str(region.id),
+                        "label": region.label,
+                        "status": ocr_draft.status,
+                        "engine": ocr_draft.engine,
+                        "confidence": ocr_draft.confidence,
+                        "error": ocr_draft.error,
+                    }
+                )
+                annotation = existing_annotations_by_region_id.get(region.id)
+                if not annotation:
+                    annotation = SubmissionAnnotation(
+                        submission_id=submission.id,
+                        exam_region_id=region.id,
+                        label=region.label,
+                        status=SubmissionAnnotationStatus.NEEDS_REVIEW,
+                        page_number=region.page_number,
+                        x=region.x,
+                        y=region.y,
+                        width=region.width,
+                        height=region.height,
+                        comment="Awaiting OCR and AI grading result.",
+                    )
+                    session.add(annotation)
+                    created_annotations += 1
+                annotation.ocr_text = ocr_draft.text
+                annotation.ocr_confidence = ocr_draft.confidence
+                annotation.ocr_status = ocr_draft.status
+                annotation.ocr_engine = ocr_draft.engine
+                annotation.updated_at = get_datetime_utc()
             session.commit()
+
+            ocr_statuses = {result["status"] for result in ocr_results}
+            if not ocr_results:
+                ocr_stage: str | dict = "skipped"
+            elif ocr_statuses == {"succeeded"}:
+                ocr_stage = "succeeded"
+            else:
+                ocr_stage = {
+                    "status": "needs_configuration"
+                    if "not_configured" in ocr_statuses
+                    else "partial",
+                    "engine": ocr_results[0]["engine"],
+                }
 
             output_ref = {
                 "pipeline": "submission_processing_v1",
@@ -157,11 +190,12 @@ def run_submission_processing_task(task_id: str) -> None:
                         "source": "identity_v1",
                     },
                     "region_crops": "succeeded",
-                    "ocr": "not_started",
+                    "ocr": ocr_stage,
                     "grading": "not_started",
                 },
                 "region_count": len(regions),
                 "region_crops": region_crops,
+                "ocr_results": ocr_results,
                 "created_annotation_count": created_annotations,
             }
             set_task_state(

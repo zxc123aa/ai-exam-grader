@@ -164,6 +164,9 @@ test("Can upload and preview a student submission", async ({ page }) => {
     /needs review/i,
   )
   await expect(page.getByTestId("annotation-crop-preview")).toBeVisible()
+  await expect(page.getByTestId("annotation-ocr-status")).toContainText(
+    /not configured/i,
+  )
   await page.getByTestId("review-score-input").fill("4")
   await page.getByTestId("review-max-score-input").fill("5")
   await page.getByTestId("review-comment-input").fill("Good method")

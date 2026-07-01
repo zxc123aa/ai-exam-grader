@@ -219,6 +219,10 @@ export type SubmissionAnnotationCreate = {
     score?: (number | null);
     max_score?: (number | null);
     comment?: (string | null);
+    ocr_text?: (string | null);
+    ocr_confidence?: (number | null);
+    ocr_status?: string;
+    ocr_engine?: (string | null);
     exam_region_id?: (string | null);
 };
 
@@ -233,6 +237,10 @@ export type SubmissionAnnotationPublic = {
     score?: (number | null);
     max_score?: (number | null);
     comment?: (string | null);
+    ocr_text?: (string | null);
+    ocr_confidence?: (number | null);
+    ocr_status?: string;
+    ocr_engine?: (string | null);
     id: string;
     submission_id: string;
     exam_region_id?: (string | null);

@@ -995,9 +995,12 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert task["output_ref"]["region_count"] == 1
     assert task["output_ref"]["stages"]["region_crops"] == "succeeded"
     assert task["output_ref"]["stages"]["registration"]["source"] == "identity_v1"
+    assert task["output_ref"]["stages"]["ocr"]["status"] == "needs_configuration"
     assert len(task["output_ref"]["region_crops"]) == 1
     assert task["output_ref"]["region_crops"][0]["label"] == "Q1"
     assert task["output_ref"]["region_crops"][0]["storage_key"].endswith(".png")
+    assert len(task["output_ref"]["ocr_results"]) == 1
+    assert task["output_ref"]["ocr_results"][0]["status"] == "not_configured"
     assert task["output_ref"]["created_annotation_count"] == 1
 
     annotations_response = client.get(
@@ -1010,6 +1013,9 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert annotations["data"][0]["label"] == "Q1"
     assert annotations["data"][0]["status"] == "needs_review"
     assert annotations["data"][0]["comment"] == "Awaiting OCR and AI grading result."
+    assert annotations["data"][0]["ocr_status"] == "not_configured"
+    assert annotations["data"][0]["ocr_engine"] == "disabled"
+    assert annotations["data"][0]["ocr_text"] is None
     annotation_id = annotations["data"][0]["id"]
 
     crop_response = client.get(

@@ -58,6 +58,8 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     REDIS_URL: str = "redis://redis:6379/0"
     LOCAL_UPLOAD_DIR: Path = ROOT_DIR / "data" / "uploads"
+    OCR_ENGINE: Literal["disabled", "tesseract"] = "disabled"
+    OCR_TESSERACT_COMMAND: str = "tesseract"
 
     @computed_field  # type: ignore[prop-decorator]
     @property

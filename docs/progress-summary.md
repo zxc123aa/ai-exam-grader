@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物和手机照片预处理后端入口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物、OCR 初稿字段/服务接口和手机照片预处理后端入口已实现。真实自动配准 homography、可用 OCR 引擎配置、AI 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -80,17 +80,27 @@
 - 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，88 passed，coverage 90%。
 - Playwright 考试流程 smoke 已覆盖处理任务后题区裁剪预览：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
+- 已新增批注 OCR 字段：`ocr_text`、`ocr_confidence`、`ocr_status`、`ocr_engine`，并补充 Alembic migration。
+- 已新增可插拔 OCR 服务接口，默认 `OCR_ENGINE=disabled`，后续可配置为 `tesseract` 或替换为 PaddleOCR/云 OCR。
+- Worker 已在题区裁剪后执行 OCR draft 阶段，并将 OCR 状态写入 `SubmissionAnnotation` 与任务 `output_ref.ocr_results`。
+- 教师复核页已新增 OCR draft 区，显示当前题区 OCR 状态、引擎和识别文本。
+- 后端考试路由测试已通过：`pytest backend/tests/api/routes/test_exams.py -q`，34 passed。
+- 后端完整测试已通过：`bash scripts/tests-start.sh`，90 passed，coverage 90%。
+- OpenAPI smoke 路径存在性检查已通过，包含 22 个关键路径。
+- 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
+- Playwright 考试流程 smoke 已覆盖 OCR 状态显示：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
 
 ## 进行中
 
-- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准和 OCR 初稿接入。
+- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准、真实 OCR 引擎配置和 AI 判分草稿接入。
 
 ## 下一步
 
 1. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
 2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-3. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
-4. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+3. 配置真实 OCR 引擎，把 `ocr_text` 从 `not_configured` 推进到可用识别结果。
+4. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
+5. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 
@@ -104,6 +114,7 @@
 - 文件预览已改为 authenticated fetch 获取 blob/object URL，后端文件内容和分页图片接口只接受 `Authorization: Bearer ...`，避免把长期 token 拼进 URL。
 - Playwright 本地运行需要后端已启动，且 dev DB 中存在 `.env` 的 `FIRST_SUPERUSER`；本轮已补建 `admin@example.com` 本地测试账号。
 - 批注裁剪图当前从最新处理任务的 JSON `output_ref.region_crops` 查找；MVP 可用，后续数据量上来后应迁移为可索引的派生产物表或 JSONB 查询。
+- OCR 服务当前默认禁用，复核页会显示 `not configured`；需要在部署环境明确安装/配置 OCR 引擎后才会产出真实 `ocr_text`。
 
 ## 最近决策
 

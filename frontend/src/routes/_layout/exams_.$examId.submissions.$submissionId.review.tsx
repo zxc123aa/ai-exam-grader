@@ -123,6 +123,10 @@ function formatStatus(status?: string | null) {
   return (status || "needs_review").replace(/_/g, " ")
 }
 
+function formatOcrStatus(status?: string | null) {
+  return (status || "not_started").replace(/_/g, " ")
+}
+
 function formatTaskProgress(task?: ProcessingTaskPublic | null) {
   if (!task) return "No task yet"
   return `${formatStatus(task.status)} · ${task.progress ?? 0}%`
@@ -358,6 +362,53 @@ function AnnotationCropPreview({
         data-testid="annotation-crop-preview"
         src={contentUrl}
       />
+    </div>
+  )
+}
+
+function AnnotationOcrDraft({
+  annotation,
+}: {
+  annotation?: SubmissionAnnotationPublic
+}) {
+  if (!annotation) {
+    return (
+      <div className="rounded-md border p-3 text-xs text-muted-foreground">
+        Run processing to create an OCR draft.
+      </div>
+    )
+  }
+
+  const hasText = Boolean(annotation.ocr_text?.trim())
+  return (
+    <div className="grid gap-2 rounded-md border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium">OCR draft</div>
+        <Badge
+          variant={hasText ? "secondary" : "outline"}
+          className="capitalize"
+          data-testid="annotation-ocr-status"
+        >
+          {formatOcrStatus(annotation.ocr_status)}
+        </Badge>
+      </div>
+      {annotation.ocr_engine && (
+        <div className="text-xs text-muted-foreground">
+          Engine: {annotation.ocr_engine}
+        </div>
+      )}
+      {hasText ? (
+        <div
+          className="max-h-36 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/50 p-2 text-xs"
+          data-testid="annotation-ocr-text"
+        >
+          {annotation.ocr_text}
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          No OCR text is available yet.
+        </div>
+      )}
     </div>
   )
 }
@@ -674,6 +725,8 @@ function SubmissionReview() {
                 submissionId={submissionId}
                 annotation={selectedAnnotation}
               />
+
+              <AnnotationOcrDraft annotation={selectedAnnotation} />
 
               <div className="grid gap-2">
                 <Label htmlFor="review-status">Status</Label>

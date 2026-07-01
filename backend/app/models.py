@@ -1,9 +1,10 @@
+import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
-import uuid
 
 from pydantic import EmailStr, model_validator
-from sqlalchemy import Column, DateTime, Enum as SAEnum
+from sqlalchemy import Column, DateTime
+from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
 
@@ -432,6 +433,10 @@ class SubmissionAnnotationBase(SQLModel):
     score: float | None = Field(default=None, ge=0)
     max_score: float | None = Field(default=None, ge=0)
     comment: str | None = Field(default=None, max_length=2000)
+    ocr_text: str | None = Field(default=None, max_length=8000)
+    ocr_confidence: float | None = Field(default=None, ge=0, le=1)
+    ocr_status: str = Field(default="not_started", max_length=50)
+    ocr_engine: str | None = Field(default=None, max_length=100)
 
     @model_validator(mode="after")
     def validate_bounds(self) -> "SubmissionAnnotationBase":

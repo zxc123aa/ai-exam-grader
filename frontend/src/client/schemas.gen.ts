@@ -1195,6 +1195,49 @@ export const SubmissionAnnotationCreateSchema = {
             ],
             title: 'Comment'
         },
+        ocr_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Text'
+        },
+        ocr_confidence: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Confidence'
+        },
+        ocr_status: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Ocr Status',
+            default: 'not_started'
+        },
+        ocr_engine: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Engine'
+        },
         exam_region_id: {
             anyOf: [
                 {
@@ -1290,6 +1333,49 @@ export const SubmissionAnnotationPublicSchema = {
                 }
             ],
             title: 'Comment'
+        },
+        ocr_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Text'
+        },
+        ocr_confidence: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Confidence'
+        },
+        ocr_status: {
+            type: 'string',
+            maxLength: 50,
+            title: 'Ocr Status',
+            default: 'not_started'
+        },
+        ocr_engine: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ocr Engine'
         },
         id: {
             type: 'string',
