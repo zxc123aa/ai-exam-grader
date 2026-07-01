@@ -346,18 +346,36 @@
   - 前端登录页可访问并能登录管理员。
   - Worker 可以将测试任务推进到 `succeeded`。
 
-### AEG-021 手机扫描成 PDF 能力调研与排期
+### AEG-021 手机扫描成 PDF 能力后端入口
 
-- 类型：Design
-- 优先级：P2
-- 状态：Backlog
-- 所属周期：后续 App/采集周期
-- 目标：评估“扫描王”类能力，即手机拍摄试卷后自动裁边、矫正、增强并导出 PDF/图片。
-- 决策：当前 Web MVP 优先支持已有 PDF/JPG/PNG 上传；手机扫描能力后置，不阻塞模板标定、学生答卷上传和批注流程。
+- 类型：Feature
+- 优先级：P1
+- 状态：Done
+- 所属周期：周期 3 前置 / 后续 App 采集周期
+- 目标：建立“扫描王”类后端受控入口，即手机拍摄试卷后自动裁边、矫正、增强、拆页并导出 PDF，再登记为学生答卷。
+- 进展：已新增 OpenCV 预处理服务、`POST /api/v1/exams/{exam_id}/submissions/preprocess-photo` 和学生答卷弹窗 Convert photo 入口；合成手机照片用例已验证可生成两页 PDF 并走现有分页预览接口。
+- 验证：`pytest backend/tests/api/routes/test_exams.py -q` 已通过，34 passed；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，21 paths；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line` 已通过，5 passed。
+- 决策：先以后端 API 形式接入 Web MVP；移动 App 和更完整的拍照交互后置。预处理输出仍进入 `StudentSubmission`，配准、OCR、判分继续复用后续处理任务管线。
 - 验收标准：
-  - 明确移动端或 Web 端采集方案。
-  - 明确透视矫正、去阴影、增强、合并 PDF 的技术路线。
-  - 明确与后端 StoredFile、ExamDocument 和 StudentSubmission 的接口边界。
+  - 后端接受 JPG/PNG 手机照片上传。已完成。
+  - 后端完成试卷区域检测、透视矫正、增强、双页拆分和 PDF 生成。已完成最小版本。
+  - 生成的 PDF 保存为 StoredFile，并创建 StudentSubmission。已完成。
+  - 生成的学生答卷可以复用现有分页预览接口。已完成。
+  - 前端学生答卷上传弹窗提供“手机照片转 PDF”入口。已完成。
+  - 使用真实样本继续验收页面边界、中缝拆分、阴影和旋转鲁棒性。转入后续优化项。
+
+### AEG-026 扫描预处理真实样本鲁棒性增强
+
+- 类型：Hardening
+- 优先级：P1
+- 状态：Ready
+- 所属周期：周期 3 前置 / 后续 App 采集周期
+- 目标：基于真实手机拍摄样本增强页面边界检测、中缝拆分、阴影/褶皱处理和失败提示。
+- 验收标准：
+  - 用 `materials/English/test1.jpg` 等真实样本建立非提交回归记录。
+  - 双页试卷尽量按真实中缝拆分，而不是固定 50%。
+  - 单页/双页检测有明确输出和错误提示。
+  - 处理失败时前端给出可理解的失败反馈，不生成半成品学生答卷。
 
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 

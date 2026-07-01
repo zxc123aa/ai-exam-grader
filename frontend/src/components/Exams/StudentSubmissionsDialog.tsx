@@ -5,6 +5,7 @@ import {
   Eye,
   FileUp,
   Loader2,
+  ScanLine,
   SquarePen,
   Users,
   XCircle,
@@ -218,6 +219,7 @@ export default function StudentSubmissionsDialog({
 }) {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
+  const [scanPhotoFile, setScanPhotoFile] = useState<File | null>(null)
   const [studentName, setStudentName] = useState("")
   const [studentIdentifier, setStudentIdentifier] = useState("")
   const [previewSubmission, setPreviewSubmission] =
@@ -245,6 +247,28 @@ export default function StudentSubmissionsDialog({
     onSuccess: () => {
       showSuccessToast("Student submission uploaded")
       setSelectedFile(null)
+      setStudentName("")
+      setStudentIdentifier("")
+    },
+    onError: handleError.bind(showErrorToast),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
+  const scanMutation = useMutation({
+    mutationFn: (file: File) =>
+      ExamsService.preprocessStudentSubmissionPhoto({
+        examId: exam.id,
+        formData: {
+          file: file as unknown as string,
+          student_name: studentName.trim() || undefined,
+          student_identifier: studentIdentifier.trim() || undefined,
+        },
+      }),
+    onSuccess: () => {
+      showSuccessToast("Scan photo converted")
+      setScanPhotoFile(null)
       setStudentName("")
       setStudentIdentifier("")
     },
@@ -348,6 +372,29 @@ export default function StudentSubmissionsDialog({
               >
                 <FileUp />
                 Upload
+              </LoadingButton>
+            </div>
+            <div className="flex flex-col gap-3 border-t pt-3 sm:flex-row sm:items-center">
+              <Input
+                data-testid="submission-scan-photo-input"
+                type="file"
+                accept=".jpg,.jpeg,.png,image/png,image/jpeg"
+                onChange={(event) =>
+                  setScanPhotoFile(event.target.files?.[0] ?? null)
+                }
+              />
+              <LoadingButton
+                data-testid="submission-scan-photo-button"
+                type="button"
+                loading={scanMutation.isPending}
+                disabled={!scanPhotoFile}
+                onClick={() =>
+                  scanPhotoFile && scanMutation.mutate(scanPhotoFile)
+                }
+                className="sm:w-44"
+              >
+                <ScanLine />
+                Convert photo
               </LoadingButton>
             </div>
           </div>

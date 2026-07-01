@@ -2,6 +2,11 @@ import { expect, test } from "@playwright/test"
 
 test.use({ storageState: "playwright/.auth/user.json" })
 
+const scanPhotoBuffer = Buffer.from(
+  "iVBORw0KGgoAAAANSUhEUgAAAPAAAACMCAIAAADN17N/AAACUUlEQVR4nO3dMW4UMRiAUYI4B4o4zVYUKVCKlBwB5RBRjkBJRcmBoignoUmRkhkNY/vLe/1qXXz6d8drea8utzcfoOLj6AXAkQRNiqBJETQpgiZF0KQImhRBkyJoUgRNiqBJETQpgiZF0Ezqz8+HHa/6dPg6WMu+bqYl6JPEuplWLWjdvHM7g9YNc/JQSIqgT/L89PL89DJ6FX2CJkXQpAiaFEGTImhSBE2KoEkRNPPa8YO0oEkRNCmCJmVP0I7aMS0TmhRBkyJoUgRNiqBJETQpgiZF0KQImhRBkyJoUgRNyrC77b7d/Rj11pv8/vU4eglsYEKTMvj20Znn3yqfIbxlQpMiaFIETYqgSRE0KYImRdCkCJoUQTO1rZfACJoUQZMy+CyH8xIca/OEdrEdMxs2oWc+Z8e6fIcmRdCkCJqUwbsc7LDo1tA5T00mNCkm9KoW2iY68yPFhCZF0KQImhRBkyJoUgRNiqBJETQpgiZF0KQImhRnOVa16Jm7/82EJsWEXs9C5+zOZ0KTImhmt+nmDEGTImhSBE3KtqDdA8bkTGhSBE2KoEkRNCmCJkXQpAiaFEGTImhSBE2KoEkRNCmCJkXQpAiaFEGTImhSBE2KoEkRNCmCJkXQpAiaFEGzgH+/EEbQpAiaFEGTsiFoF9sxPxOaFEGTImhSBE2KoEkRNCmCJkXQpPhr5JNcf/k8egnvgqB59fX7/eglHEDQ52kUM7lU0IphW9CKYXJXl9ub0WuAw9i2I0XQpAiaFEGTImhSBE2KoEkRNCmCJkXQpPwFG643VY7d2z0AAAAASUVORK5CYII=",
+  "base64",
+)
+
 const pngBuffer = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAASwAAAGQCAYAAABkW7XSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA/ElEQVR4nO3TQQ0AIBDAMMC/5+ECjiYKenb2Z4CkzNsB4G0H8BKgAkAFgAoAFQAqAFQAqABQAVABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAjDuApPjAeeWAAAAAElFTkSuQmCC",
   "base64",
@@ -166,4 +171,32 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByTestId("review-region-list-Q1")).toContainText(
     /needs review/i,
   )
+})
+
+test("Can convert a scan photo into a student submission", async ({ page }) => {
+  const title = `Scan Submission Exam ${Date.now()}`
+
+  await page.goto("/exams")
+  await page.getByRole("button", { name: "New Exam" }).first().click()
+  await page.getByPlaceholder("English Midterm").fill(title)
+  await page.getByRole("button", { name: "Create" }).click()
+  await expect(page.getByText("Exam created")).toBeVisible()
+
+  const row = page.getByRole("row").filter({ hasText: title })
+  await expect(row).toBeVisible()
+
+  await row.getByRole("button", { name: "Submissions" }).click()
+  await page.getByTestId("submission-student-name-input").fill("Student Scan")
+  await page.getByTestId("submission-student-identifier-input").fill("SCAN001")
+  await page.getByTestId("submission-scan-photo-input").setInputFiles({
+    name: "phone.png",
+    mimeType: "image/png",
+    buffer: scanPhotoBuffer,
+  })
+  await page.getByTestId("submission-scan-photo-button").click()
+
+  await expect(page.getByText("Scan photo converted")).toBeVisible()
+  await expect(page.getByText("Student Scan", { exact: true })).toBeVisible()
+  await expect(page.getByText(/phone-preprocessed\.pdf/)).toBeVisible()
+  await expect(page.getByText(/registration pending/i)).toBeVisible()
 })

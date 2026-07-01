@@ -1,6 +1,7 @@
 import hashlib
-from collections.abc import Iterable
 import uuid
+from collections.abc import Iterable
+from io import BytesIO
 from pathlib import Path
 
 from fastapi import HTTPException, UploadFile, status
@@ -13,6 +14,8 @@ MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
 EXAM_FILE_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
 EXAM_FILE_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+SCAN_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png"}
+SCAN_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
 
 def get_stored_file_path(stored_file: StoredFile) -> Path:
@@ -42,6 +45,21 @@ def validate_exam_upload_file(file: UploadFile) -> None:
         )
 
 
+def validate_scan_photo_upload_file(file: UploadFile) -> None:
+    original_name = file.filename or "upload.bin"
+    extension = Path(original_name).suffix.lower()
+    if extension not in SCAN_PHOTO_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only JPG and PNG scan photos are supported",
+        )
+    if file.content_type not in SCAN_PHOTO_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only JPG and PNG scan photos are supported",
+        )
+
+
 def assert_allowed_signature(
     *, contents_start: bytes, allowed_content_types: Iterable[str], content_type: str | None
 ) -> None:
@@ -57,6 +75,22 @@ def assert_allowed_signature(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Uploaded file content does not match its declared type",
         )
+
+
+async def read_upload_file_bytes(
+    *, file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES
+) -> bytes:
+    size = 0
+    buffer = BytesIO()
+    while chunk := await file.read(UPLOAD_CHUNK_SIZE):
+        size += len(chunk)
+        if size > max_bytes:
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail="Uploaded file is too large",
+            )
+        buffer.write(chunk)
+    return buffer.getvalue()
 
 
 async def store_upload_file(
@@ -124,3 +158,38 @@ async def store_upload_file(
             cleanup_stored_file_path(target_path)
             raise
     return stored_file
+
+
+def store_generated_file(
+    *,
+    session: Session,
+    owner_id: uuid.UUID,
+    original_filename: str,
+    content_type: str,
+    contents: bytes,
+    commit: bool = True,
+) -> StoredFile:
+    digest = hashlib.sha256(contents).hexdigest()
+    file_id = uuid.uuid4()
+    storage_key = f"{owner_id}/{file_id}-{Path(original_filename).name}"
+    target_path = settings.LOCAL_UPLOAD_DIR / storage_key
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        target_path.write_bytes(contents)
+        stored_file = StoredFile(
+            id=file_id,
+            original_filename=original_filename,
+            content_type=content_type,
+            storage_key=storage_key,
+            size_bytes=len(contents),
+            sha256=digest,
+            uploaded_by_id=owner_id,
+        )
+        session.add(stored_file)
+        if commit:
+            session.commit()
+            session.refresh(stored_file)
+        return stored_file
+    except Exception:
+        cleanup_stored_file_path(target_path)
+        raise

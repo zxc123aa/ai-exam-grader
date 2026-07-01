@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注和学生答卷处理任务占位管线已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 3/6 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务占位管线和手机照片预处理后端入口已实现。真实自动配准 homography、OCR 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -61,17 +61,24 @@
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，85 passed，coverage 90%。
 - OpenAPI smoke 路径存在性检查已通过，包含 20 个关键路径。
 - Playwright 考试流程 smoke 已覆盖处理任务触发、占位批注生成和人工保存：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，4 passed。
+- 已新增手机照片预处理服务：使用 OpenCV 检测试卷边界、透视矫正、增强、按双页试卷拆页并导出 PDF。
+- 已新增 `POST /api/v1/exams/{exam_id}/submissions/preprocess-photo`：上传 JPG/PNG 手机照片后生成处理后的 PDF，并直接登记为 `StudentSubmission`。
+- 学生答卷弹窗已新增 Convert photo 入口，可从 Web 上传手机照片并生成 `*-preprocessed.pdf` 学生答卷。
+- OpenAPI smoke 路径存在性检查已通过，包含 21 个关键路径。
+- 后端考试路由测试已通过：`pytest backend/tests/api/routes/test_exams.py -q`，34 passed。
+- Playwright 考试流程 smoke 已覆盖手机照片转 PDF 上传入口：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
 
 ## 进行中
 
-- 周期 3/4 下一块能力：真实自动配准、题区裁剪产物和 OCR 初稿接入。
+- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准、题区裁剪产物和 OCR 初稿接入。
 
 ## 下一步
 
-1. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-2. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
-3. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
-4. 继续审核 agent 循环，优先处理 P0/P1，再推进 OCR/判分。
+1. 用真实样本做扫描入口人工验收，记录失败样例并补算法回归用例。
+2. 改进双页拆分：检测中缝/页面边界，减少固定 50% 拆页造成的裁切风险。
+3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+4. 让处理任务实际生成题区裁剪产物，并在复核页显示单题裁剪预览。
+5. 接入 OCR 初稿，把识别文本回填到批注/复核结构。
 
 ## 风险与阻塞
 
@@ -88,8 +95,8 @@
 ## 最近决策
 
 - 第一阶段优先 Web 系统，移动 App 后置。
-- 第一阶段先支持已有 PDF/JPG/PNG 上传，不先实现手机“扫描王”。
-- 学生答卷采集先走 Web 上传；手机拍照裁边、矫正、增强、合并 PDF 后置。
+- 第一阶段仍优先 Web 系统；手机“扫描王”能力先以后端受控入口和实验服务推进，不阻塞主线。
+- 学生答卷采集先走 Web 上传；手机拍照裁边、矫正、增强、合并 PDF 已进入 Web 端受控入口，后续继续增强鲁棒性。
 - 采用模板驱动流程，不做无模板整卷盲识别。
 - AI 结果作为建议和草稿，教师保留最终确认权。
 - 客观题优先规则和 OCR，主观题再调用视觉大模型。

@@ -1,11 +1,11 @@
 import uuid
 from io import BytesIO
+from pathlib import Path
 from typing import Any
 
 import jwt
 from fastapi import APIRouter, Form, Header, HTTPException, UploadFile, status
-from fastapi.responses import FileResponse
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from jwt.exceptions import InvalidTokenError
 from PIL import Image, UnidentifiedImageError
 from pydantic import ValidationError
@@ -35,25 +35,34 @@ from app.models import (
     ProcessingTaskStatus,
     StoredFile,
     StoredFilePublic,
-    SubmissionAnnotation,
-    SubmissionAnnotationCreate,
-    SubmissionAnnotationPublic,
-    SubmissionAnnotationsPublic,
-    SubmissionAnnotationUpdate,
     StudentSubmission,
     StudentSubmissionPublic,
     StudentSubmissionRegistrationUpdate,
     StudentSubmissionsPublic,
     StudentSubmissionStatus,
+    SubmissionAnnotation,
+    SubmissionAnnotationCreate,
+    SubmissionAnnotationPublic,
+    SubmissionAnnotationsPublic,
+    SubmissionAnnotationUpdate,
     SubmissionRegistrationStatus,
     TokenPayload,
     User,
     get_datetime_utc,
 )
+from app.services.exam_photo_preprocessing import (
+    PhotoPreprocessingError,
+    preprocess_exam_photo_bytes,
+)
 from app.services.file_storage import (
+    SCAN_PHOTO_CONTENT_TYPES,
+    assert_allowed_signature,
     cleanup_stored_file_path,
     get_stored_file_path,
+    read_upload_file_bytes,
+    store_generated_file,
     store_upload_file,
+    validate_scan_photo_upload_file,
 )
 from app.services.pdf_rendering import (
     InvalidPdfError,
@@ -548,6 +557,78 @@ def read_student_submissions(
         for submission, stored_file in rows
     ]
     return StudentSubmissionsPublic(data=submissions, count=count)
+
+
+@router.post(
+    "/{exam_id}/submissions/preprocess-photo",
+    response_model=StudentSubmissionPublic,
+)
+async def preprocess_student_submission_photo(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    file: UploadFile,
+    student_name: str | None = Form(default=None),
+    student_identifier: str | None = Form(default=None),
+) -> Any:
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    validate_scan_photo_upload_file(file)
+    contents = await read_upload_file_bytes(file=file)
+    assert_allowed_signature(
+        contents_start=contents[:16],
+        allowed_content_types=SCAN_PHOTO_CONTENT_TYPES,
+        content_type=file.content_type,
+    )
+    try:
+        preprocessed = preprocess_exam_photo_bytes(contents)
+    except PhotoPreprocessingError as exc:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Could not preprocess exam photo: {exc}",
+        )
+
+    source_name = Path(file.filename or "scan-photo").stem
+    pdf_filename = f"{source_name}-preprocessed.pdf"
+    stored_file = store_generated_file(
+        session=session,
+        owner_id=exam.owner_id,
+        original_filename=pdf_filename,
+        content_type="application/pdf",
+        contents=preprocessed.pdf_bytes,
+        commit=False,
+    )
+    try:
+        submission = StudentSubmission(
+            exam_id=exam.id,
+            stored_file_id=stored_file.id,
+            student_name=student_name,
+            student_identifier=student_identifier,
+            status=StudentSubmissionStatus.REGISTRATION_PENDING,
+            registration_status=SubmissionRegistrationStatus.PENDING,
+            registration_notes=(
+                "Preprocessed from mobile photo; "
+                f"pages={len(preprocessed.pages)}, "
+                f"spread={preprocessed.spread_size[0]}x{preprocessed.spread_size[1]}"
+            ),
+            registration_homography={
+                "source": "mobile_photo_preprocessing_v1",
+                "detected_quad": preprocessed.detected_quad,
+            },
+        )
+        session.add(submission)
+        session.commit()
+    except Exception:
+        session.rollback()
+        cleanup_stored_file_path(get_stored_file_path(stored_file))
+        raise
+    session.refresh(submission)
+    session.refresh(stored_file)
+    return build_student_submission_public(
+        submission=submission, stored_file=stored_file
+    )
 
 
 @router.get(

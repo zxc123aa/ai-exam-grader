@@ -1,13 +1,13 @@
 import asyncio
-from io import BytesIO
 import uuid
+from io import BytesIO
 
 import pytest
 from fastapi import HTTPException, UploadFile, status
-from PIL import Image
+from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
 from sqlmodel import Session
 from starlette.datastructures import Headers
-from fastapi.testclient import TestClient
 
 from app import crud
 from app.core.config import settings
@@ -23,8 +23,24 @@ def build_test_png() -> bytes:
     return buffer.getvalue()
 
 
+def build_test_scan_photo() -> bytes:
+    image = Image.new("RGB", (360, 220), color=(72, 88, 82))
+    draw = ImageDraw.Draw(image)
+    draw.polygon(
+        [(28, 24), (334, 18), (342, 196), (20, 202)],
+        fill=(250, 244, 220),
+    )
+    draw.line([(180, 26), (180, 195)], fill=(218, 210, 190), width=2)
+    draw.rectangle((60, 60, 150, 78), outline=(80, 80, 80), width=2)
+    draw.rectangle((210, 80, 310, 98), outline=(80, 80, 80), width=2)
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
 PNG_BYTES = b"\x89PNG\r\n\x1a\nexam image bytes"
 VALID_PNG_BYTES = build_test_png()
+SCAN_PHOTO_BYTES = build_test_scan_photo()
 PDF_BYTES = b"""%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -593,6 +609,46 @@ def test_read_student_submissions(
     assert content["data"][0]["exam_id"] == exam_id
     assert content["data"][0]["student_name"] == "Student A"
     assert content["data"][0]["stored_file"]["original_filename"] == "student-a.png"
+
+
+def test_preprocess_student_submission_photo_creates_pdf_submission(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Scan Photo Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/preprocess-photo",
+        headers=superuser_token_headers,
+        files={"file": ("phone.jpg", SCAN_PHOTO_BYTES, "image/jpeg")},
+        data={"student_name": "Student Scan", "student_identifier": "SCAN001"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["student_name"] == "Student Scan"
+    assert content["student_identifier"] == "SCAN001"
+    assert content["status"] == "registration_pending"
+    assert content["registration_status"] == "pending"
+    assert content["registration_notes"].startswith("Preprocessed from mobile photo")
+    assert content["registration_homography"]["source"] == (
+        "mobile_photo_preprocessing_v1"
+    )
+    assert content["stored_file"]["original_filename"] == "phone-preprocessed.pdf"
+    assert content["stored_file"]["content_type"] == "application/pdf"
+    assert content["page_count"] == 2
+
+    page_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{content['id']}/pages/1/image",
+        headers=superuser_token_headers,
+    )
+    assert page_response.status_code == 200
+    assert page_response.headers["content-type"] == "image/png"
+    assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
 def test_read_student_submission_page_image(
