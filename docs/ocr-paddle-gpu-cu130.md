@@ -10,7 +10,7 @@
 - 当前 backend Python：3.13.13，不适合直接承载 PaddleOCR GPU 依赖。
 - Docker：Windows Docker CLI 可用，Docker runtime 已包含 `nvidia`。
 
-结论：本机适合部署独立 `ocr-service`，使用 PaddleOCR GPU cu130。主 backend 继续保持 Python 3.13，Worker 通过 HTTP 调用 OCR 服务。
+结论：本机适合部署独立 `ocr-service`，使用 PaddleOCR GPU cu130。主 backend 继续保持 Python 3.13，Worker 通过 HTTP 调用 OCR 服务。当前镜像基于 `nvidia/cuda:13.0.0-base-ubuntu22.04`，容器内使用 Ubuntu 22.04 自带 Python 3.10。
 
 ## 架构
 
@@ -18,7 +18,7 @@
 worker
   -> OCR_ENGINE=paddle_http
   -> POST http://ocr-service:8010/ocr
-  -> ocr-service: Python 3.11 + paddlepaddle-gpu cu130 + PaddleOCR
+  -> ocr-service: Python 3.10 + paddlepaddle-gpu cu130 + PaddleOCR
   -> 返回 text/confidence/engine
 ```
 
@@ -49,6 +49,13 @@ where.exe docker-credential-desktop
 docker run --rm hello-world
 ```
 
+当前临时 workaround 是从 WSL 调 PowerShell 时补 PATH：
+
+```bash
+"/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe" -NoProfile -Command \
+'$env:PATH += ";C:\Program Files\Docker\Docker\resources\bin"; & "C:\Program Files\Docker\Docker\resources\bin\docker.exe" compose --profile ocr-gpu up -d ocr-service'
+```
+
 验证 Docker GPU：
 
 ```bash
@@ -70,11 +77,20 @@ OCR_HTTP_URL=http://ocr-service:8010/ocr \
 curl http://localhost:8010/health
 ```
 
+## 已验证
+
+- `docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi` 通过，容器内可见 RTX 5060 Laptop。
+- `docker compose --profile ocr-gpu up -d ocr-service` 可启动，容器状态为 `healthy`。
+- `GET http://localhost:8010/health` 返回 `{"status":"ok","engine":"paddleocr-gpu-cu130"}`。
+- 容器内 `paddlepaddle-gpu==3.3.0`、`paddle.device.get_device()` 为 `gpu:0`，`paddle.utils.run_check()` 通过。
+- `POST /ocr` 使用 `materials/English/processed/test1/page_1_left.jpg` 返回真实试卷文本，`confidence` 约 `0.989`，`engine` 为 `paddleocr-gpu-cu130`。
+- 后端 Worker 已有回归测试覆盖 `OCR_ENGINE=paddle_http` 时把 HTTP OCR 结果写入 `SubmissionAnnotation`。
+
 ## 后续验证
 
-1. 用真实题区 PNG 调 `/ocr`，确认 `text` 非空。
-2. 打开教师复核页，运行处理任务，确认 OCR draft 不再是 `not configured`。
-3. 记录真实样本识别质量，决定是否需要图像增强、语言模型、或 Kimi 低置信度复核。
+1. 打开教师复核页，运行处理任务，确认 OCR draft 不再是 `not configured`。
+2. 用更多真实题区 PNG 记录识别质量，决定是否需要图像增强、语言模型、或 Kimi 低置信度复核。
+3. 给 `ocr-service` 增加模型缓存卷，避免容器重建后重复下载 PaddleOCR 模型权重。
 
 ## 注意
 

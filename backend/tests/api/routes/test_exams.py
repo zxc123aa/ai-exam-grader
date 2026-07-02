@@ -12,6 +12,7 @@ from starlette.datastructures import Headers
 from app import crud
 from app.core.config import settings
 from app.models import UserCreate
+from app.services import ocr
 from app.services.file_storage import store_upload_file
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
@@ -1025,6 +1026,80 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert crop_response.status_code == 200
     assert crop_response.headers["content-type"] == "image/png"
     assert crop_response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_student_submission_processing_task_writes_paddle_http_ocr_result(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "succeeded",
+                "text": "Recognized answer",
+                "confidence": 0.94,
+                "engine": "paddleocr-gpu-cu130",
+            }
+
+    def fake_post(*_args, **_kwargs):
+        return FakeResponse()
+
+    monkeypatch.setattr(settings, "OCR_ENGINE", "paddle_http")
+    monkeypatch.setattr(settings, "OCR_HTTP_URL", "http://ocr-service:8010/ocr")
+    monkeypatch.setattr(ocr.httpx, "post", fake_post)
+
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Paddle OCR Processing Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+        },
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/processing-tasks",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    task = response.json()
+    assert task["status"] == "succeeded"
+    assert task["output_ref"]["stages"]["ocr"] == "succeeded"
+    assert task["output_ref"]["ocr_results"][0]["status"] == "succeeded"
+    assert task["output_ref"]["ocr_results"][0]["engine"] == "paddleocr-gpu-cu130"
+    assert task["output_ref"]["ocr_results"][0]["confidence"] == 0.94
+
+    annotations_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+    )
+    annotation = annotations_response.json()["data"][0]
+    assert annotation["ocr_status"] == "succeeded"
+    assert annotation["ocr_engine"] == "paddleocr-gpu-cu130"
+    assert annotation["ocr_confidence"] == 0.94
+    assert annotation["ocr_text"] == "Recognized answer"
 
 
 def test_submission_annotation_rejects_region_from_other_exam(

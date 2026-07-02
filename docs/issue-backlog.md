@@ -369,17 +369,29 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：In Progress
+- 状态：Done
 - 所属周期：周期 4
 - 目标：基于本机 RTX 5060 Laptop 和 CUDA 13.2 驱动，新增独立 PaddleOCR GPU cu130 服务，让 Worker 可通过 HTTP 获取真实 OCR 文本。
-- 进展：已新增 `ocr-service` FastAPI 服务、`ocr-service/Dockerfile.gpu-cu130`、compose `ocr-gpu` profile、Worker `OCR_ENGINE=paddle_http` 适配和部署记录。
-- 当前阻塞：WSL 调 Windows Docker CLI 拉镜像时缺少 `docker-credential-desktop` PATH，需先修复 Docker credential helper 后才能完成 GPU 容器拉取和端到端 OCR 验证。
+- 验证：已通过 PowerShell PATH workaround 调 Windows Docker CLI；`docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi` 可见 RTX 5060 Laptop；`docker compose --profile ocr-gpu up -d ocr-service` 启动后 `/health` 返回 `paddleocr-gpu-cu130`；容器内 `paddle.utils.run_check()` 通过；`POST /ocr` 对 `materials/English/processed/test1/page_1_left.jpg` 返回真实试卷文本，平均置信度约 `0.989`；后端测试覆盖 Worker 将 Paddle HTTP OCR 结果写入 `SubmissionAnnotation`。
 - 验收标准：
-  - `docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi` 通过。
-  - `docker compose --profile ocr-gpu up --build ocr-service` 可启动。
-  - `GET /health` 返回 `paddleocr-gpu-cu130`。
-  - `POST /ocr` 对真实题区 PNG 返回 `text` 和 `confidence`。
-  - Worker 设置 `OCR_ENGINE=paddle_http` 后将真实 `ocr_text` 写入 `SubmissionAnnotation`。
+  - `docker run --rm --gpus all nvidia/cuda:13.0.0-base-ubuntu22.04 nvidia-smi` 通过。已完成。
+  - `docker compose --profile ocr-gpu up --build ocr-service` 可启动。已完成。
+  - `GET /health` 返回 `paddleocr-gpu-cu130`。已完成。
+  - `POST /ocr` 对真实题区 PNG/JPG 返回 `text` 和 `confidence`。已完成。
+  - Worker 设置 `OCR_ENGINE=paddle_http` 后将真实 `ocr_text` 写入 `SubmissionAnnotation`。已完成，当前以 HTTP fake 回归测试锁定写入链路。
+
+### AEG-030 教师复核页 PaddleOCR 真实流程验收
+
+- 类型：Verification
+- 优先级：P0
+- 状态：Ready
+- 所属周期：周期 4
+- 目标：在本地同时启动后端、前端和 `ocr-service`，从教师复核页触发处理任务，确认真实题区裁剪图经过 PaddleOCR 后显示 OCR draft 文本。
+- 验收标准：
+  - 后端以 `OCR_ENGINE=paddle_http` 和正确 `OCR_HTTP_URL` 启动。
+  - 复核页 Run Processing 后，选中题区能看到 `ocr_status=succeeded` 和 PaddleOCR 文本。
+  - 记录至少 3 个题区的识别质量和失败样例。
+  - 若低置信度或题区切分问题明显，形成图像增强/自动配准/云 OCR fallback 的后续 issue。
 
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
