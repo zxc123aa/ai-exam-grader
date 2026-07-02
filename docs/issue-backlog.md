@@ -384,14 +384,28 @@
 
 - 类型：Verification
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 4
 - 目标：在本地同时启动后端、前端和 `ocr-service`，从教师复核页触发处理任务，确认真实题区裁剪图经过 PaddleOCR 后显示 OCR draft 文本。
+- 验证：本地后端以 `OCR_ENGINE=paddle_http OCR_HTTP_URL=http://localhost:8010/ocr` 启动，前端 Vite 启动，`E2E_PADDLE_OCR=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts -g "PaddleOCR draft appears" --project=chromium --reporter=line` 已通过，2 passed。测试使用 `materials/English/processed/test1/page_1_left.jpg` 作为真实模板和学生答卷样本，复核页 Run Processing 后 OCR draft 显示 `paddleocr-gpu-cu130` 和真实试卷文本。
 - 验收标准：
-  - 后端以 `OCR_ENGINE=paddle_http` 和正确 `OCR_HTTP_URL` 启动。
-  - 复核页 Run Processing 后，选中题区能看到 `ocr_status=succeeded` 和 PaddleOCR 文本。
-  - 记录至少 3 个题区的识别质量和失败样例。
-  - 若低置信度或题区切分问题明显，形成图像增强/自动配准/云 OCR fallback 的后续 issue。
+  - 后端以 `OCR_ENGINE=paddle_http` 和正确 `OCR_HTTP_URL` 启动。已完成。
+  - 复核页 Run Processing 后，选中题区能看到 `ocr_status=succeeded` 和 PaddleOCR 文本。已完成。
+  - 记录至少 3 个题区的识别质量和失败样例。后续并入 AEG-031 扩大样本评估。
+  - 若低置信度或题区切分问题明显，形成图像增强/自动配准/云 OCR fallback 的后续 issue。后续并入 AEG-031。
+
+### AEG-031 PaddleOCR 题区级质量评估和低置信度策略
+
+- 类型：Verification
+- 优先级：P1
+- 状态：Ready
+- 所属周期：周期 4
+- 目标：使用更多真实题区裁剪样本评估 PaddleOCR 在选择题、填空题、主观题和低清晰度手机照片上的表现，明确低置信度时是否需要图像增强、Kimi/云 OCR fallback 或人工优先策略。
+- 验收标准：
+  - 至少覆盖 3 份试卷、10 个题区裁剪样本。
+  - 记录每个样本的 `ocr_text`、`ocr_confidence`、题区类型和人工判断。
+  - 给出低置信度阈值建议。
+  - 形成后续图像增强、自动配准或云 OCR fallback issue。
 
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 

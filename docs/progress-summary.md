@@ -99,14 +99,16 @@
 - 已用 `materials/English/processed/test1/page_1_left.jpg` 调 `/ocr`，返回真实试卷文本，平均置信度约 `0.989`。
 - 已补充 Worker 回归测试，覆盖 `OCR_ENGINE=paddle_http` 时把 Paddle HTTP OCR 结果写入批注 OCR 字段。
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，92 passed，coverage 90%。
+- 已新增 opt-in Playwright PaddleOCR 复核页 E2E，用真实试卷 JPG 创建模板、上传学生答卷、进入教师复核页并触发 Run Processing。
+- 教师复核页真实 PaddleOCR 流程已通过：`E2E_PADDLE_OCR=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts -g "PaddleOCR draft appears" --project=chromium --reporter=line`，2 passed。
 
 ## 进行中
 
-- 周期 4 下一块能力：把 PaddleOCR GPU 服务接到教师复核真实流程、评估题区级 OCR 质量，并推进 AI 判分草稿接入。
+- 周期 4 下一块能力：扩大题区级 OCR 质量评估，并推进 AI 判分草稿接入。
 
 ## 下一步
 
-1. 打开教师复核页，运行真实学生答卷处理任务，确认 OCR draft 显示 PaddleOCR 文本而不是 `not configured`。
+1. 用更多真实题区裁剪样本评估 PaddleOCR 质量，记录低置信度、漏识别和题区切分问题。
 2. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
 3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
 4. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
