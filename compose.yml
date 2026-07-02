@@ -29,6 +29,26 @@ services:
       start_period: 10s
       timeout: 5s
 
+  ocr-service:
+    profiles:
+      - ocr-gpu
+    build:
+      context: .
+      dockerfile: ocr-service/Dockerfile.gpu-cu130
+    restart: always
+    networks:
+      - default
+    gpus: all
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
   adminer:
     image: adminer
     restart: always
@@ -87,6 +107,8 @@ services:
       - SENTRY_DSN=${SENTRY_DSN}
       - REDIS_URL=${REDIS_URL}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - OCR_ENGINE=${OCR_ENGINE:-disabled}
+      - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
 
   backend:
     image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
@@ -125,6 +147,8 @@ services:
       - SENTRY_DSN=${SENTRY_DSN}
       - REDIS_URL=${REDIS_URL}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - OCR_ENGINE=${OCR_ENGINE:-disabled}
+      - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
 
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
@@ -183,6 +207,8 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
       - REDIS_URL=${REDIS_URL}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - OCR_ENGINE=${OCR_ENGINE:-disabled}
+      - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
     command:
       - dramatiq
       - app.worker

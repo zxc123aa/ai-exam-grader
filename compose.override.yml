@@ -55,6 +55,11 @@ services:
     ports:
       - "6379:6379"
 
+  ocr-service:
+    restart: "no"
+    ports:
+      - "8010:8010"
+
   adminer:
     restart: "no"
     ports:

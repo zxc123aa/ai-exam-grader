@@ -58,8 +58,10 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = ""
     REDIS_URL: str = "redis://redis:6379/0"
     LOCAL_UPLOAD_DIR: Path = ROOT_DIR / "data" / "uploads"
-    OCR_ENGINE: Literal["disabled", "tesseract"] = "disabled"
+    OCR_ENGINE: Literal["disabled", "tesseract", "paddle_http"] = "disabled"
     OCR_TESSERACT_COMMAND: str = "tesseract"
+    OCR_HTTP_URL: str = "http://ocr-service:8010/ocr"
+    OCR_HTTP_TIMEOUT_SECONDS: int = 60
 
     @computed_field  # type: ignore[prop-decorator]
     @property

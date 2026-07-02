@@ -20,14 +20,15 @@ This document tracks direct dependencies and referenced projects for AI Exam Gra
 | lucide-react | Icons | ISC |
 | pypdfium2 | PDF rendering | Apache-2.0 |
 | Pillow | PDF page image encoding | HPND |
+| OpenCV | Page detection, correction and registration | Apache-2.0 |
+| PaddlePaddle | OCR model runtime for optional GPU OCR service | Apache-2.0 |
+| PaddleOCR | OCR and text extraction for optional GPU OCR service | Apache-2.0 |
 
 ## Planned Direct Dependencies
 
 | Project | Planned Use | License |
 | --- | --- | --- |
 | React Konva | Template editor and annotation canvas | MIT |
-| PaddleOCR | OCR and text coordinates | Apache-2.0 |
-| OpenCV | Page detection, correction and registration | Apache-2.0 |
 
 ## Reference Only
 

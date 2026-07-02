@@ -89,18 +89,23 @@
 - OpenAPI smoke 路径存在性检查已通过，包含 22 个关键路径。
 - 前端检查和构建已通过：`npm run --workspace frontend lint`、`npm run --workspace frontend build`。
 - Playwright 考试流程 smoke 已覆盖 OCR 状态显示：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts --project=chromium --reporter=line`，5 passed。
+- 已确认本机具备 RTX 5060 Laptop 8GB、NVIDIA Driver 596.49、WSL2 可见 CUDA 13.2，适合 PaddleOCR GPU cu130 独立服务方案。
+- 已新增 `ocr-service`：Python 3.11 + `paddlepaddle-gpu==3.3.0` cu130 + PaddleOCR，提供 `/health` 和 `/ocr`。
+- 已新增 compose `ocr-gpu` profile 和后端 `OCR_ENGINE=paddle_http` 适配，Worker 可通过 HTTP 调用独立 OCR 服务。
+- 已新增部署记录：`docs/ocr-paddle-gpu-cu130.md`。
 
 ## 进行中
 
-- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准、真实 OCR 引擎配置和 AI 判分草稿接入。
+- 周期 3/4 下一块能力：真实样本扫描鲁棒性、真实自动配准、PaddleOCR GPU 容器端到端验证和 AI 判分草稿接入。
 
 ## 下一步
 
 1. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
 2. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-3. 配置真实 OCR 引擎，把 `ocr_text` 从 `not_configured` 推进到可用识别结果。
-4. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
-5. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+3. 修复 WSL Docker credential helper PATH 后，验证 `docker run --gpus all ... nvidia-smi`。
+4. 构建并启动 `ocr-service`，用真实题区 PNG 验证 PaddleOCR 输出。
+5. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
+6. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 
@@ -115,6 +120,7 @@
 - Playwright 本地运行需要后端已启动，且 dev DB 中存在 `.env` 的 `FIRST_SUPERUSER`；本轮已补建 `admin@example.com` 本地测试账号。
 - 批注裁剪图当前从最新处理任务的 JSON `output_ref.region_crops` 查找；MVP 可用，后续数据量上来后应迁移为可索引的派生产物表或 JSONB 查询。
 - OCR 服务当前默认禁用，复核页会显示 `not configured`；需要在部署环境明确安装/配置 OCR 引擎后才会产出真实 `ocr_text`。
+- WSL 调 Windows Docker CLI 拉取镜像时当前报 `docker-credential-desktop` 不在 PATH；GPU OCR 容器验证需先修复该 Docker credential 配置。
 
 ## 最近决策
 
