@@ -81,6 +81,26 @@ def build_partial_brightness_spread_photo() -> bytes:
     return buffer.getvalue()
 
 
+def build_dim_top_spread_photo() -> bytes:
+    image = Image.new("RGB", (520, 320), color=(52, 80, 65))
+    draw = ImageDraw.Draw(image)
+    draw.polygon(
+        [(28, 34), (492, 28), (500, 288), (22, 294)],
+        fill=(145, 142, 132),
+    )
+    draw.polygon(
+        [(26, 104), (494, 100), (500, 288), (22, 294)],
+        fill=(248, 244, 226),
+    )
+    draw.line([(260, 42), (262, 286)], fill=(110, 110, 105), width=3)
+    draw.rectangle((70, 66, 190, 82), fill=(20, 20, 20))
+    draw.rectangle((330, 62, 450, 78), fill=(20, 20, 20))
+    draw.rectangle((330, 138, 450, 160), outline=(50, 50, 50), width=2)
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
 def test_preprocess_exam_photo_splits_landscape_spread() -> None:
     result = preprocess_exam_photo_bytes(
         build_scan_photo(size=(360, 220), spread=True)
@@ -109,6 +129,16 @@ def test_preprocess_exam_photo_recovers_dim_right_page() -> None:
     assert result.spread_size[0] >= result.spread_size[1] * 1.2
     assert result.pages[0].image.shape[1] > 100
     assert result.pages[1].image.shape[1] > 100
+    assert result.pdf_bytes.startswith(b"%PDF")
+
+
+def test_preprocess_exam_photo_preserves_dim_top_content() -> None:
+    result = preprocess_exam_photo_bytes(build_dim_top_spread_photo())
+
+    assert len(result.pages) == 2
+    top_band = result.pages[1].image[: int(result.pages[1].image.shape[0] * 0.2)]
+    dark_pixel_ratio = ((top_band < 70).all(axis=2)).mean()
+    assert dark_pixel_ratio > 0.02
     assert result.pdf_bytes.startswith(b"%PDF")
 
 

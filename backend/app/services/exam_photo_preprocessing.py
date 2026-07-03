@@ -150,6 +150,39 @@ def quad_bounds(points: np.ndarray) -> tuple[float, float, float, float]:
     return min_x, min_y, max_x, max_y
 
 
+def add_content_preserving_margin(image: np.ndarray, quad: np.ndarray) -> np.ndarray:
+    height, width = image.shape[:2]
+    rect = order_points(quad).copy()
+    top_left, top_right, bottom_right, bottom_left = rect
+
+    is_landscape_spread = width >= height * 1.2
+    top_y = min(float(top_left[1]), float(top_right[1]))
+    top_ratio = 0.2 if is_landscape_spread and top_y > height * 0.08 else 0.06
+    bottom_ratio = 0.025
+    side_ratio = 0.015
+
+    padded = np.array(
+        [
+            top_left
+            + (top_left - bottom_left) * top_ratio
+            + (top_left - top_right) * side_ratio,
+            top_right
+            + (top_right - bottom_right) * top_ratio
+            + (top_right - top_left) * side_ratio,
+            bottom_right
+            + (bottom_right - top_right) * bottom_ratio
+            + (bottom_right - bottom_left) * side_ratio,
+            bottom_left
+            + (bottom_left - top_left) * bottom_ratio
+            + (bottom_left - bottom_right) * side_ratio,
+        ],
+        dtype="float32",
+    )
+    padded[:, 0] = np.clip(padded[:, 0], 0, width - 1)
+    padded[:, 1] = np.clip(padded[:, 1], 0, height - 1)
+    return padded
+
+
 def is_partial_landscape_detection(image: np.ndarray, quad: np.ndarray) -> bool:
     height, width = image.shape[:2]
     if width < height * 1.25:
@@ -275,9 +308,11 @@ def detect_gutter_ratio(image: np.ndarray) -> tuple[float, float]:
 
     darkness = 255 - central_page
     projection = darkness.mean(axis=0).astype("float32")
+    ink_density = (central_page < 150).mean(axis=0).astype("float32")
     window = max(9, int(width * 0.025))
     kernel = np.ones(window, dtype="float32") / window
     smoothed = np.convolve(projection, kernel, mode="same")
+    smoothed_ink = np.convolve(ink_density, kernel, mode="same")
 
     left = int(width * 0.45)
     right = int(width * 0.55)
@@ -287,6 +322,20 @@ def detect_gutter_ratio(image: np.ndarray) -> tuple[float, float]:
     search = smoothed[left:right]
     local_index = int(np.argmax(search))
     gutter_x = left + local_index
+    dark_gutter_x = gutter_x
+
+    blank_left = int(width * 0.45)
+    blank_right = int(width * 0.58)
+    blank_search = smoothed_ink[blank_left:blank_right]
+    blank_x = blank_left + int(np.argmin(blank_search))
+    dark_ink = float(smoothed_ink[dark_gutter_x])
+    blank_ink = float(smoothed_ink[blank_x])
+    if (
+        dark_gutter_x < width * 0.5
+        and blank_x > width * 0.52
+        and blank_ink < dark_ink * 0.55
+    ):
+        gutter_x = blank_x
 
     baseline_left = int(width * 0.25)
     baseline_right = int(width * 0.75)
@@ -297,6 +346,8 @@ def detect_gutter_ratio(image: np.ndarray) -> tuple[float, float]:
     confidence = 0.0
     if baseline_std > 1e-6:
         confidence = max(0.0, min(1.0, (peak - baseline_mean) / (baseline_std * 4)))
+    if gutter_x != dark_gutter_x and dark_ink > 1e-6:
+        confidence = max(confidence, min(1.0, (dark_ink - blank_ink) / dark_ink))
 
     if confidence < 0.12:
         return 0.5, confidence
@@ -363,6 +414,7 @@ def preprocess_exam_photo_bytes(contents: bytes) -> PreprocessedExamPhoto:
         if relaxed_quad is not None:
             quad = relaxed_quad
 
+    quad = add_content_preserving_margin(image, quad)
     warped = four_point_transform(image, quad)
     enhanced_spread = enhance_page(warped)
     pages, split = split_spread(enhanced_spread)

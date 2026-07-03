@@ -28,7 +28,7 @@ materials/physics/evaluation/
 
 - 初始评估时，`1.jpg` 预处理失败：只检测并矫正了左页，右页被漏掉；输出为 `single_page`。
 - 修复后，`1.jpg` 可检测为双页 spread：`detected_gutter`，`gutter_ratio=0.5492`，输出 `page_1_left.jpg` 和 `page_2_right.jpg`。
-- `2.jpg` 当前预处理可用：检测为双页，`detected_gutter`，拆出第 3 页和第 4 页。
+- `2.jpg` 当前预处理可用：检测为双页，`detected_gutter`，拆出第 3 页和第 4 页；后续补充了内容保护边距，避免第 4 页顶部题干被裁掉，并用空白带纠偏避免右页混入左页内容。
 - 结论：横向双页不能只依赖最大亮色四边形；当前已加入 relaxed spread 检测和半页 fallback 来避免漏页。
 
 ### PaddleOCR
@@ -67,7 +67,7 @@ materials/physics/evaluation/
 
 ## 后续建议
 
-- 扫描预处理：继续收集更多横向双页失败样例，验证 relaxed spread 检测和左右半页 fallback 的鲁棒性。
+- 扫描预处理：继续收集更多横向双页失败样例，验证 relaxed spread 检测、内容保护边距、中缝纠偏和左右半页 fallback 的鲁棒性。
 - OCR 策略：设定 PaddleOCR 低置信度阈值，建议先用 `0.90` 作为 fallback 触发线进行实验。
 - Kimi 策略：只对题区图调用，默认 `max_tokens=1800`，并记录耗时、tokens 和是否返回空文本。
 - 评估继续扩大到至少 3 份试卷、10 个以上题区，完成 AEG-031。

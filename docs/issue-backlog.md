@@ -449,12 +449,13 @@
 - 状态：In Progress
 - 所属周期：周期 3 前置 / 后续 App 采集周期
 - 目标：基于真实手机拍摄样本增强页面边界检测、中缝拆分、阴影/褶皱处理和失败提示。
-- 进展：后端服务已输出拆分策略、中缝比例、置信度、页面 x 范围等元数据；本地实验脚本已改为复用后端服务；`test1.jpg` 双页样本当前识别中缝比例约 0.50，`writing.jpg` 识别为单页。物理卷 `materials/physics/1.jpg` 暴露的左页单独检测、右页漏检问题已通过 relaxed spread 检测修复；`materials/physics/2.jpg` 仍可正确按中缝拆为左右页。
-- 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py -q` 已通过，36 passed；`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py::test_preprocess_student_submission_photo_creates_pdf_submission -q` 已通过，4 passed；`bash scripts/tests-start.sh` 已通过，93 passed，coverage 88%。真实物理样本 `materials/physics/1.jpg` 已验证可输出双页，`materials/physics/2.jpg` 保持双页输出。
+- 进展：后端服务已输出拆分策略、中缝比例、置信度、页面 x 范围等元数据；本地实验脚本已改为复用后端服务；`test1.jpg` 双页样本当前识别中缝比例约 0.50，`writing.jpg` 识别为单页。物理卷 `materials/physics/1.jpg` 暴露的左页单独检测、右页漏检问题已通过 relaxed spread 检测修复；`materials/physics/2.jpg` 暴露的顶部题干裁切问题已通过内容保护边距修复，中缝偏左问题已通过空白带纠偏修复。
+- 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py -q` 已通过，36 passed；`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py::test_preprocess_student_submission_photo_creates_pdf_submission -q` 已通过，5 passed；`bash scripts/tests-start.sh` 已通过，94 passed，coverage 88%。真实物理样本 `materials/physics/1.jpg` 已验证可输出双页，`materials/physics/2.jpg` 已验证可保留顶部题干并保持双页输出。
 - 验收标准：
   - 用 `materials/English/test1.jpg` 等真实样本建立非提交回归记录。已完成第一批。
   - 双页试卷尽量按真实中缝拆分，而不是固定 50%。已完成第一版中心邻域中缝检测和回退策略。
   - 横向双页只检测到半页时，能通过 relaxed spread 或半页 fallback 避免漏页。已完成第一版。
+  - 纸面顶部低对比/阴影导致检测框压低时，能保留顶部题干。已完成第一版内容保护边距。
   - 单页/双页检测有明确输出和错误提示。已完成输出元数据；错误提示仍待增强。
   - 处理失败时前端给出可理解的失败反馈，不生成半成品学生答卷。
 
