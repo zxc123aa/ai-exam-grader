@@ -62,6 +62,25 @@ def build_scan_photo(*, size: tuple[int, int], spread: bool) -> bytes:
     return buffer.getvalue()
 
 
+def build_partial_brightness_spread_photo() -> bytes:
+    image = Image.new("RGB", (520, 320), color=(54, 74, 62))
+    draw = ImageDraw.Draw(image)
+    draw.polygon(
+        [(34, 44), (265, 34), (268, 286), (22, 292)],
+        fill=(250, 244, 220),
+    )
+    draw.polygon(
+        [(264, 36), (494, 44), (504, 286), (268, 286)],
+        fill=(155, 150, 138),
+    )
+    draw.line([(263, 42), (268, 286)], fill=(120, 114, 106), width=4)
+    draw.rectangle((80, 104, 210, 132), outline=(55, 55, 55), width=2)
+    draw.rectangle((320, 138, 456, 168), outline=(55, 55, 55), width=2)
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
 def test_preprocess_exam_photo_splits_landscape_spread() -> None:
     result = preprocess_exam_photo_bytes(
         build_scan_photo(size=(360, 220), spread=True)
@@ -75,6 +94,21 @@ def test_preprocess_exam_photo_splits_landscape_spread() -> None:
     assert result.pages[0].x_start == 0
     assert result.pages[0].x_end > result.pages[1].x_start
     assert result.pages[1].x_end == result.spread_size[0]
+    assert result.pdf_bytes.startswith(b"%PDF")
+
+
+def test_preprocess_exam_photo_recovers_dim_right_page() -> None:
+    result = preprocess_exam_photo_bytes(build_partial_brightness_spread_photo())
+
+    assert len(result.pages) == 2
+    assert result.split.strategy in {
+        "detected_gutter",
+        "center_fallback",
+        "split_half_page_fallback",
+    }
+    assert result.spread_size[0] >= result.spread_size[1] * 1.2
+    assert result.pages[0].image.shape[1] > 100
+    assert result.pages[1].image.shape[1] > 100
     assert result.pdf_bytes.startswith(b"%PDF")
 
 

@@ -26,9 +26,10 @@ materials/physics/evaluation/
 
 ### 扫描预处理
 
-- `1.jpg` 当前预处理失败：只检测并矫正了左页，右页被漏掉；输出为 `single_page`。
+- 初始评估时，`1.jpg` 预处理失败：只检测并矫正了左页，右页被漏掉；输出为 `single_page`。
+- 修复后，`1.jpg` 可检测为双页 spread：`detected_gutter`，`gutter_ratio=0.5492`，输出 `page_1_left.jpg` 和 `page_2_right.jpg`。
 - `2.jpg` 当前预处理可用：检测为双页，`detected_gutter`，拆出第 3 页和第 4 页。
-- 结论：扫描王能力需要新增“横向双页整体检测失败时的 fallback”，不能只依赖最大亮色四边形。
+- 结论：横向双页不能只依赖最大亮色四边形；当前已加入 relaxed spread 检测和半页 fallback 来避免漏页。
 
 ### PaddleOCR
 
@@ -60,13 +61,13 @@ materials/physics/evaluation/
 - Kimi K2.7 适合用于题区级 fallback，尤其是公式、单位、综合题和 PaddleOCR 低置信度区域。
 - 不建议对整页无差别调用 Kimi：慢、贵、且可能耗完输出预算但没有 final text。
 - 物理卷识别瓶颈优先级：
-  1. 扫描预处理右页漏检。
-  2. 图示/选项题区裁剪质量。
-  3. PaddleOCR 低置信度题区的 Kimi fallback。
+  1. 图示/选项题区裁剪质量。
+  2. PaddleOCR 低置信度题区的 Kimi fallback。
+  3. 更复杂弯曲页面的曲面展平。
 
 ## 后续建议
 
-- 扫描预处理：加入双页 spread fallback，当前检测四边形覆盖面积/宽高比异常时，尝试整张纸面检测或左右半页分别检测。
+- 扫描预处理：继续收集更多横向双页失败样例，验证 relaxed spread 检测和左右半页 fallback 的鲁棒性。
 - OCR 策略：设定 PaddleOCR 低置信度阈值，建议先用 `0.90` 作为 fallback 触发线进行实验。
 - Kimi 策略：只对题区图调用，默认 `max_tokens=1800`，并记录耗时、tokens 和是否返回空文本。
 - 评估继续扩大到至少 3 份试卷、10 个以上题区，完成 AEG-031。

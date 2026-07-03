@@ -107,45 +107,70 @@ def build_samples(materials_dir: Path, output_dir: Path) -> list[ImageSample]:
     if raw_1 is None or raw_2 is None:
         raise RuntimeError("Could not read materials/physics/1.jpg or 2.jpg")
 
-    # Current preprocessing succeeds only for the left page in 1.jpg, so keep it as
-    # an explicit baseline and add a manual right-page crop for OCR comparison.
-    auto_page_1 = cv2.imread(str(materials_dir / "processed" / "1" / "page_1.jpg"))
-    if auto_page_1 is None:
-        auto_page_1 = four_point_transform(
+    processed_1_dir = materials_dir / "processed" / "1"
+    processed_1_left = cv2.imread(str(processed_1_dir / "page_1_left.jpg"))
+    processed_1_right = cv2.imread(str(processed_1_dir / "page_2_right.jpg"))
+    p1_right_sample_id = "p1_right_auto"
+    if processed_1_left is not None and processed_1_right is not None:
+        p1_left = write_image(pages_dir / "p1_left_auto.jpg", processed_1_left)
+        samples.append(
+            ImageSample(
+                sample_id="p1_left_auto",
+                kind="page",
+                path=p1_left,
+                source="materials/physics/1.jpg",
+                notes="current scan preprocessing output; expected page 1",
+            )
+        )
+        p1_right = write_image(pages_dir / "p1_right_auto.jpg", processed_1_right)
+        samples.append(
+            ImageSample(
+                sample_id="p1_right_auto",
+                kind="page",
+                path=p1_right,
+                source="materials/physics/1.jpg",
+                notes="current scan preprocessing output; expected page 2",
+            )
+        )
+    else:
+        auto_page_1 = cv2.imread(str(processed_1_dir / "page_1.jpg"))
+        if auto_page_1 is None:
+            auto_page_1 = four_point_transform(
+                raw_1,
+                np.array(
+                    [[40, 1216], [918, 1256], [967, 167], [90, 127]],
+                    dtype="float32",
+                ),
+            )
+        p1_left = write_image(pages_dir / "p1_left_auto.jpg", auto_page_1)
+        samples.append(
+            ImageSample(
+                sample_id="p1_left_auto",
+                kind="page",
+                path=p1_left,
+                source="materials/physics/1.jpg",
+                notes="legacy scan preprocessing output; expected page 1",
+            )
+        )
+
+        p1_right_image = four_point_transform(
             raw_1,
             np.array(
-                [[40, 1216], [918, 1256], [967, 167], [90, 127]],
+                [[945, 128], [1584, 174], [1588, 1214], [922, 1198]],
                 dtype="float32",
             ),
         )
-    p1_left = write_image(pages_dir / "p1_left_auto.jpg", auto_page_1)
-    samples.append(
-        ImageSample(
-            sample_id="p1_left_auto",
-            kind="page",
-            path=p1_left,
-            source="materials/physics/1.jpg",
-            notes="current scan preprocessing output; expected page 1",
+        p1_right = write_image(pages_dir / "p1_right_manual.jpg", p1_right_image)
+        p1_right_sample_id = "p1_right_manual"
+        samples.append(
+            ImageSample(
+                sample_id="p1_right_manual",
+                kind="page",
+                path=p1_right,
+                source="materials/physics/1.jpg",
+                notes="manual right-page crop because legacy preprocessing misses this page",
+            )
         )
-    )
-
-    p1_right_image = four_point_transform(
-        raw_1,
-        np.array(
-            [[945, 128], [1584, 174], [1588, 1214], [922, 1198]],
-            dtype="float32",
-        ),
-    )
-    p1_right = write_image(pages_dir / "p1_right_manual.jpg", p1_right_image)
-    samples.append(
-        ImageSample(
-            sample_id="p1_right_manual",
-            kind="page",
-            path=p1_right,
-            source="materials/physics/1.jpg",
-            notes="manual right-page crop because current preprocessing misses this page",
-        )
-    )
 
     for sample_id, name, source_page in [
         ("p2_left_auto", "page_1_left.jpg", "materials/physics/2.jpg"),
@@ -171,8 +196,13 @@ def build_samples(materials_dir: Path, output_dir: Path) -> list[ImageSample]:
         ("p1_q1_q2", "p1_left_auto", (0.05, 0.17, 0.9, 0.18), "choice questions 1-2"),
         ("p1_q3_q4_diagrams", "p1_left_auto", (0.04, 0.28, 0.9, 0.24), "force diagrams and choice text"),
         ("p1_q5_q6_figures", "p1_left_auto", (0.04, 0.55, 0.9, 0.36), "photo/cartoon figure options"),
-        ("p2_q7_q10", "p1_right_manual", (0.04, 0.02, 0.92, 0.45), "right-page choice questions with diagrams"),
-        ("p2_q11_q16", "p1_right_manual", (0.04, 0.42, 0.92, 0.5), "fill-in-the-blank questions"),
+        (
+            "p2_q7_q10",
+            p1_right_sample_id,
+            (0.04, 0.02, 0.92, 0.45),
+            "right-page choice questions with diagrams",
+        ),
+        ("p2_q11_q16", p1_right_sample_id, (0.04, 0.42, 0.92, 0.5), "fill-in-the-blank questions"),
         ("p3_q18", "p2_left_auto", (0.06, 0.00, 0.88, 0.23), "drawing question"),
         ("p3_q19", "p2_left_auto", (0.05, 0.21, 0.9, 0.42), "experiment question with diagrams"),
         ("p3_q20", "p2_left_auto", (0.04, 0.62, 0.9, 0.34), "lever experiment question"),

@@ -40,6 +40,14 @@ class PreprocessedExamPhoto:
     enhanced_spread: np.ndarray
 
 
+@dataclass(frozen=True)
+class HalfPageFallback:
+    pages: list[PreprocessedPage]
+    detected_quad: np.ndarray
+    warped_spread: np.ndarray
+    enhanced_spread: np.ndarray
+
+
 def order_points(points: np.ndarray) -> np.ndarray:
     rect = np.zeros((4, 2), dtype="float32")
     summed = points.sum(axis=1)
@@ -86,22 +94,32 @@ def resize_for_detection(
     return resized, scale
 
 
-def find_document_quad(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    resized, scale = resize_for_detection(image)
+def build_document_mask(resized: np.ndarray, *, relaxed: bool = False) -> np.ndarray:
     lab = cv2.cvtColor(resized, cv2.COLOR_BGR2LAB)
     l_channel, a_channel, b_channel = cv2.split(lab)
     mask = np.zeros(l_channel.shape, dtype=np.uint8)
-    mask[(l_channel > 165) & (a_channel > 124) & (b_channel > 126)] = 255
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
 
+    if relaxed:
+        mask[(l_channel > 125) & (a_channel > 116) & (b_channel > 116)] = 255
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (55, 35))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, close_kernel, iterations=3)
+    else:
+        mask[(l_channel > 165) & (a_channel > 124) & (b_channel > 126)] = 255
+        close_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, close_kernel, iterations=2)
+
+    open_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, open_kernel, iterations=1)
+    return mask
+
+
+def find_quad_from_mask(mask: np.ndarray, *, scale: float) -> np.ndarray:
     contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         raise PhotoPreprocessingError("No document-like bright region found")
 
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
-    image_area = resized.shape[0] * resized.shape[1]
+    image_area = mask.shape[0] * mask.shape[1]
     for contour in contours[:5]:
         area = cv2.contourArea(contour)
         if area < image_area * 0.15:
@@ -109,13 +127,133 @@ def find_document_quad(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         perimeter = cv2.arcLength(contour, True)
         approx = cv2.approxPolyDP(contour, 0.025 * perimeter, True)
         if len(approx) == 4:
-            return (approx.reshape(4, 2) / scale).astype("float32"), mask
+            return (approx.reshape(4, 2) / scale).astype("float32")
 
     largest = contours[0]
     if cv2.contourArea(largest) < image_area * 0.15:
         raise PhotoPreprocessingError("Detected document region is too small")
     box = cv2.boxPoints(cv2.minAreaRect(largest))
-    return (box / scale).astype("float32"), mask
+    return (box / scale).astype("float32")
+
+
+def find_document_quad(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    resized, scale = resize_for_detection(image)
+    mask = build_document_mask(resized)
+    return find_quad_from_mask(mask, scale=scale), mask
+
+
+def quad_bounds(points: np.ndarray) -> tuple[float, float, float, float]:
+    min_x = float(points[:, 0].min())
+    min_y = float(points[:, 1].min())
+    max_x = float(points[:, 0].max())
+    max_y = float(points[:, 1].max())
+    return min_x, min_y, max_x, max_y
+
+
+def is_partial_landscape_detection(image: np.ndarray, quad: np.ndarray) -> bool:
+    height, width = image.shape[:2]
+    if width < height * 1.25:
+        return False
+
+    min_x, _min_y, max_x, _max_y = quad_bounds(quad)
+    quad_width_ratio = (max_x - min_x) / width
+    center_ratio = ((min_x + max_x) / 2) / width
+    return quad_width_ratio < 0.68 or center_ratio < 0.38 or center_ratio > 0.62
+
+
+def find_relaxed_spread_quad(image: np.ndarray) -> np.ndarray | None:
+    height, width = image.shape[:2]
+    resized, scale = resize_for_detection(image)
+    mask = build_document_mask(resized, relaxed=True)
+    try:
+        quad = find_quad_from_mask(mask, scale=scale)
+    except PhotoPreprocessingError:
+        return None
+
+    min_x, min_y, max_x, max_y = quad_bounds(quad)
+    quad_width = max_x - min_x
+    quad_height = max_y - min_y
+    if quad_width < width * 0.75 or quad_height < height * 0.55:
+        return None
+    if quad_width < quad_height * 1.15:
+        return None
+    return quad
+
+
+def find_page_quad_in_roi(
+    image: np.ndarray, *, x_start: int, x_end: int
+) -> np.ndarray | None:
+    roi = image[:, x_start:x_end]
+    if roi.size == 0:
+        return None
+
+    try:
+        quad, _mask = find_document_quad(roi)
+    except PhotoPreprocessingError:
+        resized, scale = resize_for_detection(roi)
+        mask = build_document_mask(resized, relaxed=True)
+        try:
+            quad = find_quad_from_mask(mask, scale=scale)
+        except PhotoPreprocessingError:
+            return None
+
+    quad[:, 0] += x_start
+    return quad
+
+
+def stitch_debug_spread(pages: list[PreprocessedPage]) -> np.ndarray:
+    max_height = max(page.image.shape[0] for page in pages)
+    resized_pages = []
+    for page in pages:
+        height, width = page.image.shape[:2]
+        if height == max_height:
+            resized_pages.append(page.image)
+            continue
+        scaled_width = max(1, int(width * (max_height / height)))
+        resized_pages.append(cv2.resize(page.image, (scaled_width, max_height)))
+    return cv2.hconcat(resized_pages)
+
+
+def find_half_page_fallback(image: np.ndarray) -> HalfPageFallback | None:
+    height, width = image.shape[:2]
+    if width < height * 1.25:
+        return None
+
+    center = width // 2
+    overlap = max(24, int(width * 0.06))
+    left_quad = find_page_quad_in_roi(
+        image, x_start=0, x_end=min(width, center + overlap)
+    )
+    right_quad = find_page_quad_in_roi(
+        image, x_start=max(0, center - overlap), x_end=width
+    )
+    if left_quad is None or right_quad is None:
+        return None
+
+    left = enhance_page(four_point_transform(image, left_quad))
+    right = enhance_page(four_point_transform(image, right_quad))
+    left_page = PreprocessedPage(
+        name="page_1_left.jpg",
+        image=left,
+        x_start=0,
+        x_end=left.shape[1],
+    )
+    right_page = PreprocessedPage(
+        name="page_2_right.jpg",
+        image=right,
+        x_start=left.shape[1],
+        x_end=left.shape[1] + right.shape[1],
+    )
+    pages = [left_page, right_page]
+    spread = stitch_debug_spread(pages)
+    combined_quad = np.vstack([left_quad, right_quad])
+    box = cv2.boxPoints(cv2.minAreaRect(combined_quad.astype("float32")))
+    return HalfPageFallback(
+        pages=pages,
+        detected_quad=box.astype("float32"),
+        warped_spread=spread,
+        enhanced_spread=spread,
+    )
 
 
 def enhance_page(image: np.ndarray) -> np.ndarray:
@@ -219,9 +357,29 @@ def preprocess_exam_photo_bytes(contents: bytes) -> PreprocessedExamPhoto:
         raise PhotoPreprocessingError("Could not decode uploaded image")
 
     quad, mask = find_document_quad(image)
+    partial_landscape = is_partial_landscape_detection(image, quad)
+    if partial_landscape:
+        relaxed_quad = find_relaxed_spread_quad(image)
+        if relaxed_quad is not None:
+            quad = relaxed_quad
+
     warped = four_point_transform(image, quad)
     enhanced_spread = enhance_page(warped)
     pages, split = split_spread(enhanced_spread)
+    if partial_landscape and len(pages) == 1:
+        fallback = find_half_page_fallback(image)
+        if fallback is not None:
+            pages = fallback.pages
+            split = SplitMetadata(
+                strategy="split_half_page_fallback",
+                gutter_ratio=0.5,
+                gutter_confidence=0.0,
+                overlap_pixels=0,
+            )
+            quad = fallback.detected_quad
+            warped = fallback.warped_spread
+            enhanced_spread = fallback.enhanced_spread
+
     pdf_bytes = encode_pdf(pages)
     return PreprocessedExamPhoto(
         pdf_bytes=pdf_bytes,
