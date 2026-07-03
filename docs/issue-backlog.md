@@ -398,14 +398,16 @@
 
 - 类型：Verification
 - 优先级：P1
-- 状态：Ready
+- 状态：In Progress
 - 所属周期：周期 4
 - 目标：使用更多真实题区裁剪样本评估 PaddleOCR 在选择题、填空题、主观题和低清晰度手机照片上的表现，明确低置信度时是否需要图像增强、Kimi/云 OCR fallback 或人工优先策略。
+- 进展：已完成物理卷第一批评估，见 `docs/physics-ocr-evaluation.md`。样本覆盖 `materials/physics/1.jpg`、`materials/physics/2.jpg`，生成 4 个页级样本和 11 个题区样本；PaddleOCR 全量跑通，Kimi K2.7 对 3 个代表题区/页做高 token 复测。
+- 结论：PaddleOCR 适合作为快速 baseline；Kimi K2.7 对综合题、公式、单位恢复更好，但不适合整页无差别 OCR，应限制在题区级 fallback。建议先以 `0.90` 作为 PaddleOCR 低置信度 fallback 实验阈值。
 - 验收标准：
-  - 至少覆盖 3 份试卷、10 个题区裁剪样本。
-  - 记录每个样本的 `ocr_text`、`ocr_confidence`、题区类型和人工判断。
-  - 给出低置信度阈值建议。
-  - 形成后续图像增强、自动配准或云 OCR fallback issue。
+  - 至少覆盖 3 份试卷、10 个题区裁剪样本。已覆盖 1 份物理卷、11 个题区，仍需扩到 3 份。
+  - 记录每个样本的 `ocr_text`、`ocr_confidence`、题区类型和人工判断。已完成第一批。
+  - 给出低置信度阈值建议。已形成初始建议：`0.90`。
+  - 形成后续图像增强、自动配准或云 OCR fallback issue。已形成 Kimi 题区级 fallback 方向，仍需实现 issue。
 
 ### AEG-020 Docker Compose 全量构建和 Worker E2E 验收
 
@@ -447,7 +449,7 @@
 - 状态：In Progress
 - 所属周期：周期 3 前置 / 后续 App 采集周期
 - 目标：基于真实手机拍摄样本增强页面边界检测、中缝拆分、阴影/褶皱处理和失败提示。
-- 进展：后端服务已输出拆分策略、中缝比例、置信度、页面 x 范围等元数据；本地实验脚本已改为复用后端服务；`test1.jpg` 双页样本当前识别中缝比例约 0.50，`writing.jpg` 识别为单页。
+- 进展：后端服务已输出拆分策略、中缝比例、置信度、页面 x 范围等元数据；本地实验脚本已改为复用后端服务；`test1.jpg` 双页样本当前识别中缝比例约 0.50，`writing.jpg` 识别为单页。物理卷 `materials/physics/1.jpg` 暴露新失败样例：当前最大亮色轮廓只覆盖左页，右页漏检；`materials/physics/2.jpg` 可正确按中缝拆为左右页。
 - 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py backend/tests/api/routes/test_exams.py -q` 已通过，36 passed；`bash scripts/tests-start.sh` 已通过，88 passed，coverage 90%。
 - 验收标准：
   - 用 `materials/English/test1.jpg` 等真实样本建立非提交回归记录。已完成第一批。

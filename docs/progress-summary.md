@@ -101,18 +101,23 @@
 - 后端完整测试已通过：`bash scripts/tests-start.sh`，92 passed，coverage 90%。
 - 已新增 opt-in Playwright PaddleOCR 复核页 E2E，用真实试卷 JPG 创建模板、上传学生答卷、进入教师复核页并触发 Run Processing。
 - 教师复核页真实 PaddleOCR 流程已通过：`E2E_PADDLE_OCR=1 PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts -g "PaddleOCR draft appears" --project=chromium --reporter=line`，2 passed。
+- 已完成物理卷 OCR 第一批评估：`materials/physics/1.jpg`、`materials/physics/2.jpg`，覆盖 4 个页级样本和 11 个题区样本，结果记录在 `docs/physics-ocr-evaluation.md`。
+- 已新增 `scripts/evaluate_physics_ocr.py`，可复现物理卷页/题区裁剪、PaddleOCR 全量评估和 Kimi K2.7 抽样评估。
+- 物理卷评估发现扫描预处理新失败样例：`1.jpg` 只检测到左页，右页漏检；`2.jpg` 可正确拆成左右页。
+- Kimi K2.7 调用已验证可用于题区级 fallback：综合题/实验题对公式和单位恢复优于 PaddleOCR，但整页调用耗时高且可能返回空 final text。
 
 ## 进行中
 
-- 周期 4 下一块能力：扩大题区级 OCR 质量评估，并推进 AI 判分草稿接入。
+- 周期 4 下一块能力：修复物理卷暴露的双页扫描漏检，扩大题区级 OCR 质量评估，并推进 Kimi 题区级 fallback / AI 判分草稿接入。
 
 ## 下一步
 
-1. 用更多真实题区裁剪样本评估 PaddleOCR 质量，记录低置信度、漏识别和题区切分问题。
-2. 继续收集真实失败样例，补充页面边界、阴影、褶皱和低对比度场景的回归用例。
-3. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-4. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
-5. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+1. 修复扫描预处理双页漏检：当最大亮色轮廓只覆盖半页时，增加整张 spread 或左右半页 fallback。
+2. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
+3. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
+4. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+5. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
+6. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 

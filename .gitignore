@@ -7,5 +7,8 @@ __pycache__/
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+.secrets/
+.env.local
+*.key
 data/
 materials/
