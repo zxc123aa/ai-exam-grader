@@ -636,9 +636,15 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     assert content["status"] == "registration_pending"
     assert content["registration_status"] == "pending"
     assert content["registration_notes"].startswith("Preprocessed from mobile photo")
+    assert "scan_quality=" in content["registration_notes"]
     assert content["registration_homography"]["source"] == (
         "mobile_photo_preprocessing_v1"
     )
+    assert content["registration_homography"]["quality"]["status"] in {
+        "pass",
+        "review",
+    }
+    assert isinstance(content["registration_homography"]["quality"]["warnings"], list)
     assert content["registration_homography"]["split"]["strategy"] in {
         "detected_gutter",
         "center_fallback",

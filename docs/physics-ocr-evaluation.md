@@ -30,6 +30,7 @@ materials/physics/evaluation/
 - 修复后，`1.jpg` 可检测为双页 spread：`detected_gutter`，`gutter_ratio=0.5492`，输出 `page_1_left.jpg` 和 `page_2_right.jpg`。
 - `2.jpg` 当前预处理可用：检测为双页，`detected_gutter`，拆出第 3 页和第 4 页；后续补充了内容保护边距，避免第 4 页顶部题干被裁掉，并用空白带纠偏避免右页混入左页内容。
 - 结论：横向双页不能只依赖最大亮色四边形；当前已加入 relaxed spread 检测和半页 fallback 来避免漏页。
+- 稳定性补充：预处理已新增软质量门禁，真实样本若存在边缘内容、低置信度中缝、模糊或 fallback 恢复，会标记为 `quality_status=review`，避免坏扫描静默进入后续 OCR/判分。
 
 ### PaddleOCR
 

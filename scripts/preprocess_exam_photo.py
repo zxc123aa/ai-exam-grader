@@ -45,6 +45,12 @@ def preprocess_photo(input_path: Path, output_dir: Path) -> None:
     print(f"split_strategy={result.split.strategy}")
     print(f"gutter_ratio={result.split.gutter_ratio}")
     print(f"gutter_confidence={result.split.gutter_confidence}")
+    print(f"quality_status={result.quality_status}")
+    for warning in result.quality_warnings:
+        print(
+            "quality_warning="
+            f"{warning.severity}:{warning.code}:{warning.message}"
+        )
     for page, page_path in zip(result.pages, page_paths, strict=True):
         print(
             f"{page.name}={page.image.shape[1]}x{page.image.shape[0]} "

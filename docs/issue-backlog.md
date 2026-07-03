@@ -459,6 +459,23 @@
   - 单页/双页检测有明确输出和错误提示。已完成输出元数据；错误提示仍待增强。
   - 处理失败时前端给出可理解的失败反馈，不生成半成品学生答卷。
 
+### AEG-032 扫描预处理质量门禁与稳定性阶段
+
+- 类型：Hardening
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 3 前置 / 后续 App 采集周期
+- 目标：扫描预处理先建立质量门禁和可复核闭环，避免裁题、漏页、混页结果静默进入 OCR/判分。
+- 计划文档：`docs/scan-preprocessing-stability-plan.md`
+- 进展：已新增软质量门禁，预处理结果输出 `quality_status=pass|review` 和 `quality_warnings[]`；API 已写入 `registration_homography.quality`，`registration_notes` 已包含 `scan_quality=...`；本地脚本已输出质量状态和 warning。
+- 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py -q` 已通过，5 passed；`pytest backend/tests/api/routes/test_exams.py::test_preprocess_student_submission_photo_creates_pdf_submission -q` 已通过，1 passed。
+- 验收标准：
+  - 预处理结果必须带结构化质量状态和 warnings。已完成第一版。
+  - 模糊、低置信度中缝、半页 fallback、页面比例异常、边缘疑似裁切必须能触发 review。已完成第一版。
+  - 前端能显示 scan quality 和 warning。待完成。
+  - review 结果进入 OCR/判分前必须可被教师确认。待完成。
+  - 真实失败样例能沉淀为回归记录。待扩展。
+
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 
 - 类型：Design

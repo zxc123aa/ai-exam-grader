@@ -576,11 +576,23 @@ async def preprocess_student_submission_photo(
             registration_notes=(
                 "Preprocessed from mobile photo; "
                 f"pages={len(preprocessed.pages)}, "
-                f"spread={preprocessed.spread_size[0]}x{preprocessed.spread_size[1]}"
+                f"spread={preprocessed.spread_size[0]}x{preprocessed.spread_size[1]}, "
+                f"scan_quality={preprocessed.quality_status}"
             ),
             registration_homography={
                 "source": "mobile_photo_preprocessing_v1",
                 "detected_quad": preprocessed.detected_quad,
+                "quality": {
+                    "status": preprocessed.quality_status,
+                    "warnings": [
+                        {
+                            "code": warning.code,
+                            "severity": warning.severity,
+                            "message": warning.message,
+                        }
+                        for warning in preprocessed.quality_warnings
+                    ],
+                },
                 "split": {
                     "strategy": preprocessed.split.strategy,
                     "gutter_ratio": preprocessed.split.gutter_ratio,

@@ -29,12 +29,21 @@ class SplitMetadata:
 
 
 @dataclass(frozen=True)
+class QualityWarning:
+    code: str
+    severity: str
+    message: str
+
+
+@dataclass(frozen=True)
 class PreprocessedExamPhoto:
     pdf_bytes: bytes
     pages: list[PreprocessedPage]
     detected_quad: list[list[float]]
     spread_size: tuple[int, int]
     split: SplitMetadata
+    quality_status: str
+    quality_warnings: list[QualityWarning]
     mask: np.ndarray
     warped_spread: np.ndarray
     enhanced_spread: np.ndarray
@@ -386,6 +395,115 @@ def split_spread(image: np.ndarray) -> tuple[list[PreprocessedPage], SplitMetada
     )
 
 
+def estimate_sharpness(image: np.ndarray) -> float:
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
+
+def edge_ink_ratio(page: np.ndarray, *, side: str) -> float:
+    gray = cv2.cvtColor(page, cv2.COLOR_BGR2GRAY)
+    height, width = gray.shape[:2]
+    band = max(8, int(min(height, width) * 0.035))
+    if side == "top":
+        roi = gray[:band, :]
+    elif side == "bottom":
+        roi = gray[-band:, :]
+    elif side == "left":
+        roi = gray[:, :band]
+    elif side == "right":
+        roi = gray[:, -band:]
+    else:
+        raise ValueError(f"Unknown edge side: {side}")
+    return float((roi < 80).mean())
+
+
+def build_quality_warnings(
+    *,
+    original: np.ndarray,
+    pages: list[PreprocessedPage],
+    split: SplitMetadata,
+    partial_landscape: bool,
+) -> list[QualityWarning]:
+    warnings: list[QualityWarning] = []
+    sharpness = estimate_sharpness(original)
+    if sharpness < 35:
+        warnings.append(
+            QualityWarning(
+                code="low_sharpness",
+                severity="warning",
+                message="Uploaded photo appears blurry; OCR and registration may be unreliable.",
+            )
+        )
+
+    if split.strategy == "center_fallback":
+        warnings.append(
+            QualityWarning(
+                code="low_gutter_confidence",
+                severity="warning",
+                message="Two-page split used center fallback because gutter confidence was low.",
+            )
+        )
+    elif (
+        split.gutter_confidence is not None
+        and split.gutter_confidence < 0.2
+        and len(pages) == 2
+    ):
+        warnings.append(
+            QualityWarning(
+                code="low_gutter_confidence",
+                severity="warning",
+                message="Detected two-page gutter has low confidence.",
+            )
+        )
+
+    if split.strategy == "split_half_page_fallback":
+        warnings.append(
+            QualityWarning(
+                code="split_half_page_fallback",
+                severity="warning",
+                message="Initial spread detection was incomplete; pages were recovered from left/right halves.",
+            )
+        )
+    elif partial_landscape:
+        warnings.append(
+            QualityWarning(
+                code="partial_spread_recovered",
+                severity="info",
+                message="Initial landscape detection looked partial and was recovered with fallback detection.",
+            )
+        )
+
+    for page in pages:
+        height, width = page.image.shape[:2]
+        aspect_ratio = width / height
+        if aspect_ratio < 0.45 or aspect_ratio > 1.05:
+            warnings.append(
+                QualityWarning(
+                    code="page_aspect_outlier",
+                    severity="warning",
+                    message=f"{page.name} has unusual page aspect ratio {aspect_ratio:.2f}.",
+                )
+            )
+        for side in ("top", "bottom", "left", "right"):
+            if edge_ink_ratio(page.image, side=side) > 0.18:
+                warnings.append(
+                    QualityWarning(
+                        code=f"content_near_{side}_edge",
+                        severity="warning",
+                        message=f"{page.name} has dark content near the {side} edge; crop should be reviewed.",
+                    )
+                )
+                break
+
+    return warnings
+
+
+def quality_status_from_warnings(warnings: list[QualityWarning]) -> str:
+    if any(warning.severity == "warning" for warning in warnings):
+        return "review"
+    return "pass"
+
+
 def encode_pdf(pages: list[PreprocessedPage]) -> bytes:
     pil_pages: list[Image.Image] = []
     for page in pages:
@@ -433,12 +551,20 @@ def preprocess_exam_photo_bytes(contents: bytes) -> PreprocessedExamPhoto:
             enhanced_spread = fallback.enhanced_spread
 
     pdf_bytes = encode_pdf(pages)
+    quality_warnings = build_quality_warnings(
+        original=image,
+        pages=pages,
+        split=split,
+        partial_landscape=partial_landscape,
+    )
     return PreprocessedExamPhoto(
         pdf_bytes=pdf_bytes,
         pages=pages,
         detected_quad=quad.round(1).tolist(),
         spread_size=(warped.shape[1], warped.shape[0]),
         split=split,
+        quality_status=quality_status_from_warnings(quality_warnings),
+        quality_warnings=quality_warnings,
         mask=mask,
         warped_spread=warped,
         enhanced_spread=enhanced_spread,

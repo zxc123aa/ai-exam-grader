@@ -106,19 +106,21 @@
 - 物理卷评估发现并修复扫描预处理新失败样例：`1.jpg` 原先只检测到左页、右页漏检；现在可通过 relaxed spread 检测输出双页。`2.jpg` 已补充内容保护边距和中缝空白带纠偏，避免顶部题干被裁掉或右页混入左页内容。
 - Kimi K2.7 调用已验证可用于题区级 fallback：综合题/实验题对公式和单位恢复优于 PaddleOCR，但整页调用耗时高且可能返回空 final text。
 - 扫描预处理回归已补充暗右页双页、暗顶部内容保留合成样本；后端完整测试已通过：`bash scripts/tests-start.sh`，94 passed，coverage 88%。
+- 扫描预处理已进入稳定性阶段：新增 `docs/scan-preprocessing-stability-plan.md`，后端结果已带 `quality_status=pass|review` 和 `quality_warnings[]`，API metadata 已写入 `registration_homography.quality`。
 
 ## 进行中
 
-- 周期 4 下一块能力：扩大题区级 OCR 质量评估，并推进 Kimi 题区级 fallback / AI 判分草稿接入。
+- 周期 4 下一块能力：先补齐扫描预处理质量门禁前端提示和人工确认入口，再扩大题区级 OCR 质量评估，并推进 Kimi 题区级 fallback / AI 判分草稿接入。
 
 ## 下一步
 
-1. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
-2. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
-3. 继续收集扫描失败样例，验证 relaxed spread、内容保护边距、半页 fallback 和中缝纠偏在阴影、褶皱、低对比度场景下的鲁棒性。
-4. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-5. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
-6. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+1. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
+2. 继续收集扫描失败样例，验证 relaxed spread、内容保护边距、半页 fallback、中缝纠偏和质量门禁在阴影、褶皱、低对比度场景下的鲁棒性。
+3. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
+4. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
+5. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+6. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
+7. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 

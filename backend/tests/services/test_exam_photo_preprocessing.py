@@ -1,6 +1,6 @@
 from io import BytesIO
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 
 from app.services.exam_photo_preprocessing import preprocess_exam_photo_bytes
 
@@ -101,6 +101,14 @@ def build_dim_top_spread_photo() -> bytes:
     return buffer.getvalue()
 
 
+def build_blurry_scan_photo() -> bytes:
+    image = Image.open(BytesIO(build_scan_photo(size=(360, 220), spread=True)))
+    image = image.filter(ImageFilter.GaussianBlur(radius=8))
+    buffer = BytesIO()
+    image.save(buffer, format="JPEG", quality=95)
+    return buffer.getvalue()
+
+
 def test_preprocess_exam_photo_splits_landscape_spread() -> None:
     result = preprocess_exam_photo_bytes(
         build_scan_photo(size=(360, 220), spread=True)
@@ -115,6 +123,8 @@ def test_preprocess_exam_photo_splits_landscape_spread() -> None:
     assert result.pages[0].x_end > result.pages[1].x_start
     assert result.pages[1].x_end == result.spread_size[0]
     assert result.pdf_bytes.startswith(b"%PDF")
+    assert result.quality_status in {"pass", "review"}
+    assert isinstance(result.quality_warnings, list)
 
 
 def test_preprocess_exam_photo_recovers_dim_right_page() -> None:
@@ -139,6 +149,14 @@ def test_preprocess_exam_photo_preserves_dim_top_content() -> None:
     top_band = result.pages[1].image[: int(result.pages[1].image.shape[0] * 0.2)]
     dark_pixel_ratio = ((top_band < 70).all(axis=2)).mean()
     assert dark_pixel_ratio > 0.02
+    assert result.pdf_bytes.startswith(b"%PDF")
+
+
+def test_preprocess_exam_photo_flags_blurry_upload_for_review() -> None:
+    result = preprocess_exam_photo_bytes(build_blurry_scan_photo())
+
+    assert result.quality_status == "review"
+    assert any(warning.code == "low_sharpness" for warning in result.quality_warnings)
     assert result.pdf_bytes.startswith(b"%PDF")
 
 
