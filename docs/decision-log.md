@@ -43,3 +43,10 @@
 - 状态：Accepted
 - 决策：当前阶段先在 `docs/issue-backlog.md` 中维护 issue 草稿，后续再迁移到 GitHub Issues。
 - 原因：远程仓库当前为空，代码工程尚未初始化；本地文档更适合快速搭建骨架和持续润色。
+
+## D-007 复用 OCR 服务承载 Paddle 文档预处理
+
+- 日期：2026-07-03
+- 状态：Accepted
+- 决策：扫描 V2 的 Paddle 文档预处理能力先复用现有 `ocr-service` GPU 容器，通过 `POST /preprocess` 暴露；不要新建独立 `scan-service` 镜像重复安装 Paddle/PaddleX。`SCAN_ENGINE=scan_http` 默认指向 `http://ocr-service:8010/preprocess`。
+- 原因：本机 Docker 在 Windows Docker Desktop 中运行，现有 `ocr-service` 镜像已经安装并验证 `paddlepaddle-gpu==3.3.0` cu130 和 PaddleOCR；重复构建独立扫描镜像会再次下载约 10GB 级依赖，浪费时间和磁盘。实机验证表明 Paddle DocPreprocessor 是单图方向/几何矫正模块，不是横向双页拆分器，因此它应作为“每页矫正”模块使用；横向双页仍需要先做页面检测/拆页，后续优先走页面 polygon 分割模型。
