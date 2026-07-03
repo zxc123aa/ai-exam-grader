@@ -476,6 +476,22 @@
   - review 结果进入 OCR/判分前必须可被教师确认。待完成。
   - 真实失败样例能沉淀为回归记录。待扩展。
 
+### AEG-033 扫描引擎 V2 独立服务与可插拔架构
+
+- 类型：Architecture
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 3 前置 / 扫描稳定性阶段
+- 目标：停止继续堆 OpenCV 补丁，建立可替换扫描引擎边界，支持后续 Paddle 文档预处理、页面 polygon 分割模型或移动端扫描 SDK 接入。
+- 进展：已新增 `SCAN_ENGINE=opencv_v1|scan_http` 和 `SCAN_HTTP_URL`；后端 `preprocess-photo` 已通过统一 scan adapter 调用；已复用现有 `ocr-service` Paddle GPU 容器新增 `/preprocess`；`scan_http` 已有 fake HTTP 回归测试覆盖。Docker 实机已验证 `/preprocess` 对 `materials/physics/2.jpg` 返回 1 个 Paddle DocPreprocessor 预处理图，耗时约 14.5s。
+- 决策：OpenCV v1 保留为 baseline/fallback；模型能力先复用现有 `ocr-service` 容器，避免重复构建 Paddle 镜像。后续负载上来后再拆独立服务。
+- 验收标准：
+  - 默认 `opencv_v1` 不破坏现有手机照片转 PDF 流程。已完成。
+  - `scan_http` 能通过 HTTP 返回页面图、质量状态和 split metadata。已完成 fake 回归。
+  - `ocr-service` 能提供 `/ocr` 和 `/preprocess`。已完成 Docker 实机验证。
+  - 真实 Paddle 文档预处理对 `materials/physics/1.jpg`、`2.jpg` 完成 A/B 评估。已完成第一张 `2.jpg`，结论是 DocPreprocessor 不是双页拆分器。
+  - 若真实评估仍不稳，进入页面 polygon 分割模型标注与训练。待决策。
+
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 
 - 类型：Design

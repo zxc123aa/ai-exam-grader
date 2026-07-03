@@ -107,6 +107,7 @@
 - Kimi K2.7 调用已验证可用于题区级 fallback：综合题/实验题对公式和单位恢复优于 PaddleOCR，但整页调用耗时高且可能返回空 final text。
 - 扫描预处理回归已补充暗右页双页、暗顶部内容保留合成样本；后端完整测试已通过：`bash scripts/tests-start.sh`，94 passed，coverage 88%。
 - 扫描预处理已进入稳定性阶段：新增 `docs/scan-preprocessing-stability-plan.md`，后端结果已带 `quality_status=pass|review` 和 `quality_warnings[]`，API metadata 已写入 `registration_homography.quality`。
+- 扫描引擎 V2 骨架已开始落地：新增 `SCAN_ENGINE=opencv_v1|scan_http`，复用现有 `ocr-service` Paddle GPU 容器提供 `/preprocess`，后端 scan HTTP adapter 和 fake HTTP 回归测试已补齐；OpenCV v1 保留为默认 baseline。实机验证显示 Paddle DocPreprocessor 可作为单页矫正模块，但不是双页拆分器。
 
 ## 进行中
 
@@ -114,13 +115,14 @@
 
 ## 下一步
 
-1. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
-2. 继续收集扫描失败样例，验证 relaxed spread、内容保护边距、半页 fallback、中缝纠偏和质量门禁在阴影、褶皱、低对比度场景下的鲁棒性。
-3. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
-4. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
-5. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-6. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
-7. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+1. Docker 实机验证 `ocr-service` 新增 `/preprocess`：`docker compose --profile ocr-gpu up --build ocr-service`，并用 `materials/physics/1.jpg`、`2.jpg` 做 A/B。
+2. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
+3. 继续收集扫描失败样例，验证 relaxed spread、内容保护边距、半页 fallback、中缝纠偏和质量门禁在阴影、褶皱、低对比度场景下的鲁棒性。
+4. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
+5. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
+6. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+7. 接入 AI 判分草稿，把识别文本和题区证据转为建议分数/评语。
+8. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 

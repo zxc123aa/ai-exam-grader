@@ -48,10 +48,7 @@ from app.models import (
     User,
     get_datetime_utc,
 )
-from app.services.exam_photo_preprocessing import (
-    PhotoPreprocessingError,
-    preprocess_exam_photo_bytes,
-)
+from app.services.exam_photo_preprocessing import PhotoPreprocessingError
 from app.services.file_storage import (
     SCAN_PHOTO_CONTENT_TYPES,
     assert_allowed_signature,
@@ -67,6 +64,7 @@ from app.services.pdf_rendering import (
     get_pdf_page_count,
     render_pdf_page_png,
 )
+from app.services.scan_preprocessing import preprocess_scan_photo_bytes
 from app.services.submission_crops import (
     SubmissionCropError,
     crop_region_png,
@@ -548,7 +546,11 @@ async def preprocess_student_submission_photo(
         content_type=file.content_type,
     )
     try:
-        preprocessed = preprocess_exam_photo_bytes(contents)
+        preprocessed = preprocess_scan_photo_bytes(
+            contents,
+            filename=file.filename or "scan-photo.jpg",
+            content_type=file.content_type or "image/jpeg",
+        )
     except PhotoPreprocessingError as exc:
         raise HTTPException(
             status_code=422,
@@ -581,6 +583,7 @@ async def preprocess_student_submission_photo(
             ),
             registration_homography={
                 "source": "mobile_photo_preprocessing_v1",
+                "scan_engine": settings.SCAN_ENGINE,
                 "detected_quad": preprocessed.detected_quad,
                 "quality": {
                     "status": preprocessed.quality_status,

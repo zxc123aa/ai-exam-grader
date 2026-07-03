@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import uuid
 from io import BytesIO
 
@@ -12,7 +13,7 @@ from starlette.datastructures import Headers
 from app import crud
 from app.core.config import settings
 from app.models import UserCreate
-from app.services import ocr
+from app.services import ocr, scan_preprocessing
 from app.services.file_storage import store_upload_file
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
@@ -640,6 +641,7 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     assert content["registration_homography"]["source"] == (
         "mobile_photo_preprocessing_v1"
     )
+    assert content["registration_homography"]["scan_engine"] == "opencv_v1"
     assert content["registration_homography"]["quality"]["status"] in {
         "pass",
         "review",
@@ -662,6 +664,73 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     assert page_response.status_code == 200
     assert page_response.headers["content-type"] == "image/png"
     assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_preprocess_student_submission_photo_uses_scan_http_engine(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Scan HTTP Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    page_b64 = base64.b64encode(build_test_png()).decode()
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "engine": "paddlex_doc_preprocessor_v1",
+                "pages": [
+                    {
+                        "name": "page_1.jpg",
+                        "image_base64": page_b64,
+                    }
+                ],
+                "quality": {
+                    "status": "review",
+                    "warnings": [
+                        {
+                            "code": "content_near_top_edge",
+                            "severity": "warning",
+                            "message": "Crop should be reviewed.",
+                        }
+                    ],
+                },
+                "split": {"strategy": "scan_service_single_page"},
+            }
+
+    def fake_post(*_args, **_kwargs):
+        return FakeResponse()
+
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "scan_http")
+    monkeypatch.setattr(scan_preprocessing.httpx, "post", fake_post)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/preprocess-photo",
+        headers=superuser_token_headers,
+        files={"file": ("phone.jpg", SCAN_PHOTO_BYTES, "image/jpeg")},
+        data={"student_name": "Student Scan HTTP"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["student_name"] == "Student Scan HTTP"
+    assert content["page_count"] == 1
+    assert "scan_quality=review" in content["registration_notes"]
+    assert content["registration_homography"]["scan_engine"] == "scan_http"
+    assert content["registration_homography"]["quality"]["status"] == "review"
+    assert content["registration_homography"]["quality"]["warnings"][0]["code"] == (
+        "content_near_top_edge"
+    )
+    assert content["registration_homography"]["split"]["strategy"] == (
+        "scan_service_single_page"
+    )
 
 
 def test_read_student_submission_page_image(

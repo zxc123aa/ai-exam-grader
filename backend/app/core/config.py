@@ -62,6 +62,9 @@ class Settings(BaseSettings):
     OCR_TESSERACT_COMMAND: str = "tesseract"
     OCR_HTTP_URL: str = "http://ocr-service:8010/ocr"
     OCR_HTTP_TIMEOUT_SECONDS: int = 60
+    SCAN_ENGINE: Literal["opencv_v1", "scan_http"] = "opencv_v1"
+    SCAN_HTTP_URL: str = "http://ocr-service:8010/preprocess"
+    SCAN_HTTP_TIMEOUT_SECONDS: int = 120
 
     @computed_field  # type: ignore[prop-decorator]
     @property
