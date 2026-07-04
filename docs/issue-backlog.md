@@ -499,15 +499,35 @@
 - 状态：In Progress
 - 所属周期：周期 2 / AI 一键建立试卷模板
 - 目标：在空白试卷页面上自动给出题目区域候选框，减少教师手工框选成本，但正式 `ExamRegion` 仍必须由教师确认后保存。
-- 进展：已新增 `layout_projection_v0` 后端候选分割服务和只读接口 `GET /api/v1/exams/{exam_id}/files/{document_id}/region-candidates`；候选结果包含归一化坐标、置信度、标签和 engine；接口不写入正式题区。标定页已接入 Detect regions，候选框以虚线草稿显示，教师点击候选后仍需 Save Region 才会写入正式题区。
-- 决策：当前阶段只做候选草稿，不做盲自动落库。后续优先接入标定页让教师确认/调整；生产级准确切题应结合 OCR layout、题号 anchor 或页面区域分割模型，而不是继续堆 OpenCV 特例补丁。
-- 验证：`pytest tests/api/routes/test_exams.py::test_read_exam_region_candidates -q` 已通过；`uv run ruff check app/models.py app/services/question_segmentation.py app/api/routes/exams.py tests/api/routes/test_exams.py` 已通过；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，23 paths；`bash scripts/tests-start.sh` 已通过，99 passed，coverage 88%；`npm run --workspace frontend lint` 和 `npm run --workspace frontend build` 已通过；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts -g "suggested regions" --project=chromium --reporter=line` 已通过，2 passed。
+- 进展：已新增 `layout_projection_v0` 后端候选分割服务和只读接口 `GET /api/v1/exams/{exam_id}/files/{document_id}/region-candidates`；候选结果包含归一化坐标、置信度、标签和 engine；接口不写入正式题区。标定页已接入 Detect regions，候选框以虚线草稿显示，教师点击候选后仍需 Save Region 才会写入正式题区。已新增真实样本评估脚本和报告，7 个英语/物理单页样本结果为 `0 pass / 1 review / 6 fail`。
+- 决策：当前阶段只做候选草稿，不做盲自动落库。`layout_projection_v0` 只能保留为 fallback；生产级准确切题应结合 OCR layout、题号 anchor 或页面区域分割模型，而不是继续堆 OpenCV 特例补丁。
+- 验证：`pytest tests/api/routes/test_exams.py::test_read_exam_region_candidates -q` 已通过；`uv run ruff check app/models.py app/services/question_segmentation.py app/api/routes/exams.py tests/api/routes/test_exams.py` 已通过；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，23 paths；`bash scripts/tests-start.sh` 已通过，99 passed，coverage 88%；`npm run --workspace frontend lint` 和 `npm run --workspace frontend build` 已通过；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium npx playwright test tests/exams.spec.ts -g "suggested regions" --project=chromium --reporter=line` 已通过，2 passed；`PYTHONPATH=backend python3 scripts/evaluate_question_segmentation.py` 已生成评估报告。
 - 验收标准：
   - 空白卷页面能返回稳定的候选题区列表。已完成第一版。
   - 候选题区不得自动创建或覆盖正式 `ExamRegion`。已完成。
   - OpenAPI smoke 覆盖候选接口。已完成。
   - 标定页能将候选框作为草稿导入，并由教师确认后保存。已完成第一版。
-  - 在真实物理卷、英语卷等样本上形成候选质量评估和失败样例集。待完成。
+  - 在真实物理卷、英语卷等样本上形成候选质量评估和失败样例集。已完成第一版。
+  - 基于 OCR layout 和题号 anchor 生成下一版候选框。待完成。
+
+### AEG-035 OCR layout + 题号 anchor 题目候选分割
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Ready
+- 所属周期：周期 2 / AI 一键建立试卷模板
+- 目标：在 `layout_projection_v0` 真实样本失败后，新增基于 OCR 文本框、题号 anchor、栏边界和纵向空白带的 `layout_ocr_anchor_v1`，生成更接近真实题目边界的候选框。
+- 背景：`docs/question-segmentation-evaluation.md` 显示当前投影算法在 7 个真实单页样本上 `0 pass / 1 review / 6 fail`，主要是整页误框。继续调 OpenCV 膨胀参数收益有限。
+- 设计方向：
+  - OCR 层先复用 `ocr-service`，优先获取文本框和文本行，而不是只取 plain text。
+  - 题号 anchor 支持中文/英文/数字题号形态，例如 `1.`、`1、`、`一、`、`第1题`。
+  - 候选框由相邻题号 anchor 的 y 区间、同栏边界和页面空白带共同约束。
+  - 输出仍是草稿候选，不自动落库，继续由教师确认保存。
+- 验收标准：
+  - 至少覆盖 `docs/question-segmentation-evaluation.md` 中的英语/物理样本。
+  - 相比 `layout_projection_v0`，真实多题页面不再出现整页单候选作为主要输出。
+  - 生成可复现评估报告，记录 pass/review/fail 和失败样例。
+  - 标定页可选择 `layout_ocr_anchor_v1` 候选结果，教师确认后保存正式题区。
 
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 

@@ -50,3 +50,10 @@
 - 状态：Accepted
 - 决策：扫描 V2 的 Paddle 文档预处理能力先复用现有 `ocr-service` GPU 容器，通过 `POST /preprocess` 暴露；不要新建独立 `scan-service` 镜像重复安装 Paddle/PaddleX。`SCAN_ENGINE=scan_http` 默认指向 `http://ocr-service:8010/preprocess`。
 - 原因：本机 Docker 在 Windows Docker Desktop 中运行，现有 `ocr-service` 镜像已经安装并验证 `paddlepaddle-gpu==3.3.0` cu130 和 PaddleOCR；重复构建独立扫描镜像会再次下载约 10GB 级依赖，浪费时间和磁盘。实机验证表明 Paddle DocPreprocessor 是单图方向/几何矫正模块，不是横向双页拆分器，因此它应作为“每页矫正”模块使用；横向双页仍需要先做页面检测/拆页，后续优先走页面 polygon 分割模型。
+
+## D-008 题目分割从版面投影转向 OCR anchor
+
+- 日期：2026-07-05
+- 状态：Accepted
+- 决策：`layout_projection_v0` 仅保留为候选草稿 fallback，不作为准确题目分割方案继续堆参数补丁。下一版题目候选分割优先走 OCR layout + 题号 anchor；若真实样本仍不稳，再进入页面区域分割模型路线。
+- 原因：`docs/question-segmentation-evaluation.md` 对 7 个英语/物理真实单页样本评估结果为 `0 pass / 1 review / 6 fail`，主要失败是 `dominant_whole_page_candidate` 整页误框。版面投影和连通区域合并缺少题号、栏边界和语义约束，无法可靠判断题目边界。
