@@ -21,6 +21,7 @@ from app.models import (
     ExamDocumentType,
     ExamPublic,
     ExamRegion,
+    ExamRegionCandidatesPublic,
     ExamRegionCreate,
     ExamRegionPublic,
     ExamRegionsPublic,
@@ -63,6 +64,13 @@ from app.services.pdf_rendering import (
     InvalidPdfError,
     get_pdf_page_count,
     render_pdf_page_png,
+)
+from app.services.question_segmentation import (
+    ENGINE_NAME as QUESTION_SEGMENTATION_ENGINE,
+)
+from app.services.question_segmentation import (
+    decode_image,
+    find_question_region_candidates,
 )
 from app.services.scan_preprocessing import preprocess_scan_photo_bytes
 from app.services.submission_crops import (
@@ -246,6 +254,26 @@ def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> R
         media_type=stored_file.content_type or "application/octet-stream",
         filename=stored_file.original_filename,
     )
+
+
+def read_stored_file_page_image_bytes(
+    *, stored_file: StoredFile, page_number: int
+) -> bytes:
+    path = get_stored_file_path(stored_file)
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="Stored file not found")
+    if page_number < 1:
+        raise HTTPException(status_code=422, detail="Page number must be at least 1")
+    if stored_file.content_type == "application/pdf":
+        try:
+            return render_pdf_page_png(path, page_number)
+        except InvalidPdfError:
+            raise HTTPException(status_code=415, detail="Stored PDF could not be opened")
+        except IndexError:
+            raise HTTPException(status_code=404, detail="PDF page not found")
+    if page_number != 1:
+        raise HTTPException(status_code=404, detail="Image file has only one page")
+    return path.read_bytes()
 
 
 def crop_region_from_stored_file(
@@ -447,6 +475,40 @@ def read_exam_file_page_image(
         document_id=document_id,
     )
     return build_page_image_response(stored_file=stored_file, page_number=page_number)
+
+
+@router.get(
+    "/{exam_id}/files/{document_id}/region-candidates",
+    response_model=ExamRegionCandidatesPublic,
+)
+def read_exam_region_candidates(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    document_id: uuid.UUID,
+    page_number: int = 1,
+) -> ExamRegionCandidatesPublic:
+    _exam_document, stored_file = get_exam_document_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        document_id=document_id,
+    )
+    page_bytes = read_stored_file_page_image_bytes(
+        stored_file=stored_file,
+        page_number=page_number,
+    )
+    try:
+        image = decode_image(page_bytes)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Could not decode page image")
+    candidates = find_question_region_candidates(image, page_number=page_number)
+    return ExamRegionCandidatesPublic(
+        data=candidates,
+        count=len(candidates),
+        page_number=page_number,
+        engine=QUESTION_SEGMENTATION_ENGINE,
+    )
 
 
 @router.post("/{exam_id}/submissions", response_model=StudentSubmissionPublic)

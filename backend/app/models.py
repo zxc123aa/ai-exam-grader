@@ -335,6 +335,26 @@ class ExamRegionsPublic(SQLModel):
     count: int
 
 
+class ExamRegionCandidate(SQLModel):
+    label: str
+    region_type: ExamRegionType = ExamRegionType.QUESTION
+    page_number: int = Field(default=1, ge=1)
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+    width: float = Field(gt=0, le=1)
+    height: float = Field(gt=0, le=1)
+    confidence: float = Field(ge=0, le=1)
+    source: str
+    reasons: list[str] = Field(default_factory=list)
+
+
+class ExamRegionCandidatesPublic(SQLModel):
+    data: list[ExamRegionCandidate]
+    count: int
+    page_number: int
+    engine: str
+
+
 class StudentSubmissionBase(SQLModel):
     student_name: str | None = Field(default=None, max_length=255)
     student_identifier: str | None = Field(default=None, max_length=100)

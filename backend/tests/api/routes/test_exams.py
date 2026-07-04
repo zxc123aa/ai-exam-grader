@@ -40,9 +40,23 @@ def build_test_scan_photo() -> bytes:
     return buffer.getvalue()
 
 
+def build_question_layout_page() -> bytes:
+    image = Image.new("RGB", (800, 1100), color=(255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    y_positions = [110, 330, 560]
+    for index, y in enumerate(y_positions, start=1):
+        draw.text((70, y), f"{index}. Question {index}", fill=(20, 20, 20))
+        draw.rectangle((70, y + 38, 720, y + 92), outline=(30, 30, 30), width=3)
+        draw.line((90, y + 130, 700, y + 130), fill=(30, 30, 30), width=3)
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 PNG_BYTES = b"\x89PNG\r\n\x1a\nexam image bytes"
 VALID_PNG_BYTES = build_test_png()
 SCAN_PHOTO_BYTES = build_test_scan_photo()
+QUESTION_LAYOUT_BYTES = build_question_layout_page()
 PDF_BYTES = b"""%PDF-1.4
 1 0 obj
 << /Type /Catalog /Pages 2 0 R >>
@@ -292,6 +306,48 @@ def test_read_pdf_exam_file_page_image(
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_read_exam_region_candidates(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Candidate Regions Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files",
+        headers=superuser_token_headers,
+        files={"file": ("layout.png", QUESTION_LAYOUT_BYTES, "image/png")},
+    )
+    document_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files/{document_id}/region-candidates",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["engine"] == "layout_projection_v0"
+    assert content["page_number"] == 1
+    assert content["count"] >= 3
+    first = content["data"][0]
+    assert first["label"] == "Q1"
+    assert first["region_type"] == "question"
+    assert 0 <= first["x"] < 1
+    assert 0 <= first["y"] < 1
+    assert first["width"] > 0
+    assert first["height"] > 0
+    assert first["confidence"] > 0
+
+    regions_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+    )
+    assert regions_response.json()["count"] == 0
 
 
 def test_read_pdf_exam_file_page_image_not_found(

@@ -492,6 +492,23 @@
   - 真实 Paddle 文档预处理对 `materials/physics/1.jpg`、`2.jpg` 完成 A/B 评估。已完成第一张 `2.jpg`，结论是 DocPreprocessor 不是双页拆分器。
   - 若真实评估仍不稳，进入页面 polygon 分割模型标注与训练。待决策。
 
+### AEG-034 题目区域自动候选分割
+
+- 类型：Feature
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 2 / AI 一键建立试卷模板
+- 目标：在空白试卷页面上自动给出题目区域候选框，减少教师手工框选成本，但正式 `ExamRegion` 仍必须由教师确认后保存。
+- 进展：已新增 `layout_projection_v0` 后端候选分割服务和只读接口 `GET /api/v1/exams/{exam_id}/files/{document_id}/region-candidates`；候选结果包含归一化坐标、置信度、标签和 engine；接口不写入正式题区。
+- 决策：当前阶段只做候选草稿，不做盲自动落库。后续优先接入标定页让教师确认/调整；生产级准确切题应结合 OCR layout、题号 anchor 或页面区域分割模型，而不是继续堆 OpenCV 特例补丁。
+- 验证：`pytest tests/api/routes/test_exams.py::test_read_exam_region_candidates -q` 已通过；`uv run ruff check app/models.py app/services/question_segmentation.py app/api/routes/exams.py tests/api/routes/test_exams.py` 已通过；`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 已通过，23 paths；`bash scripts/tests-start.sh` 已通过，99 passed，coverage 88%。
+- 验收标准：
+  - 空白卷页面能返回稳定的候选题区列表。已完成第一版。
+  - 候选题区不得自动创建或覆盖正式 `ExamRegion`。已完成。
+  - OpenAPI smoke 覆盖候选接口。已完成。
+  - 标定页能将候选框作为草稿导入，并由教师确认后保存。待完成。
+  - 在真实物理卷、英语卷等样本上形成候选质量评估和失败样例集。待完成。
+
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 
 - 类型：Design
