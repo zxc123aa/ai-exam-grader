@@ -42,6 +42,8 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    volumes:
+      - ocr-model-cache:/root/.paddlex
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8010/health"]
       interval: 30s
@@ -255,6 +257,7 @@ services:
       - traefik.http.routers.${STACK_NAME?Variable not set}-frontend-http.middlewares=https-redirect
 volumes:
   app-db-data:
+  ocr-model-cache:
 
 networks:
   traefik-public:

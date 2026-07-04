@@ -213,6 +213,7 @@ export class ExamsService {
      * @param data.examId
      * @param data.documentId
      * @param data.pageNumber
+     * @param data.engine
      * @returns ExamRegionCandidatesPublic Successful Response
      * @throws ApiError
      */
@@ -225,7 +226,8 @@ export class ExamsService {
                 document_id: data.documentId
             },
             query: {
-                page_number: data.pageNumber
+                page_number: data.pageNumber,
+                engine: data.engine
             },
             errors: {
                 422: 'Validation Error'

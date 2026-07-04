@@ -84,13 +84,15 @@ curl http://localhost:8010/health
 - `GET http://localhost:8010/health` 返回 `{"status":"ok","engine":"paddleocr-gpu-cu130"}`。
 - 容器内 `paddlepaddle-gpu==3.3.0`、`paddle.device.get_device()` 为 `gpu:0`，`paddle.utils.run_check()` 通过。
 - `POST /ocr` 使用 `materials/English/processed/test1/page_1_left.jpg` 返回真实试卷文本，`confidence` 约 `0.989`，`engine` 为 `paddleocr-gpu-cu130`。
+- `POST /ocr` 已返回 `raw.lines[]`，包含文本、置信度、box 和 polygon，可供 `layout_ocr_anchor_v1` 题目候选分割使用。
+- Compose 已新增 `ocr-model-cache:/root/.paddlex`，避免重建 `ocr-service` 后重复下载 Paddle 官方模型。
 - 后端 Worker 已有回归测试覆盖 `OCR_ENGINE=paddle_http` 时把 HTTP OCR 结果写入 `SubmissionAnnotation`。
 
 ## 后续验证
 
 1. 打开教师复核页，运行处理任务，确认 OCR draft 不再是 `not configured`。
 2. 用更多真实题区 PNG 记录识别质量，决定是否需要图像增强、语言模型、或 Kimi 低置信度复核。
-3. 给 `ocr-service` 增加模型缓存卷，避免容器重建后重复下载 PaddleOCR 模型权重。
+3. 继续记录 `raw.lines[]` 在真实题区和整页样本上的 box/polygon 质量。
 
 ## 注意
 

@@ -13,7 +13,7 @@ from starlette.datastructures import Headers
 from app import crud
 from app.core.config import settings
 from app.models import UserCreate
-from app.services import ocr, scan_preprocessing
+from app.services import ocr, question_segmentation, scan_preprocessing
 from app.services.file_storage import store_upload_file
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
@@ -348,6 +348,67 @@ def test_read_exam_region_candidates(
         headers=superuser_token_headers,
     )
     assert regions_response.json()["count"] == 0
+
+
+def test_read_exam_region_candidates_with_ocr_anchor_engine(
+    client: TestClient, superuser_token_headers: dict[str, str], monkeypatch
+) -> None:
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return {
+                "status": "succeeded",
+                "raw": {
+                    "lines": [
+                        {
+                            "text": "1. Question one",
+                            "confidence": 0.95,
+                            "box": [70, 110, 220, 135],
+                        },
+                        {
+                            "text": "2. Question two",
+                            "confidence": 0.96,
+                            "box": [70, 330, 220, 355],
+                        },
+                        {
+                            "text": "3. Question three",
+                            "confidence": 0.97,
+                            "box": [70, 560, 240, 585],
+                        },
+                    ]
+                },
+            }
+
+    def fake_post(*_args, **_kwargs):
+        return FakeResponse()
+
+    monkeypatch.setattr(question_segmentation.httpx, "post", fake_post)
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "OCR Anchor Candidate Regions Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files",
+        headers=superuser_token_headers,
+        files={"file": ("layout.png", QUESTION_LAYOUT_BYTES, "image/png")},
+    )
+    document_id = upload_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files/{document_id}/region-candidates"
+        "?engine=layout_ocr_anchor_v1",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["engine"] == "layout_ocr_anchor_v1"
+    assert content["count"] == 3
+    assert content["data"][0]["source"] == "layout_ocr_anchor_v1"
 
 
 def test_read_pdf_exam_file_page_image_not_found(

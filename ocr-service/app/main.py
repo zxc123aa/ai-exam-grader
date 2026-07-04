@@ -3,6 +3,7 @@ from __future__ import annotations
 import tempfile
 import base64
 import time
+import math
 from pathlib import Path
 from typing import Any
 
@@ -58,21 +59,40 @@ def to_plain_result(value: Any) -> Any:
     return value
 
 
+def as_sequence(value: Any) -> list[Any] | None:
+    if isinstance(value, np.ndarray):
+        return value.tolist()
+    if isinstance(value, list | tuple):
+        return list(value)
+    return None
+
+
+def to_finite_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def to_finite_int(value: Any) -> int | None:
+    number = to_finite_float(value)
+    return int(number) if number is not None else None
+
+
 def collect_texts_and_scores(value: Any) -> tuple[list[str], list[float]]:
     texts: list[str] = []
     scores: list[float] = []
 
     def walk(item: Any) -> None:
         if isinstance(item, dict):
-            rec_texts = item.get("rec_texts")
-            if isinstance(rec_texts, list):
+            rec_texts = as_sequence(item.get("rec_texts"))
+            if rec_texts is not None:
                 texts.extend(str(text).strip() for text in rec_texts if str(text).strip())
-            rec_scores = item.get("rec_scores")
-            if isinstance(rec_scores, list):
+            rec_scores = as_sequence(item.get("rec_scores"))
+            if rec_scores is not None:
                 scores.extend(
-                    float(score)
-                    for score in rec_scores
-                    if isinstance(score, int | float)
+                    score for value in rec_scores if (score := to_finite_float(value)) is not None
                 )
             for nested in item.values():
                 walk(nested)
@@ -83,6 +103,76 @@ def collect_texts_and_scores(value: Any) -> tuple[list[str], list[float]]:
 
     walk(value)
     return texts, scores
+
+
+def collect_text_lines(value: Any) -> list[dict[str, Any]]:
+    lines: list[dict[str, Any]] = []
+
+    def walk(item: Any) -> None:
+        if isinstance(item, dict):
+            rec_texts = as_sequence(item.get("rec_texts"))
+            rec_scores = as_sequence(item.get("rec_scores"))
+            rec_boxes = as_sequence(item.get("rec_boxes"))
+            rec_polys = item.get("rec_polys")
+            if rec_polys is None:
+                rec_polys = item.get("dt_polys")
+            rec_polys = as_sequence(rec_polys)
+            if rec_texts is not None:
+                for index, raw_text in enumerate(rec_texts):
+                    text = str(raw_text).strip()
+                    if not text:
+                        continue
+                    score = None
+                    if rec_scores is not None and index < len(rec_scores):
+                        score = to_finite_float(rec_scores[index])
+                    box = None
+                    if rec_boxes is not None and index < len(rec_boxes):
+                        raw_box = as_sequence(rec_boxes[index])
+                        if raw_box is not None and len(raw_box) >= 4:
+                            box_values = [
+                                to_finite_int(coordinate) for coordinate in raw_box[:4]
+                            ]
+                            if all(coordinate is not None for coordinate in box_values):
+                                box = [coordinate for coordinate in box_values if coordinate is not None]
+                    polygon = None
+                    if rec_polys is not None and index < len(rec_polys):
+                        raw_polygon = as_sequence(rec_polys[index])
+                        if raw_polygon is not None:
+                            polygon = []
+                            for raw_point in raw_polygon:
+                                point = as_sequence(raw_point)
+                                if point is None or len(point) < 2:
+                                    continue
+                                x = to_finite_int(point[0])
+                                y = to_finite_int(point[1])
+                                if x is not None and y is not None:
+                                    polygon.append([x, y])
+                    if box is None and polygon:
+                        x_values = [point[0] for point in polygon]
+                        y_values = [point[1] for point in polygon]
+                        box = [
+                            min(x_values),
+                            min(y_values),
+                            max(x_values),
+                            max(y_values),
+                        ]
+                    lines.append(
+                        {
+                            "text": text,
+                            "confidence": score,
+                            "box": box,
+                            "polygon": polygon,
+                        }
+                    )
+            for nested in item.values():
+                walk(nested)
+            return
+        if isinstance(item, list | tuple):
+            for nested in item:
+                walk(nested)
+
+    walk(value)
+    return lines
 
 
 def collect_output_images(value: Any) -> list[np.ndarray]:
@@ -175,6 +265,7 @@ async def run_ocr(file: UploadFile) -> dict[str, Any]:
         result = get_ocr_model().predict(input=str(temp_path))
         plain_result = to_plain_result(result)
         texts, scores = collect_texts_and_scores(plain_result)
+        lines = collect_text_lines(plain_result)
         confidence = sum(scores) / len(scores) if scores else None
         return {
             "status": "succeeded",
@@ -184,6 +275,7 @@ async def run_ocr(file: UploadFile) -> dict[str, Any]:
             "raw": {
                 "text_count": len(texts),
                 "score_count": len(scores),
+                "lines": lines,
             },
         }
     finally:

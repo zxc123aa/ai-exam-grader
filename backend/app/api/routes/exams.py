@@ -69,6 +69,8 @@ from app.services.question_segmentation import (
     ENGINE_NAME as QUESTION_SEGMENTATION_ENGINE,
 )
 from app.services.question_segmentation import (
+    OCR_ANCHOR_ENGINE_NAME,
+    QuestionSegmentationEngine,
     decode_image,
     find_question_region_candidates,
 )
@@ -487,7 +489,12 @@ def read_exam_region_candidates(
     exam_id: uuid.UUID,
     document_id: uuid.UUID,
     page_number: int = 1,
+    engine: QuestionSegmentationEngine = QUESTION_SEGMENTATION_ENGINE,
 ) -> ExamRegionCandidatesPublic:
+    if engine not in {QUESTION_SEGMENTATION_ENGINE, OCR_ANCHOR_ENGINE_NAME}:
+        raise HTTPException(
+            status_code=422, detail=f"Unsupported segmentation engine: {engine}"
+        )
     _exam_document, stored_file = get_exam_document_for_user(
         session=session,
         current_user=current_user,
@@ -502,12 +509,14 @@ def read_exam_region_candidates(
         image = decode_image(page_bytes)
     except ValueError:
         raise HTTPException(status_code=422, detail="Could not decode page image")
-    candidates = find_question_region_candidates(image, page_number=page_number)
+    candidates = find_question_region_candidates(
+        image, page_number=page_number, engine=engine
+    )
     return ExamRegionCandidatesPublic(
         data=candidates,
         count=len(candidates),
         page_number=page_number,
-        engine=QUESTION_SEGMENTATION_ENGINE,
+        engine=engine,
     )
 
 

@@ -13,6 +13,13 @@ import {
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
@@ -28,6 +35,8 @@ type CandidateDraft = DraftRegion & {
   confidence: number
   source: string
 }
+
+type SegmentationEngine = "layout_projection_v0" | "layout_ocr_anchor_v1"
 
 type DragMode = "draw" | "move" | "resize"
 
@@ -135,6 +144,8 @@ export default function RegionMarkingCanvas({
   const [selectedRegionId, setSelectedRegionId] = useState<string | null>(null)
   const [editingRegion, setEditingRegion] = useState<DraftRegion | null>(null)
   const [editingLabel, setEditingLabel] = useState("")
+  const [segmentationEngine, setSegmentationEngine] =
+    useState<SegmentationEngine>("layout_projection_v0")
   const canvasRef = useRef<HTMLDivElement | null>(null)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -145,12 +156,19 @@ export default function RegionMarkingCanvas({
     queryFn: () => fetchPageImageBlob(examId, document.id, pageNumber),
   })
   const candidatesQuery = useQuery({
-    queryKey: ["exam-region-candidates", examId, document.id, pageNumber],
+    queryKey: [
+      "exam-region-candidates",
+      examId,
+      document.id,
+      pageNumber,
+      segmentationEngine,
+    ],
     queryFn: () =>
       ExamsService.readExamRegionCandidates({
         examId,
         documentId: document.id,
         pageNumber,
+        engine: segmentationEngine,
       }),
     enabled: false,
   })
@@ -324,6 +342,20 @@ export default function RegionMarkingCanvas({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Select
+            value={segmentationEngine}
+            onValueChange={(value) =>
+              setSegmentationEngine(value as SegmentationEngine)
+            }
+          >
+            <SelectTrigger size="sm" className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="layout_projection_v0">Projection</SelectItem>
+              <SelectItem value="layout_ocr_anchor_v1">OCR anchor</SelectItem>
+            </SelectContent>
+          </Select>
           <Button
             variant="outline"
             size="sm"

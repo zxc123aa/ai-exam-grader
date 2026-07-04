@@ -56,4 +56,4 @@
 - 日期：2026-07-05
 - 状态：Accepted
 - 决策：`layout_projection_v0` 仅保留为候选草稿 fallback，不作为准确题目分割方案继续堆参数补丁。下一版题目候选分割优先走 OCR layout + 题号 anchor；若真实样本仍不稳，再进入页面区域分割模型路线。
-- 原因：`docs/question-segmentation-evaluation.md` 对 7 个英语/物理真实单页样本评估结果为 `0 pass / 1 review / 6 fail`，主要失败是 `dominant_whole_page_candidate` 整页误框。版面投影和连通区域合并缺少题号、栏边界和语义约束，无法可靠判断题目边界。
+- 原因：`docs/question-segmentation-evaluation.md` 对 7 个英语/物理真实单页样本评估结果为 `0 pass / 1 review / 6 fail`，主要失败是 `dominant_whole_page_candidate` 整页误框。版面投影和连通区域合并缺少题号、栏边界和语义约束，无法可靠判断题目边界。`layout_ocr_anchor_v1` 第一版已把评估改善到 `3 pass / 3 review / 1 fail`，但仍需处理无题号答题区和过切。

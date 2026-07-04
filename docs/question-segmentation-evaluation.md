@@ -38,9 +38,10 @@ materials/question-segmentation/evaluation/
 
 ## 判断
 
-- 当前 `layout_projection_v0` 只能作为“候选草稿入口”的技术骨架，不能称为准确题目分割。
-- 英语和物理真实页多数出现 `dominant_whole_page_candidate`：算法把整页或大半页合并成一个候选框。
-- 写作页这类大块答题区更接近当前算法能力边界，但普通多题页面不满足自动切题要求。
+- 该报告只评价当前指定 engine 的候选框质量，不能直接代表 OCR 或判分能力。
+- `layout_projection_v0` 的主要风险是把整页或大半页合并成一个候选框。
+- `layout_ocr_anchor_v1` 的主要风险是题号 anchor 漏检，导致没有候选或候选数量不足。
+- 写作页这类大块答题区更接近投影算法能力边界，但普通多题页面需要题号或语义约束。
 - 标定页保留教师确认是必要的；不能把当前候选结果自动写入正式 `ExamRegion`。
 
 ## 失败模式
@@ -52,7 +53,7 @@ materials/question-segmentation/evaluation/
 ## 下一步方案
 
 1. 保留 `layout_projection_v0` 作为 fallback，不再继续堆特例补丁。
-2. 新增 `layout_ocr_anchor_v1`：用 OCR 文本框和题号 anchor 生成题目边界候选。
+2. 继续迭代 `layout_ocr_anchor_v1`：用 OCR 文本框和题号 anchor 生成题目边界候选。
 3. 若 OCR anchor 仍不稳，再进入页面区域分割模型路线，标注题区 polygon/box 样本。
 4. 前端继续维持“候选草稿 -> 教师确认 -> 正式题区”的闭环。
 

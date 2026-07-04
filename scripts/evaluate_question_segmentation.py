@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+# ruff: noqa: E402, I001
+
 import argparse
 import json
 import logging
@@ -15,9 +17,13 @@ sys.path.insert(0, str(BACKEND_DIR))
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger(__name__)
 
+from app.core.config import settings  # noqa: E402
 from app.services.question_segmentation import (  # noqa: E402
     ENGINE_NAME,
+    OCR_ANCHOR_ENGINE_NAME,
     CandidateBox,
+    QuestionSegmentationEngine,
+    find_ocr_anchor_candidate_boxes,
     find_layout_candidate_boxes,
 )
 
@@ -192,7 +198,15 @@ def draw_overlay(
     return str(output_path.relative_to(ROOT_DIR))
 
 
-def evaluate_sample(spec: SampleSpec, *, output_dir: Path) -> EvaluationResult:
+def find_candidate_boxes(image, *, engine: QuestionSegmentationEngine) -> list[CandidateBox]:
+    if engine == OCR_ANCHOR_ENGINE_NAME:
+        return find_ocr_anchor_candidate_boxes(image)
+    return find_layout_candidate_boxes(image)
+
+
+def evaluate_sample(
+    spec: SampleSpec, *, output_dir: Path, engine: QuestionSegmentationEngine
+) -> EvaluationResult:
     image = cv2.imread(str(spec.path))
     if image is None:
         return EvaluationResult(
@@ -212,7 +226,7 @@ def evaluate_sample(spec: SampleSpec, *, output_dir: Path) -> EvaluationResult:
             candidates=[],
         )
 
-    boxes = find_layout_candidate_boxes(image)
+    boxes = find_candidate_boxes(image, engine=engine)
     image_height, image_width = image.shape[:2]
     candidates = summarize_candidates(
         boxes, image_width=image_width, image_height=image_height
@@ -247,7 +261,13 @@ def evaluate_sample(spec: SampleSpec, *, output_dir: Path) -> EvaluationResult:
     )
 
 
-def write_report(results: list[EvaluationResult], *, report_path: Path) -> None:
+def write_report(
+    results: list[EvaluationResult],
+    *,
+    report_path: Path,
+    engine: QuestionSegmentationEngine,
+    output_dir: Path,
+) -> None:
     total = len(results)
     failed = sum(1 for item in results if item.status == "fail")
     review = sum(1 for item in results if item.status == "review")
@@ -260,18 +280,27 @@ def write_report(results: list[EvaluationResult], *, report_path: Path) -> None:
         "",
         "## 目标",
         "",
-        "评估当前 `layout_projection_v0` 题目区域候选分割在真实试卷页上的表现。该评估只针对候选框质量，不代表 OCR 或判分能力。",
+        f"评估当前 `{engine}` 题目区域候选分割在真实试卷页上的表现。该评估只针对候选框质量，不代表 OCR 或判分能力。",
         "",
         "## 执行命令",
         "",
         "```bash",
-        "PYTHONPATH=backend python3 scripts/evaluate_question_segmentation.py",
+        (
+            "PYTHONPATH=backend python3 scripts/evaluate_question_segmentation.py"
+            if engine == ENGINE_NAME
+            else "OCR_HTTP_URL=http://localhost:8010/ocr PYTHONPATH=backend "
+            "python3 scripts/evaluate_question_segmentation.py "
+            "--engine layout_ocr_anchor_v1 "
+            "--ocr-http-url http://localhost:8010/ocr "
+            "--output-dir materials/question-segmentation/evaluation-ocr-anchor "
+            "--report docs/question-segmentation-ocr-anchor-evaluation.md"
+        ),
         "```",
         "",
         "本地 overlay 和 JSON 生成在被 `.gitignore` 忽略的目录：",
         "",
         "```text",
-        "materials/question-segmentation/evaluation/",
+        f"{output_dir.relative_to(ROOT_DIR)}/",
         "```",
         "",
         "## 结果摘要",
@@ -280,7 +309,7 @@ def write_report(results: list[EvaluationResult], *, report_path: Path) -> None:
         f"- pass：`{passed}`",
         f"- review：`{review}`",
         f"- fail：`{failed}`",
-        f"- engine：`{ENGINE_NAME}`",
+        f"- engine：`{engine}`",
         "",
         "| 样本 | 来源 | 期望数量 | 候选数量 | 最大面积占比 | 状态 | warnings |",
         "| --- | --- | ---: | ---: | ---: | --- | --- |",
@@ -294,26 +323,39 @@ def write_report(results: list[EvaluationResult], *, report_path: Path) -> None:
             f"{result.status} | {warnings} |"
         )
 
+    failure_modes = (
+        [
+            "- 题号 anchor 漏检时会返回 0 个候选，写作页和大答题区尤其明显。",
+            "- 物理小题号、步骤编号或选项编号可能被误当成主题号，导致过切。",
+            "- 两栏判断仍是启发式，复杂排版需要栏边界和阅读顺序进一步约束。",
+            "- 结果依赖 OCR 服务可用性和文本框质量；低质量扫描会传导到候选框。",
+        ]
+        if engine == OCR_ANCHOR_ENGINE_NAME
+        else [
+            "- 版面投影和横向膨胀会把密集题干、图示、答题线连接成一个大连通块。",
+            "- 没有 OCR layout、题号 anchor 或栏/题间分隔线建模，因此无法稳定判断题目边界。",
+            "- 物理图示和英语长段落会进一步放大合并问题。",
+        ]
+    )
     lines.extend(
         [
             "",
             "## 判断",
             "",
-            "- 当前 `layout_projection_v0` 只能作为“候选草稿入口”的技术骨架，不能称为准确题目分割。",
-            "- 英语和物理真实页多数出现 `dominant_whole_page_candidate`：算法把整页或大半页合并成一个候选框。",
-            "- 写作页这类大块答题区更接近当前算法能力边界，但普通多题页面不满足自动切题要求。",
+            "- 该报告只评价当前指定 engine 的候选框质量，不能直接代表 OCR 或判分能力。",
+            "- `layout_projection_v0` 的主要风险是把整页或大半页合并成一个候选框。",
+            "- `layout_ocr_anchor_v1` 的主要风险是题号 anchor 漏检，导致没有候选或候选数量不足。",
+            "- 写作页这类大块答题区更接近投影算法能力边界，但普通多题页面需要题号或语义约束。",
             "- 标定页保留教师确认是必要的；不能把当前候选结果自动写入正式 `ExamRegion`。",
             "",
             "## 失败模式",
             "",
-            "- 版面投影和横向膨胀会把密集题干、图示、答题线连接成一个大连通块。",
-            "- 没有 OCR layout、题号 anchor 或栏/题间分隔线建模，因此无法稳定判断题目边界。",
-            "- 物理图示和英语长段落会进一步放大合并问题。",
+            *failure_modes,
             "",
             "## 下一步方案",
             "",
             "1. 保留 `layout_projection_v0` 作为 fallback，不再继续堆特例补丁。",
-            "2. 新增 `layout_ocr_anchor_v1`：用 OCR 文本框和题号 anchor 生成题目边界候选。",
+            "2. 继续迭代 `layout_ocr_anchor_v1`：用 OCR 文本框和题号 anchor 生成题目边界候选。",
             "3. 若 OCR anchor 仍不稳，再进入页面区域分割模型路线，标注题区 polygon/box 样本。",
             "4. 前端继续维持“候选草稿 -> 教师确认 -> 正式题区”的闭环。",
             "",
@@ -362,22 +404,37 @@ def main() -> int:
         default=ROOT_DIR / "docs" / "question-segmentation-evaluation.md",
     )
     parser.add_argument(
+        "--engine",
+        choices=[ENGINE_NAME, OCR_ANCHOR_ENGINE_NAME],
+        default=ENGINE_NAME,
+    )
+    parser.add_argument("--ocr-http-url", default=None)
+    parser.add_argument(
         "--fail-on-fail",
         action="store_true",
         help="Exit with status 1 when at least one sample is marked fail.",
     )
     args = parser.parse_args()
+    output_dir = args.output_dir
+    if not output_dir.is_absolute():
+        output_dir = ROOT_DIR / output_dir
+    report = args.report
+    if not report.is_absolute():
+        report = ROOT_DIR / report
+
+    if args.ocr_http_url:
+        settings.OCR_HTTP_URL = args.ocr_http_url
 
     results = [
-        evaluate_sample(spec, output_dir=args.output_dir)
+        evaluate_sample(spec, output_dir=output_dir, engine=args.engine)
         for spec in sample_specs(ROOT_DIR)
     ]
-    args.output_dir.mkdir(parents=True, exist_ok=True)
-    (args.output_dir / "results.json").write_text(
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "results.json").write_text(
         json.dumps([asdict(result) for result in results], ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    write_report(results, report_path=args.report)
+    write_report(results, report_path=report, engine=args.engine, output_dir=output_dir)
 
     failed = sum(1 for item in results if item.status == "fail")
     review = sum(1 for item in results if item.status == "review")
@@ -385,8 +442,8 @@ def main() -> int:
     logger.info(
         f"Question segmentation evaluation: {passed} pass, {review} review, {failed} fail"
     )
-    logger.info("Report: %s", args.report.relative_to(ROOT_DIR))
-    logger.info("Artifacts: %s", args.output_dir.relative_to(ROOT_DIR))
+    logger.info("Report: %s", report.relative_to(ROOT_DIR))
+    logger.info("Artifacts: %s", output_dir.relative_to(ROOT_DIR))
     return 1 if args.fail_on_fail and failed else 0
 
 

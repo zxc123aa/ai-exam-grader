@@ -415,6 +415,7 @@ export type ExamsReadExamFilePageImageResponse = (unknown);
 
 export type ExamsReadExamRegionCandidatesData = {
     documentId: string;
+    engine?: 'layout_projection_v0' | 'layout_ocr_anchor_v1';
     examId: string;
     pageNumber?: number;
 };

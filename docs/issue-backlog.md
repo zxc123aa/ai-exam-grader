@@ -514,20 +514,26 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：In Progress
 - 所属周期：周期 2 / AI 一键建立试卷模板
 - 目标：在 `layout_projection_v0` 真实样本失败后，新增基于 OCR 文本框、题号 anchor、栏边界和纵向空白带的 `layout_ocr_anchor_v1`，生成更接近真实题目边界的候选框。
 - 背景：`docs/question-segmentation-evaluation.md` 显示当前投影算法在 7 个真实单页样本上 `0 pass / 1 review / 6 fail`，主要是整页误框。继续调 OpenCV 膨胀参数收益有限。
+- 进展：已扩展 `ocr-service /ocr`，返回 `raw.lines[]` 文本、置信度、box 和 polygon；后端新增 `layout_ocr_anchor_v1`，候选接口支持 `engine=layout_ocr_anchor_v1`；标定页已可在 Projection / OCR anchor 间切换。第一版真实样本评估 `3 pass / 3 review / 1 fail`，见 `docs/question-segmentation-ocr-anchor-evaluation.md`。
 - 设计方向：
   - OCR 层先复用 `ocr-service`，优先获取文本框和文本行，而不是只取 plain text。
   - 题号 anchor 支持中文/英文/数字题号形态，例如 `1.`、`1、`、`一、`、`第1题`。
   - 候选框由相邻题号 anchor 的 y 区间、同栏边界和页面空白带共同约束。
   - 输出仍是草稿候选，不自动落库，继续由教师确认保存。
+- 当前问题：
+  - 写作页/大答题区没有题号 anchor 时会返回 0 个候选。
+  - 物理页可能把小题号、步骤编号或选项编号误当题号，导致过切。
+  - 当前前端默认仍是 Projection，OCR anchor 需要教师手动选择；后续应在 OCR 服务可用时推荐 OCR anchor。
 - 验收标准：
-  - 至少覆盖 `docs/question-segmentation-evaluation.md` 中的英语/物理样本。
-  - 相比 `layout_projection_v0`，真实多题页面不再出现整页单候选作为主要输出。
-  - 生成可复现评估报告，记录 pass/review/fail 和失败样例。
-  - 标定页可选择 `layout_ocr_anchor_v1` 候选结果，教师确认后保存正式题区。
+  - 至少覆盖 `docs/question-segmentation-evaluation.md` 中的英语/物理样本。已完成第一版。
+  - 相比 `layout_projection_v0`，真实多题页面不再出现整页单候选作为主要输出。已完成第一版。
+  - 生成可复现评估报告，记录 pass/review/fail 和失败样例。已完成第一版。
+  - 标定页可选择 `layout_ocr_anchor_v1` 候选结果，教师确认后保存正式题区。已完成第一版。
+  - 将 OCR anchor 评估从 `3 pass / 3 review / 1 fail` 提升到无 fail。待完成。
 
 ### AEG-015 手机扫描成 PDF 能力调研与排期
 
