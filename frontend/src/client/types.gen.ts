@@ -63,6 +63,26 @@ export type ExamPublic = {
     created_at?: (string | null);
 };
 
+export type ExamRegionCandidate = {
+    label: string;
+    region_type?: ExamRegionType;
+    page_number?: number;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    confidence: number;
+    source: string;
+    reasons?: Array<(string)>;
+};
+
+export type ExamRegionCandidatesPublic = {
+    data: Array<ExamRegionCandidate>;
+    count: number;
+    page_number: number;
+    engine: string;
+};
+
 export type ExamRegionCreate = {
     label: string;
     region_type?: ExamRegionType;
@@ -392,6 +412,14 @@ export type ExamsReadExamFilePageImageData = {
 };
 
 export type ExamsReadExamFilePageImageResponse = (unknown);
+
+export type ExamsReadExamRegionCandidatesData = {
+    documentId: string;
+    examId: string;
+    pageNumber?: number;
+};
+
+export type ExamsReadExamRegionCandidatesResponse = (ExamRegionCandidatesPublic);
 
 export type ExamsUploadStudentSubmissionData = {
     examId: string;

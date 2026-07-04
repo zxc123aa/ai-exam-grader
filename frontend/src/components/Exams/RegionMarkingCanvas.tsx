@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { Save, Trash2 } from "lucide-react"
+import { Save, Sparkles, Trash2 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 
 import {
   ApiError,
   type ExamDocumentPublic,
+  type ExamRegionCandidate,
   type ExamRegionPublic,
   ExamsService,
   OpenAPI,
@@ -20,6 +21,12 @@ type DraftRegion = {
   y: number
   width: number
   height: number
+}
+
+type CandidateDraft = DraftRegion & {
+  label: string
+  confidence: number
+  source: string
 }
 
 type DragMode = "draw" | "move" | "resize"
@@ -137,6 +144,16 @@ export default function RegionMarkingCanvas({
     queryKey: ["exam-file-page-image", examId, document.id, pageNumber],
     queryFn: () => fetchPageImageBlob(examId, document.id, pageNumber),
   })
+  const candidatesQuery = useQuery({
+    queryKey: ["exam-region-candidates", examId, document.id, pageNumber],
+    queryFn: () =>
+      ExamsService.readExamRegionCandidates({
+        examId,
+        documentId: document.id,
+        pageNumber,
+      }),
+    enabled: false,
+  })
   const [contentUrl, setContentUrl] = useState<string | null>(null)
 
   useEffect(() => {
@@ -213,6 +230,17 @@ export default function RegionMarkingCanvas({
   const pageRegions = regions.filter(
     (region) => (region.page_number ?? 1) === pageNumber,
   )
+  const candidateDrafts: CandidateDraft[] = (
+    candidatesQuery.data?.data ?? []
+  ).map((candidate: ExamRegionCandidate) => ({
+    label: candidate.label,
+    confidence: candidate.confidence,
+    source: candidate.source,
+    x: candidate.x,
+    y: candidate.y,
+    width: candidate.width,
+    height: candidate.height,
+  }))
   const selectedRegion = pageRegions.find(
     (region) => region.id === selectedRegionId,
   )
@@ -227,6 +255,11 @@ export default function RegionMarkingCanvas({
     setDraft(null)
     setInteraction(null)
   }, [document.id, pageNumber])
+
+  useEffect(() => {
+    if (!candidatesQuery.isError) return
+    showErrorToast(candidatesQuery.error.message || "Failed to detect regions")
+  }, [candidatesQuery.error, candidatesQuery.isError, showErrorToast])
 
   useEffect(() => {
     if (!selectedRegion) {
@@ -250,6 +283,17 @@ export default function RegionMarkingCanvas({
       region: editingRegion,
       nextLabel: editingLabel,
     })
+  }
+
+  const selectCandidateDraft = (candidate: CandidateDraft) => {
+    setSelectedRegionId(null)
+    setDraft({
+      x: candidate.x,
+      y: candidate.y,
+      width: candidate.width,
+      height: candidate.height,
+    })
+    setLabel(candidate.label)
   }
 
   if (blobQuery.isError) {
@@ -280,6 +324,15 @@ export default function RegionMarkingCanvas({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={candidatesQuery.isFetching}
+            onClick={() => candidatesQuery.refetch()}
+          >
+            <Sparkles />
+            {candidatesQuery.isFetching ? "Detecting" : "Detect regions"}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -439,6 +492,28 @@ export default function RegionMarkingCanvas({
             </div>
           )
         })}
+        {candidateDrafts.map((candidate) => (
+          <button
+            type="button"
+            key={`${candidate.label}-${candidate.x}-${candidate.y}`}
+            data-testid={`candidate-region-${candidate.label}`}
+            className="absolute border-2 border-dashed border-amber-500 bg-amber-500/10 text-left"
+            style={{
+              left: `${candidate.x * 100}%`,
+              top: `${candidate.y * 100}%`,
+              width: `${candidate.width * 100}%`,
+              height: `${candidate.height * 100}%`,
+            }}
+            onClick={(event) => {
+              event.stopPropagation()
+              selectCandidateDraft(candidate)
+            }}
+          >
+            <span className="absolute left-1 top-1 rounded-sm bg-amber-600 px-1.5 py-0.5 text-xs font-medium text-white">
+              {candidate.label}
+            </span>
+          </button>
+        ))}
         {draft && (
           <div
             className="absolute border-2 border-sky-500 bg-sky-500/10"
@@ -469,6 +544,44 @@ export default function RegionMarkingCanvas({
               Save Region
             </LoadingButton>
           </div>
+        </div>
+
+        <div className="rounded-md border">
+          <div className="border-b px-4 py-3 text-sm font-medium">
+            Draft candidates
+          </div>
+          {candidatesQuery.isFetching ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground">
+              Detecting page layout
+            </div>
+          ) : candidateDrafts.length === 0 ? (
+            <div className="px-4 py-6 text-sm text-muted-foreground">
+              Run detection to load suggested question areas.
+            </div>
+          ) : (
+            <div className="divide-y">
+              {candidateDrafts.map((candidate) => (
+                <button
+                  type="button"
+                  key={`${candidate.label}-${candidate.x}-${candidate.y}-list`}
+                  data-testid={`candidate-list-${candidate.label}`}
+                  className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/50"
+                  onClick={() => selectCandidateDraft(candidate)}
+                >
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">
+                      {candidate.label}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {(candidate.confidence * 100).toFixed(0)}% ·{" "}
+                      {candidate.source}
+                    </div>
+                  </div>
+                  <span className="text-xs text-muted-foreground">Use</span>
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-md border p-4">

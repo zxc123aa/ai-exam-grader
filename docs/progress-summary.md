@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 4 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物、OCR 初稿字段/服务接口、手机照片预处理后端入口、PaddleOCR GPU 独立服务和题目区域候选分割接口已实现。真实自动配准 homography、AI 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 4 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物、OCR 初稿字段/服务接口、手机照片预处理后端入口、PaddleOCR GPU 独立服务、题目区域候选分割接口和标定页候选草稿导入已实现。真实自动配准 homography、AI 判分和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -109,16 +109,17 @@
 - 扫描预处理已进入稳定性阶段：新增 `docs/scan-preprocessing-stability-plan.md`，后端结果已带 `quality_status=pass|review` 和 `quality_warnings[]`，API metadata 已写入 `registration_homography.quality`。
 - 扫描引擎 V2 骨架已开始落地：新增 `SCAN_ENGINE=opencv_v1|scan_http`，复用现有 `ocr-service` Paddle GPU 容器提供 `/preprocess`，后端 scan HTTP adapter 和 fake HTTP 回归测试已补齐；OpenCV v1 保留为默认 baseline。实机验证显示 Paddle DocPreprocessor 可作为单页矫正模块，但不是双页拆分器。
 - 已新增题目区域候选分割只读接口：`GET /api/v1/exams/{exam_id}/files/{document_id}/region-candidates`，当前 `layout_projection_v0` 通过版面投影和连通区域生成候选框，供后续教师确认或 AI 模板建立流程使用；它不会自动写入正式 `ExamRegion`。
+- 标定页已接入 Detect regions：候选框以虚线草稿显示，教师点击候选后仍需手动 Save Region 才会写入正式题区；Playwright 已覆盖“检测候选 -> 选择候选 -> 保存题区”流程。
 
 ## 进行中
 
 - 周期 4 下一块能力：先补齐扫描预处理质量门禁前端提示和人工确认入口，再扩大题区级 OCR 质量评估，并推进 Kimi 题区级 fallback / AI 判分草稿接入。
-- 题目区域自动分割仍处在候选阶段：当前只解决“给出可复核候选框”的后端骨架，尚未达到自动、准确、可直接用于批注的最终切题能力。
+- 题目区域自动分割仍处在候选阶段：当前已打通“给出可复核候选框 -> 教师确认保存”的最小闭环，尚未达到自动、准确、可直接用于批注的最终切题能力。
 
 ## 下一步
 
 1. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
-2. 把题目区域候选框接入标定页作为“一键生成草稿题区”，由教师逐框确认、调整和保存。
+2. 用真实物理卷、英语卷样本评估题目候选框质量，记录漏切、整页误框、跨栏合并和题号识别失败样例。
 3. 继续收集扫描失败样例，验证 relaxed spread、内容保护边距、半页 fallback、中缝纠偏和质量门禁在阴影、褶皱、低对比度场景下的鲁棒性。
 4. 继续扩大题区级 OCR 质量评估，至少覆盖 3 份试卷，并记录低置信度、漏识别和题区切分问题。
 5. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。

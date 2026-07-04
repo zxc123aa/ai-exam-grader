@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { deflateSync } from "node:zlib"
 import { expect, test } from "@playwright/test"
 
 test.use({ storageState: "playwright/.auth/user.json" })
@@ -17,6 +18,68 @@ const pngBuffer = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAASwAAAGQCAYAAABkW7XSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA/ElEQVR4nO3TQQ0AIBDAMMC/5+ECjiYKenb2Z4CkzNsB4G0H8BKgAkAFgAoAFQAqAFQAqABQAVABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAjDuApPjAeeWAAAAAElFTkSuQmCC",
   "base64",
 )
+
+function crc32(buffer: Buffer) {
+  let crc = 0xffffffff
+  for (const byte of buffer) {
+    crc ^= byte
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = crc & 1 ? 0xedb88320 ^ (crc >>> 1) : crc >>> 1
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0
+}
+
+function pngChunk(type: string, data: Buffer) {
+  const typeBuffer = Buffer.from(type)
+  const length = Buffer.alloc(4)
+  length.writeUInt32BE(data.length)
+  const crc = Buffer.alloc(4)
+  crc.writeUInt32BE(crc32(Buffer.concat([typeBuffer, data])))
+  return Buffer.concat([length, typeBuffer, data, crc])
+}
+
+function questionLayoutPng() {
+  const width = 300
+  const height = 420
+  const raw = Buffer.alloc((width * 3 + 1) * height, 255)
+  for (let y = 0; y < height; y += 1) {
+    raw[y * (width * 3 + 1)] = 0
+  }
+  const setPixel = (x: number, y: number) => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return
+    const offset = y * (width * 3 + 1) + 1 + x * 3
+    raw[offset] = 20
+    raw[offset + 1] = 20
+    raw[offset + 2] = 20
+  }
+  const line = (x1: number, y1: number, x2: number, y2: number) => {
+    for (let y = y1; y <= y2; y += 1) {
+      for (let x = x1; x <= x2; x += 1) setPixel(x, y)
+    }
+  }
+  for (const y of [55, 165, 280]) {
+    line(35, y + 19, width - 40, y + 20)
+    line(35, y + 45, width - 40, y + 46)
+    line(35, y + 19, 36, y + 46)
+    line(width - 41, y + 19, width - 40, y + 46)
+    line(45, y + 65, width - 50, y + 66)
+  }
+
+  const ihdr = Buffer.alloc(13)
+  ihdr.writeUInt32BE(width, 0)
+  ihdr.writeUInt32BE(height, 4)
+  ihdr[8] = 8
+  ihdr[9] = 2
+  return Buffer.concat([
+    Buffer.from("89504e470d0a1a0a", "hex"),
+    pngChunk("IHDR", ihdr),
+    pngChunk("IDAT", deflateSync(raw)),
+    pngChunk("IEND", Buffer.alloc(0)),
+  ])
+}
+
+const questionLayoutBuffer = questionLayoutPng()
 
 test("Exams page is accessible and shows initial copy", async ({ page }) => {
   await page.goto("/exams")
@@ -90,6 +153,42 @@ test("Can upload a blank paper and mark a template region", async ({
   await page.getByTestId("delete-region-Q1 revised").click()
   await expect(page.getByText("Region deleted")).toBeVisible()
   await expect(page.getByTestId("saved-region-Q1 revised")).not.toBeVisible()
+})
+
+test("Can load suggested regions and confirm one as a template region", async ({
+  page,
+}) => {
+  const title = `Candidate Regions Exam ${Date.now()}`
+
+  await page.goto("/exams")
+  await page.getByRole("button", { name: "New Exam" }).first().click()
+  await page.getByPlaceholder("English Midterm").fill(title)
+  await page.getByRole("button", { name: "Create" }).click()
+  await expect(page.getByText("Exam created")).toBeVisible()
+
+  const row = page.getByRole("row").filter({ hasText: title })
+  await expect(row).toBeVisible()
+
+  await row.getByRole("button", { name: "Files" }).click()
+  await page.getByTestId("exam-file-input").setInputFiles({
+    name: "layout.png",
+    mimeType: "image/png",
+    buffer: questionLayoutBuffer,
+  })
+  await page.getByTestId("exam-file-upload-button").click()
+  await expect(page.getByText("Exam file uploaded")).toBeVisible()
+  await page.keyboard.press("Escape")
+
+  await row.getByRole("link", { name: "Mark" }).click()
+  await expect(page.getByText("Page 1 of 1")).toBeVisible()
+  await page.getByRole("button", { name: "Detect regions" }).click()
+  await expect(page.getByTestId("candidate-list-Q1")).toBeVisible()
+  await expect(page.getByTestId("candidate-region-Q1")).toBeVisible()
+
+  await page.getByTestId("candidate-list-Q1").click()
+  await page.getByRole("button", { name: "Save Region" }).click()
+  await expect(page.getByText("Region saved")).toBeVisible()
+  await expect(page.getByTestId("saved-region-Q1")).toBeVisible()
 })
 
 test("Can upload and preview a student submission", async ({ page }) => {

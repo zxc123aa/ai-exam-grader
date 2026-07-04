@@ -331,6 +331,96 @@ export const ExamPublicSchema = {
     title: 'ExamPublic'
 } as const;
 
+export const ExamRegionCandidateSchema = {
+    properties: {
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        region_type: {
+            '$ref': '#/components/schemas/ExamRegionType',
+            default: 'question'
+        },
+        page_number: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Page Number',
+            default: 1
+        },
+        x: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'X'
+        },
+        y: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Y'
+        },
+        width: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Width'
+        },
+        height: {
+            type: 'number',
+            maximum: 1,
+            exclusiveMinimum: 0,
+            title: 'Height'
+        },
+        confidence: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Confidence'
+        },
+        source: {
+            type: 'string',
+            title: 'Source'
+        },
+        reasons: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Reasons'
+        }
+    },
+    type: 'object',
+    required: ['label', 'x', 'y', 'width', 'height', 'confidence', 'source'],
+    title: 'ExamRegionCandidate'
+} as const;
+
+export const ExamRegionCandidatesPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/ExamRegionCandidate'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        },
+        page_number: {
+            type: 'integer',
+            title: 'Page Number'
+        },
+        engine: {
+            type: 'string',
+            title: 'Engine'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count', 'page_number', 'engine'],
+    title: 'ExamRegionCandidatesPublic'
+} as const;
+
 export const ExamRegionCreateSchema = {
     properties: {
         label: {
