@@ -639,6 +639,205 @@ def test_create_exam_region_rejects_out_of_bounds(
     assert response.status_code == 422
 
 
+def test_create_read_update_delete_standard_answer(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Standard Answer Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+    )
+    region_id = region_response.json()["id"]
+
+    create_answer_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+        json={
+            "exam_region_id": region_id,
+            "answer_text": "Use conservation of energy.",
+            "max_score": 6,
+            "rubric_text": "Award method and final value.",
+            "scoring_points": [
+                {
+                    "id": "formula",
+                    "description": "Writes the correct formula",
+                    "points": 2,
+                    "required": True,
+                }
+            ],
+            "status": "draft",
+        },
+    )
+    assert create_answer_response.status_code == 200
+    answer = create_answer_response.json()
+    assert answer["exam_id"] == exam_id
+    assert answer["exam_region_id"] == region_id
+    assert answer["max_score"] == 6
+    assert answer["scoring_points"][0]["id"] == "formula"
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+    )
+    assert list_response.status_code == 200
+    assert list_response.json()["count"] == 1
+
+    read_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers/{answer['id']}",
+        headers=superuser_token_headers,
+    )
+    assert read_response.status_code == 200
+    assert read_response.json()["answer_text"] == "Use conservation of energy."
+
+    update_response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers/{answer['id']}",
+        headers=superuser_token_headers,
+        json={"status": "ready", "max_score": 8},
+    )
+    assert update_response.status_code == 200
+    assert update_response.json()["status"] == "ready"
+    assert update_response.json()["max_score"] == 8
+
+    delete_response = client.delete(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers/{answer['id']}",
+        headers=superuser_token_headers,
+    )
+    assert delete_response.status_code == 200
+
+    empty_list_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+    )
+    assert empty_list_response.json()["count"] == 0
+
+
+def test_create_standard_answer_rejects_duplicate_region(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Duplicate Answer Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.4,
+        },
+    )
+    region_id = region_response.json()["id"]
+    payload = {
+        "exam_region_id": region_id,
+        "answer_text": "Answer",
+        "max_score": 1,
+        "scoring_points": [],
+        "status": "draft",
+    }
+
+    first_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+        json=payload,
+    )
+    second_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+        json=payload,
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 409
+
+
+def test_create_standard_answer_rejects_non_question_region(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Non Question Answer Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Header",
+            "region_type": "header",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.1,
+            "width": 0.3,
+            "height": 0.1,
+        },
+    )
+    region_id = region_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+        json={
+            "exam_region_id": region_id,
+            "answer_text": "Should fail",
+            "max_score": 1,
+            "scoring_points": [],
+        },
+    )
+
+    assert response.status_code == 422
+    assert "question regions" in response.json()["detail"]
+
+
+def test_normal_user_cannot_read_other_users_standard_answers(
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Private Answer Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    password = random_lower_string()
+    user = crud.create_user(
+        session=db,
+        user_create=UserCreate(email=random_email(), password=password),
+    )
+    headers = user_authentication_headers(
+        client=client, email=user.email, password=password
+    )
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=headers,
+    )
+
+    assert response.status_code == 403
+
+
 def test_update_exam_region_rejects_out_of_bounds(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:

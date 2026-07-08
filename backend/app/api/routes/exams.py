@@ -7,6 +7,7 @@ from fastapi import APIRouter, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
+from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, func, select
 
 from app.api.deps import CurrentUser, SessionDep
@@ -25,6 +26,7 @@ from app.models import (
     ExamRegionCreate,
     ExamRegionPublic,
     ExamRegionsPublic,
+    ExamRegionType,
     ExamRegionUpdate,
     ExamsPublic,
     ExamUpdate,
@@ -32,6 +34,11 @@ from app.models import (
     ProcessingTask,
     ProcessingTaskPublic,
     ProcessingTaskStatus,
+    StandardAnswer,
+    StandardAnswerCreate,
+    StandardAnswerPublic,
+    StandardAnswersPublic,
+    StandardAnswerUpdate,
     StoredFile,
     StoredFilePublic,
     StudentSubmission,
@@ -210,6 +217,41 @@ def get_exam_region_for_user(
     region = session.get(ExamRegion, region_id)
     if not region or region.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Exam region not found")
+    return region
+
+
+def get_standard_answer_for_user(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    answer_id: uuid.UUID,
+) -> StandardAnswer:
+    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    answer = session.get(StandardAnswer, answer_id)
+    if not answer or answer.exam_id != exam_id:
+        raise HTTPException(status_code=404, detail="Standard answer not found")
+    return answer
+
+
+def get_question_region_for_standard_answer(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    region_id: uuid.UUID,
+) -> ExamRegion:
+    region = get_exam_region_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        region_id=region_id,
+    )
+    if region.region_type != ExamRegionType.QUESTION:
+        raise HTTPException(
+            status_code=422,
+            detail="Standard answers can only be attached to question regions",
+        )
     return region
 
 
@@ -1066,6 +1108,122 @@ def delete_submission_annotation(
     session.delete(annotation)
     session.commit()
     return Message(message="Submission annotation deleted successfully")
+
+
+@router.get("/{exam_id}/answers", response_model=StandardAnswersPublic)
+def read_standard_answers(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> Any:
+    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    statement = (
+        select(StandardAnswer)
+        .where(StandardAnswer.exam_id == exam_id)
+        .order_by(col(StandardAnswer.created_at).asc())
+    )
+    answers = session.exec(statement).all()
+    return StandardAnswersPublic(
+        data=[StandardAnswerPublic.model_validate(answer) for answer in answers],
+        count=len(answers),
+    )
+
+
+@router.post("/{exam_id}/answers", response_model=StandardAnswerPublic)
+def create_standard_answer(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    answer_in: StandardAnswerCreate,
+) -> Any:
+    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    region = get_question_region_for_standard_answer(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        region_id=answer_in.exam_region_id,
+    )
+    existing = session.exec(
+        select(StandardAnswer).where(StandardAnswer.exam_region_id == region.id)
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Standard answer already exists for this question region",
+        )
+    answer = StandardAnswer.model_validate(
+        answer_in,
+        update={
+            "exam_id": exam_id,
+            "exam_region_id": region.id,
+        },
+    )
+    session.add(answer)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Standard answer already exists for this question region",
+        )
+    session.refresh(answer)
+    return answer
+
+
+@router.get("/{exam_id}/answers/{answer_id}", response_model=StandardAnswerPublic)
+def read_standard_answer(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    answer_id: uuid.UUID,
+) -> Any:
+    return get_standard_answer_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        answer_id=answer_id,
+    )
+
+
+@router.patch("/{exam_id}/answers/{answer_id}", response_model=StandardAnswerPublic)
+def update_standard_answer(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    answer_id: uuid.UUID,
+    answer_in: StandardAnswerUpdate,
+) -> Any:
+    answer = get_standard_answer_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        answer_id=answer_id,
+    )
+    answer.sqlmodel_update(answer_in.model_dump(exclude_unset=True))
+    answer.updated_at = get_datetime_utc()
+    session.add(answer)
+    session.commit()
+    session.refresh(answer)
+    return answer
+
+
+@router.delete("/{exam_id}/answers/{answer_id}")
+def delete_standard_answer(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    answer_id: uuid.UUID,
+) -> Message:
+    answer = get_standard_answer_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        answer_id=answer_id,
+    )
+    session.delete(answer)
+    session.commit()
+    return Message(message="Standard answer deleted successfully")
 
 
 @router.get("/{exam_id}/regions", response_model=ExamRegionsPublic)

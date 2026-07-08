@@ -1,9 +1,10 @@
 import uuid
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Optional
 
 from pydantic import EmailStr, model_validator
-from sqlalchemy import Column, DateTime
+from sqlalchemy import Column, DateTime, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
@@ -124,6 +125,11 @@ class SubmissionAnnotationStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class StandardAnswerStatus(StrEnum):
+    DRAFT = "draft"
+    READY = "ready"
+
+
 class ExamBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
@@ -169,6 +175,9 @@ class Exam(ExamBase, table=True):
         back_populates="exam", cascade_delete=True
     )
     regions: list["ExamRegion"] = Relationship(
+        back_populates="exam", cascade_delete=True
+    )
+    standard_answers: list["StandardAnswer"] = Relationship(
         back_populates="exam", cascade_delete=True
     )
     submissions: list["StudentSubmission"] = Relationship(
@@ -321,6 +330,9 @@ class ExamRegion(ExamRegionBase, table=True):
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
     exam: Exam | None = Relationship(back_populates="regions")
+    standard_answer: Optional["StandardAnswer"] = Relationship(
+        back_populates="exam_region", cascade_delete=True
+    )
 
 
 class ExamRegionPublic(ExamRegionBase):
@@ -353,6 +365,112 @@ class ExamRegionCandidatesPublic(SQLModel):
     count: int
     page_number: int
     engine: str
+
+
+class StandardAnswerBase(SQLModel):
+    answer_text: str = Field(min_length=1, max_length=12000)
+    max_score: float = Field(gt=0)
+    rubric_text: str | None = Field(default=None, max_length=8000)
+    scoring_points: list[dict] = Field(default_factory=list)
+    status: StandardAnswerStatus = StandardAnswerStatus.DRAFT
+
+    @model_validator(mode="after")
+    def validate_scoring_points(self) -> "StandardAnswerBase":
+        for index, point in enumerate(self.scoring_points, start=1):
+            if not isinstance(point, dict):
+                raise ValueError(f"Scoring point {index} must be an object")
+            missing = {"id", "description", "points", "required"} - set(point)
+            if missing:
+                raise ValueError(
+                    f"Scoring point {index} missing fields: {', '.join(sorted(missing))}"
+                )
+            if not str(point["id"]).strip():
+                raise ValueError(f"Scoring point {index} id is required")
+            if not str(point["description"]).strip():
+                raise ValueError(f"Scoring point {index} description is required")
+            try:
+                points = float(point["points"])
+            except (TypeError, ValueError):
+                raise ValueError(f"Scoring point {index} points must be numeric")
+            if points < 0:
+                raise ValueError(f"Scoring point {index} points must be non-negative")
+            if not isinstance(point["required"], bool):
+                raise ValueError(f"Scoring point {index} required must be boolean")
+        return self
+
+
+class StandardAnswerCreate(StandardAnswerBase):
+    exam_region_id: uuid.UUID
+
+
+class StandardAnswerUpdate(SQLModel):
+    answer_text: str | None = Field(default=None, min_length=1, max_length=12000)
+    max_score: float | None = Field(default=None, gt=0)
+    rubric_text: str | None = Field(default=None, max_length=8000)
+    scoring_points: list[dict] | None = None
+    status: StandardAnswerStatus | None = None
+
+    @model_validator(mode="after")
+    def validate_scoring_points(self) -> "StandardAnswerUpdate":
+        if self.scoring_points is None:
+            return self
+        StandardAnswerBase(
+            answer_text="placeholder",
+            max_score=1,
+            scoring_points=self.scoring_points,
+        )
+        return self
+
+
+class StandardAnswer(StandardAnswerBase, table=True):
+    __table_args__ = (
+        UniqueConstraint("exam_region_id", name="uq_standardanswer_exam_region_id"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    scoring_points: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    status: StandardAnswerStatus = Field(
+        default=StandardAnswerStatus.DRAFT,
+        sa_column=Column(
+            SAEnum(
+                StandardAnswerStatus,
+                name="standardanswerstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE"
+    )
+    exam_region_id: uuid.UUID = Field(
+        foreign_key="examregion.id", nullable=False, ondelete="CASCADE"
+    )
+    exam: Exam | None = Relationship(back_populates="standard_answers")
+    exam_region: ExamRegion | None = Relationship(back_populates="standard_answer")
+
+
+class StandardAnswerPublic(StandardAnswerBase):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    exam_region_id: uuid.UUID
+    created_at: datetime | None = None
+    updated_at: datetime | None = None
+
+
+class StandardAnswersPublic(SQLModel):
+    data: list[StandardAnswerPublic]
+    count: int
 
 
 class StudentSubmissionBase(SQLModel):

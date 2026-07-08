@@ -181,6 +181,49 @@ export type ProcessingTaskPublic = {
 
 export type ProcessingTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
+export type StandardAnswerCreate = {
+    answer_text: string;
+    max_score: number;
+    rubric_text?: (string | null);
+    scoring_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    status?: StandardAnswerStatus;
+    exam_region_id: string;
+};
+
+export type StandardAnswerPublic = {
+    answer_text: string;
+    max_score: number;
+    rubric_text?: (string | null);
+    scoring_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    status?: StandardAnswerStatus;
+    id: string;
+    exam_id: string;
+    exam_region_id: string;
+    created_at?: (string | null);
+    updated_at?: (string | null);
+};
+
+export type StandardAnswersPublic = {
+    data: Array<StandardAnswerPublic>;
+    count: number;
+};
+
+export type StandardAnswerStatus = 'draft' | 'ready';
+
+export type StandardAnswerUpdate = {
+    answer_text?: (string | null);
+    max_score?: (number | null);
+    rubric_text?: (string | null);
+    scoring_points?: (Array<{
+    [key: string]: unknown;
+}> | null);
+    status?: (StandardAnswerStatus | null);
+};
+
 export type StoredFilePublic = {
     original_filename: string;
     content_type?: (string | null);
@@ -530,6 +573,41 @@ export type ExamsDeleteSubmissionAnnotationData = {
 };
 
 export type ExamsDeleteSubmissionAnnotationResponse = (Message);
+
+export type ExamsReadStandardAnswersData = {
+    examId: string;
+};
+
+export type ExamsReadStandardAnswersResponse = (StandardAnswersPublic);
+
+export type ExamsCreateStandardAnswerData = {
+    examId: string;
+    requestBody: StandardAnswerCreate;
+};
+
+export type ExamsCreateStandardAnswerResponse = (StandardAnswerPublic);
+
+export type ExamsReadStandardAnswerData = {
+    answerId: string;
+    examId: string;
+};
+
+export type ExamsReadStandardAnswerResponse = (StandardAnswerPublic);
+
+export type ExamsUpdateStandardAnswerData = {
+    answerId: string;
+    examId: string;
+    requestBody: StandardAnswerUpdate;
+};
+
+export type ExamsUpdateStandardAnswerResponse = (StandardAnswerPublic);
+
+export type ExamsDeleteStandardAnswerData = {
+    answerId: string;
+    examId: string;
+};
+
+export type ExamsDeleteStandardAnswerResponse = (Message);
 
 export type ExamsReadExamRegionsData = {
     examId: string;

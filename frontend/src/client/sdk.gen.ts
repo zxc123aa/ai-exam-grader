@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse } from './types.gen';
+import type { ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse } from './types.gen';
 
 export class ExamsService {
     /**
@@ -571,6 +571,118 @@ export class ExamsService {
                 exam_id: data.examId,
                 submission_id: data.submissionId,
                 annotation_id: data.annotationId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Standard Answers
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns StandardAnswersPublic Successful Response
+     * @throws ApiError
+     */
+    public static readStandardAnswers(data: ExamsReadStandardAnswersData): CancelablePromise<ExamsReadStandardAnswersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/exams/{exam_id}/answers',
+            path: {
+                exam_id: data.examId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Standard Answer
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.requestBody
+     * @returns StandardAnswerPublic Successful Response
+     * @throws ApiError
+     */
+    public static createStandardAnswer(data: ExamsCreateStandardAnswerData): CancelablePromise<ExamsCreateStandardAnswerResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/exams/{exam_id}/answers',
+            path: {
+                exam_id: data.examId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Standard Answer
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.answerId
+     * @returns StandardAnswerPublic Successful Response
+     * @throws ApiError
+     */
+    public static readStandardAnswer(data: ExamsReadStandardAnswerData): CancelablePromise<ExamsReadStandardAnswerResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/exams/{exam_id}/answers/{answer_id}',
+            path: {
+                exam_id: data.examId,
+                answer_id: data.answerId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Standard Answer
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.answerId
+     * @param data.requestBody
+     * @returns StandardAnswerPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateStandardAnswer(data: ExamsUpdateStandardAnswerData): CancelablePromise<ExamsUpdateStandardAnswerResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/exams/{exam_id}/answers/{answer_id}',
+            path: {
+                exam_id: data.examId,
+                answer_id: data.answerId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Delete Standard Answer
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.answerId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteStandardAnswer(data: ExamsDeleteStandardAnswerData): CancelablePromise<ExamsDeleteStandardAnswerResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/exams/{exam_id}/answers/{answer_id}',
+            path: {
+                exam_id: data.examId,
+                answer_id: data.answerId
             },
             errors: {
                 422: 'Validation Error'

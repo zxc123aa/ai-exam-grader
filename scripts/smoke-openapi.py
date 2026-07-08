@@ -1,7 +1,8 @@
+# ruff: noqa: T201
+
 import sys
 
 from app.main import app
-
 
 REQUIRED_PATHS = {
     "/api/v1/exams/",
@@ -10,6 +11,8 @@ REQUIRED_PATHS = {
     "/api/v1/exams/{exam_id}/files/{document_id}/content",
     "/api/v1/exams/{exam_id}/files/{document_id}/pages/{page_number}/image",
     "/api/v1/exams/{exam_id}/files/{document_id}/region-candidates",
+    "/api/v1/exams/{exam_id}/answers",
+    "/api/v1/exams/{exam_id}/answers/{answer_id}",
     "/api/v1/exams/{exam_id}/regions",
     "/api/v1/exams/{exam_id}/regions/{region_id}",
     "/api/v1/exams/{exam_id}/submissions",

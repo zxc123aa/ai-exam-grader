@@ -933,6 +933,230 @@ export const ProcessingTaskStatusSchema = {
     title: 'ProcessingTaskStatus'
 } as const;
 
+export const StandardAnswerCreateSchema = {
+    properties: {
+        answer_text: {
+            type: 'string',
+            maxLength: 12000,
+            minLength: 1,
+            title: 'Answer Text'
+        },
+        max_score: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Scoring Points'
+        },
+        status: {
+            '$ref': '#/components/schemas/StandardAnswerStatus',
+            default: 'draft'
+        },
+        exam_region_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Region Id'
+        }
+    },
+    type: 'object',
+    required: ['answer_text', 'max_score', 'exam_region_id'],
+    title: 'StandardAnswerCreate'
+} as const;
+
+export const StandardAnswerPublicSchema = {
+    properties: {
+        answer_text: {
+            type: 'string',
+            maxLength: 12000,
+            minLength: 1,
+            title: 'Answer Text'
+        },
+        max_score: {
+            type: 'number',
+            exclusiveMinimum: 0,
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Scoring Points'
+        },
+        status: {
+            '$ref': '#/components/schemas/StandardAnswerStatus',
+            default: 'draft'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        exam_region_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Region Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        updated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['answer_text', 'max_score', 'id', 'exam_id', 'exam_region_id'],
+    title: 'StandardAnswerPublic'
+} as const;
+
+export const StandardAnswerStatusSchema = {
+    type: 'string',
+    enum: ['draft', 'ready'],
+    title: 'StandardAnswerStatus'
+} as const;
+
+export const StandardAnswerUpdateSchema = {
+    properties: {
+        answer_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 12000,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Answer Text'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    exclusiveMinimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            anyOf: [
+                {
+                    items: {
+                        additionalProperties: true,
+                        type: 'object'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scoring Points'
+        },
+        status: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/StandardAnswerStatus'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    title: 'StandardAnswerUpdate'
+} as const;
+
+export const StandardAnswersPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/StandardAnswerPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'StandardAnswersPublic'
+} as const;
+
 export const StoredFilePublicSchema = {
     properties: {
         original_filename: {
