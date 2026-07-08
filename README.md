@@ -11,6 +11,7 @@ AI Exam Grader 是一个面向教师的试卷扫描、模板标定、自动判�
 - [进度摘要](docs/progress-summary.md)：记录当前阶段、已完成事项、进行中任务、风险和下一步。
 - [Issue 草稿池](docs/issue-backlog.md)：本地 issue 队列，后续可迁移到 GitHub Issues。
 - [决策记录](docs/decision-log.md)：记录关键产品和技术决策。
+- [模板、标准答案与评分闭环计划](docs/template-answer-grading-plan.md)：记录“空白卷重建 -> 标准答案 -> 学生答案识别评分”的主线方案。
 - [第三方许可证清单](THIRD_PARTY_LICENSES.md)：记录直接依赖和参考项目的许可证。
 - [周期 0 验收清单](docs/phase-0-acceptance.md)：记录当前已验证项和 Docker 环境待验证项。
 
