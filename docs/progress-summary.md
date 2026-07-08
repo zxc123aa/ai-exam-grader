@@ -122,22 +122,21 @@
 - 已新增批注评分草稿字段：`suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons`、`grading_status`、`answer_key_updated_at`。
 - Worker 已接入 ready 标准答案：OCR 成功且置信度达标时写入建议分和 reasons；无 ready 标准答案时写 `skipped_missing_answer`；OCR 不可用或低置信度时写 `needs_review`。
 - 标准答案更新后，同题区已有 `succeeded/needs_review` 评分草稿会标记为 `stale`，不覆盖教师最终 `score/comment/status`。
+- 教师复核页已显示标准答案、rubric、OCR draft、评分草稿状态、建议分、建议评语和置信度；Apply suggestion 只填入最终表单，仍需教师保存批注。
 
 ## 进行中
 
-- 周期 4 下一块能力：优先补齐复核页标准答案/评分草稿展示和教师采用建议的交互，不再直接从 OCR 跳到最终分。
+- 周期 4 下一块能力：继续补齐评分草稿低置信度/失败路径测试和前端 Playwright 覆盖，不再直接从 OCR 跳到最终分。
 - 题目区域自动分割仍处在候选阶段：`layout_ocr_anchor_v1` 已明显改善整页误框，但仍有写作页无题号漏检、物理页过切和题号误锚定问题，不能自动落库。
 
 ## 下一步
 
-1. 扩展教师复核页：读取标准答案，显示标准答案、评分规则、OCR draft、建议分和建议评语。
-2. 增加“采用建议”交互：教师确认后才把建议分/建议评语复制到最终 `score/comment/status`。
-3. 补充 OCR 失败/低置信度评分草稿测试，并增加复核页 Playwright 覆盖。
-4. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
-5. 继续迭代 `layout_ocr_anchor_v1`：补写作/大答题区 fallback、减少物理页过切，并把真实样本 pass/review/fail 作为质量门禁。
-6. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
-7. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-8. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+1. 补充 OCR 失败/低置信度评分草稿测试，并增加复核页 Playwright 覆盖。
+2. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
+3. 继续迭代 `layout_ocr_anchor_v1`：补写作/大答题区 fallback、减少物理页过切，并把真实样本 pass/review/fail 作为质量门禁。
+4. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
+5. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+6. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 

@@ -14,6 +14,7 @@ import {
   ExamsService,
   OpenAPI,
   type ProcessingTaskPublic,
+  type StandardAnswerPublic,
   type StudentSubmissionPublic,
   type SubmissionAnnotationPublic,
   type SubmissionAnnotationStatus,
@@ -413,6 +414,124 @@ function AnnotationOcrDraft({
   )
 }
 
+function formatConfidence(value?: number | null) {
+  if (value == null) return "n/a"
+  return `${Math.round(value * 100)}%`
+}
+
+function StandardAnswerReference({
+  answer,
+}: {
+  answer?: StandardAnswerPublic
+}) {
+  if (!answer) {
+    return (
+      <div
+        className="rounded-md border p-3 text-xs text-muted-foreground"
+        data-testid="review-standard-answer"
+      >
+        No standard answer is ready for this region.
+      </div>
+    )
+  }
+
+  return (
+    <div
+      className="grid gap-2 rounded-md border p-3"
+      data-testid="review-standard-answer"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium">Standard answer</div>
+        <Badge variant={answer.status === "ready" ? "secondary" : "outline"}>
+          {formatStatus(answer.status)}
+        </Badge>
+      </div>
+      <div className="max-h-28 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/50 p-2 text-xs">
+        {answer.answer_text}
+      </div>
+      <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+        <span>Max {answer.max_score}</span>
+        <span>{answer.scoring_points?.length ?? 0} scoring points</span>
+      </div>
+      {answer.rubric_text && (
+        <div className="whitespace-pre-wrap text-xs text-muted-foreground">
+          {answer.rubric_text}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function GradingDraft({
+  annotation,
+  onApplySuggestion,
+}: {
+  annotation?: SubmissionAnnotationPublic
+  onApplySuggestion: () => void
+}) {
+  if (!annotation) {
+    return (
+      <div
+        className="rounded-md border p-3 text-xs text-muted-foreground"
+        data-testid="review-grading-draft"
+      >
+        Run processing to create a grading draft.
+      </div>
+    )
+  }
+
+  const hasSuggestion = annotation.suggested_score != null
+  return (
+    <div
+      className="grid gap-2 rounded-md border p-3"
+      data-testid="review-grading-draft"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium">Grading draft</div>
+        <Badge
+          variant={
+            annotation.grading_status === "succeeded" ? "secondary" : "outline"
+          }
+        >
+          {formatStatus(annotation.grading_status)}
+        </Badge>
+      </div>
+      {hasSuggestion ? (
+        <div className="grid gap-2">
+          <div className="flex items-center justify-between gap-2 rounded-sm bg-muted/50 p-2 text-xs">
+            <span>
+              Suggested {annotation.suggested_score}
+              {annotation.max_score != null ? ` / ${annotation.max_score}` : ""}
+            </span>
+            <span className="text-muted-foreground">
+              {formatConfidence(annotation.grading_confidence)}
+            </span>
+          </div>
+          {annotation.suggested_comment && (
+            <div className="whitespace-pre-wrap text-xs text-muted-foreground">
+              {annotation.suggested_comment}
+            </div>
+          )}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            data-testid="review-apply-grading-suggestion-button"
+            onClick={onApplySuggestion}
+          >
+            <CheckCircle2 />
+            Apply Suggestion
+          </Button>
+        </div>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          No suggested score is available.
+        </div>
+      )}
+    </div>
+  )
+}
+
 function SubmissionReview() {
   const { examId, submissionId } = Route.useParams()
   const [pageNumber, setPageNumber] = useState(1)
@@ -443,6 +562,10 @@ function SubmissionReview() {
     queryFn: () =>
       ExamsService.readSubmissionAnnotations({ examId, submissionId }),
   })
+  const standardAnswersQuery = useQuery({
+    queryKey: ["standard-answers", examId],
+    queryFn: () => ExamsService.readStandardAnswers({ examId }),
+  })
   const processingTaskQuery = useQuery({
     queryKey: ["processing-task", processingTaskId],
     queryFn: () =>
@@ -463,11 +586,22 @@ function SubmissionReview() {
     () => annotationsQuery.data?.data ?? [],
     [annotationsQuery.data?.data],
   )
+  const standardAnswersByRegionId = useMemo(() => {
+    return new Map(
+      (standardAnswersQuery.data?.data ?? []).map((answer) => [
+        answer.exam_region_id,
+        answer,
+      ]),
+    )
+  }, [standardAnswersQuery.data?.data])
   const selectedRegion = regions.find(
     (region) => region.id === selectedRegionId,
   )
   const selectedAnnotation = selectedRegion
     ? getRegionAnnotation(annotations, selectedRegion.id)
+    : undefined
+  const selectedStandardAnswer = selectedRegion
+    ? standardAnswersByRegionId.get(selectedRegion.id)
     : undefined
 
   useEffect(() => {
@@ -559,7 +693,8 @@ function SubmissionReview() {
     examQuery.isLoading ||
     submissionQuery.isLoading ||
     regionsQuery.isLoading ||
-    annotationsQuery.isLoading
+    annotationsQuery.isLoading ||
+    standardAnswersQuery.isLoading
 
   return (
     <div className="grid gap-6">
@@ -726,7 +861,27 @@ function SubmissionReview() {
                 annotation={selectedAnnotation}
               />
 
+              <StandardAnswerReference answer={selectedStandardAnswer} />
+
               <AnnotationOcrDraft annotation={selectedAnnotation} />
+
+              <GradingDraft
+                annotation={selectedAnnotation}
+                onApplySuggestion={() => {
+                  if (selectedAnnotation?.suggested_score == null) return
+                  setForm((current) => ({
+                    ...current,
+                    score: String(selectedAnnotation.suggested_score),
+                    maxScore:
+                      selectedAnnotation.max_score == null
+                        ? current.maxScore
+                        : String(selectedAnnotation.max_score),
+                    comment:
+                      selectedAnnotation.suggested_comment ?? current.comment,
+                    status: "accepted",
+                  }))
+                }}
+              />
 
               <div className="grid gap-2">
                 <Label htmlFor="review-status">Status</Label>
