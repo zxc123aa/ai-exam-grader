@@ -544,9 +544,11 @@
 - 目标：新增一等标准答案模型，按已确认 `ExamRegion` 保存参考答案、满分和评分规则，为后续评分草稿提供依据。
 - 计划文档：`docs/template-answer-grading-plan.md`
 - 设计方向：
-  - 第一版标准答案必须绑定 `ExamRegion`，不支持未标定题区的独立题号答案。
+  - 第一版标准答案必须绑定 `region_type=question` 的 `ExamRegion`，不支持未标定题区的独立题号答案。
+  - 如果题干区和答题区后续需要分开建模，先新增 `scoring_unit`，不在第一版混用 `answer_area/header/other`。
   - 每个题区最多一条标准答案，避免同一题出现多个评分依据。
   - 字段至少覆盖参考答案、满分、评分规则文本、评分点 JSON、状态和更新时间。
+  - `scoring_points` 第一版最小结构固定为 `{id, description, points, required}`。
   - API 归属在考试下，沿用现有考试权限边界。
 - 验收标准：
   - 后端存在标准答案 SQLModel、Alembic migration 和 CRUD API。
@@ -583,13 +585,15 @@
 - 计划文档：`docs/template-answer-grading-plan.md`
 - 设计方向：
   - 第一版以主观题评分草稿为主，不自动定稿。
-  - 有标准答案时，Worker 生成建议分、建议评语和扣分点；`SubmissionAnnotation.status` 仍保持 `needs_review`。
+  - 有标准答案时，Worker 生成建议分、建议评语和扣分点；建议结果写入 `suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons` 和 `grading_status`，不直接覆盖教师最终 `score/comment/status`。
   - 无标准答案时，Worker 只生成 OCR draft，并在任务输出和复核页提示待补标准答案。
+  - `ocr_status != succeeded` 或 `ocr_confidence < 0.90` 时，第一版只标记 `needs_review`，Kimi/视觉模型 fallback 后置。
+  - 评分草稿记录 `answer_key_updated_at`；标准答案更新后，旧草稿标记为 `stale` 并要求重新处理。
   - 评分结果必须保留题区裁剪图、OCR 文本和标准答案作为证据。
 - 验收标准：
   - 复核页能显示标准答案、评分规则、OCR draft、建议分和建议评语。
   - 教师保存后仍使用现有最终 `score/comment/status` 字段作为确认结果。
-  - 处理任务输出能区分 `grading=succeeded|skipped_missing_answer|needs_review`。
+  - 处理任务输出能区分 `grading=succeeded|skipped_missing_answer|needs_review|stale`。
   - 后端测试覆盖有标准答案、无标准答案、OCR 失败三种路径。
 
 ### AEG-039 答案卷 OCR / AI 生成标准答案草稿

@@ -62,8 +62,9 @@
 第一版入口：
 
 - 手动录入为主。
-- 每条标准答案绑定一个 `ExamRegion`。
-- 每个题区最多一条标准答案。
+- 每条标准答案绑定一个可评分 `ExamRegion`。
+- 第一版可评分题区定义为 `region_type=question` 的 `ExamRegion`；如果后续要把题干区和答题区分开，需要先新增 `scoring_unit` 概念，不能让标准答案随意绑定 `answer_area/header/other`。
+- 每个可评分题区最多一条标准答案。
 
 建议数据：
 
@@ -72,9 +73,22 @@
 - `answer_text`
 - `max_score`
 - `rubric_text`
-- `scoring_points`，JSON 数组，保存评分点、分值和说明
+- `scoring_points`，JSON 数组，第一版最小结构固定为 `{id, description, points, required}`
 - `status`：`draft`、`ready`
 - `created_at`、`updated_at`
+
+`scoring_points` 示例：
+
+```json
+[
+  {
+    "id": "point-1",
+    "description": "写出关键公式",
+    "points": 2,
+    "required": true
+  }
+]
+```
 
 第一版不做：
 
@@ -117,7 +131,8 @@
 策略：
 
 - PaddleOCR 作为快速 baseline。
-- Kimi/视觉模型作为题区级 fallback，优先处理低置信度、公式、单位、图示密集题。
+- 第一版不自动调用 Kimi/视觉模型评分；当 `ocr_status != succeeded` 或 `ocr_confidence < 0.90` 时，标记为 `needs_review`，由教师复核。
+- Kimi/视觉模型作为后续题区级 fallback，优先处理低置信度、公式、单位、图示密集题。
 - 客观题后续单独接规则识别，例如选择题勾选、填涂、圈选。
 
 输出：
@@ -141,8 +156,10 @@
 第一版评分：
 
 - 以主观题评分草稿为主。
-- 评分结果写入现有 `SubmissionAnnotation` 的 `score`、`max_score`、`comment`，状态保持 `needs_review`。
-- 教师最终确认后，才可将状态改为 `accepted` 或 `rejected`。
+- AI/规则评分只写入建议字段，不直接覆盖教师最终字段。
+- 建议字段与最终字段分离：`suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons`、`grading_status`。
+- 教师点击确认后，才把建议分和建议评语复制到现有 `SubmissionAnnotation.score/comment/status`。
+- `SubmissionAnnotation.max_score` 可从标准答案同步，但最终确认前仍应显示为待复核。
 
 评分输入：
 
@@ -154,15 +171,18 @@
 
 建议输出：
 
-- 建议分。
-- 扣分点。
-- 简短评语。
-- 置信度或风险提示。
+- `suggested_score`
+- `suggested_comment`
+- `grading_confidence`
+- `grading_reasons`，包含扣分点、命中的评分点和风险提示
+- `grading_status`：`not_started`、`succeeded`、`skipped_missing_answer`、`needs_review`、`stale`
+- `answer_key_updated_at`，记录本次评分使用的标准答案更新时间
 
 验收：
 
 - 无标准答案时，Worker 只生成 OCR draft，并提示“缺少标准答案”。
 - 有标准答案时，Worker 生成评分草稿，但不自动定稿。
+- 标准答案更新后，旧评分草稿必须标记为 `stale`，需要重新处理后才能作为建议使用。
 - 复核页显示标准答案、评分规则、OCR draft、建议分和建议评语。
 
 ## 后续代码实施顺序
@@ -178,9 +198,10 @@
 ## 关键约束
 
 - 模板驱动，不做无模板整卷盲识别。
-- 第一版标准答案必须绑定 `ExamRegion`。
+- 第一版标准答案必须绑定 `region_type=question` 的 `ExamRegion`。
 - 第一版标准答案由教师手动录入。
 - AI/OCR 结果都是草稿，教师保留最终确认权。
+- AI 建议分和教师最终分必须分字段保存，不能用 `score/comment/status` 直接承载未确认建议。
 - 所有识别、评分和批注结果必须保留卷面坐标或题区裁剪证据。
 - 评分能力必须允许缺省：缺标准答案、缺 OCR、低置信度都应进入人工复核。
 
