@@ -1,6 +1,6 @@
 import { Link } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Check, Copy, SquareMousePointer } from "lucide-react"
+import { Check, Copy, FileCheck2, SquareMousePointer } from "lucide-react"
 
 import type { ExamPublic } from "@/client"
 import ExamFilesDialog from "@/components/Exams/ExamFilesDialog"
@@ -78,6 +78,15 @@ export const columns: ColumnDef<ExamPublic>[] = [
           >
             <SquareMousePointer />
             Mark
+          </Link>
+        </Button>
+        <Button variant="outline" size="sm" asChild>
+          <Link
+            to="/exams/$examId/answers"
+            params={{ examId: row.original.id }}
+          >
+            <FileCheck2 />
+            Answers
           </Link>
         </Button>
         <ExamFilesDialog exam={row.original} />

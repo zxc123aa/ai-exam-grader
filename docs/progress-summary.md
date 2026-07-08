@@ -4,7 +4,7 @@
 
 ## 当前阶段
 
-周期 1 到周期 4 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物、OCR 初稿字段/服务接口、手机照片预处理后端入口、PaddleOCR GPU 独立服务、题目区域候选分割接口和标定页候选草稿导入已实现。下一阶段主线调整为“空白卷重建 -> 标准答案制作 -> 学生答卷配准 -> 学生答案识别 -> 评分草稿 -> 教师复核”。真实自动配准 homography、标准答案工作台、AI 判分和批注 PDF 导出仍待后续周期接入。
+周期 1 到周期 4 前置能力衔接：Web 上传、PDF/图片分页预览、手工题区标定、学生答卷上传、答卷预览、模板题区叠加、单题裁剪接口、配准状态记录、人工确认流程、教师复核页、结构化批注、学生答卷处理任务管线、真实题区裁剪产物、OCR 初稿字段/服务接口、手机照片预处理后端入口、PaddleOCR GPU 独立服务、题目区域候选分割接口、标定页候选草稿导入、标准答案模型/API 和标准答案工作台已实现。下一阶段主线是“学生答案识别 -> 评分草稿 -> 教师复核”，优先把标准答案接入 Worker 和复核页。真实自动配准 homography、AI 判分增强和批注 PDF 导出仍待后续周期接入。
 
 ## 已完成
 
@@ -113,23 +113,28 @@
 - 已新增题目候选分割真实样本评估：`scripts/evaluate_question_segmentation.py` 和 `docs/question-segmentation-evaluation.md`。7 个英语/物理单页样本结果为 `0 pass / 1 review / 6 fail`，主要失败是 `dominant_whole_page_candidate` 整页误框。
 - 已新增 `layout_ocr_anchor_v1` 第一版：`ocr-service /ocr` 现在返回 `raw.lines[]` 文本框，后端可用题号 anchor 生成候选框，标定页可在 Projection / OCR anchor 之间切换。OCR anchor 真实样本评估见 `docs/question-segmentation-ocr-anchor-evaluation.md`，结果为 `3 pass / 3 review / 1 fail`。
 - 已新增主线计划文档：`docs/template-answer-grading-plan.md`，明确先重建空白卷模板，再制作标准答案，最后进行题区级识别、评分草稿和教师复核。
+- 已新增 StandardAnswer 数据模型、Alembic migration 和考试下标准答案 CRUD API；标准答案第一版只能绑定 `region_type=question` 的 `ExamRegion`，同一题区最多一条。
+- 标准答案 API 已覆盖创建、读取、更新、删除、重复题区冲突、非 question 题区拒绝和跨用户权限边界；OpenAPI smoke 已包含 `/api/v1/exams/{exam_id}/answers`。
+- 前端 OpenAPI client 已同步生成 `StandardAnswer*` 类型和 `ExamsService.*StandardAnswer*` 方法。
+- 已新增 `/exams/$examId/answers` 标准答案工作台，考试列表新增 Answers 入口；教师可按题区录入参考答案、满分、rubric、评分点和 `draft|ready` 状态。
+- 标准答案工作台已显示题区覆盖状态：ready、draft、missing；无 question 题区时提示回到 Marking。
+- 标准答案工作台 E2E 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium ../node_modules/.bin/playwright test exams.spec.ts -g "Can prepare a standard answer" --project chromium`，2 passed。
 
 ## 进行中
 
-- 周期 4 下一块能力：优先补齐标准答案数据模型、答案工作台和评分草稿输入，不再直接从 OCR 跳到 AI 判分。
+- 周期 4 下一块能力：优先补齐评分草稿数据字段、Worker 接入和复核页展示，不再直接从 OCR 跳到最终分。
 - 题目区域自动分割仍处在候选阶段：`layout_ocr_anchor_v1` 已明显改善整页误框，但仍有写作页无题号漏检、物理页过切和题号误锚定问题，不能自动落库。
 
 ## 下一步
 
-1. 实现标准答案数据模型与 API：每条标准答案绑定一个已确认且 `region_type=question` 的 `ExamRegion`，保存参考答案、满分、评分点和评分规则。
-2. 新增标准答案工作台：教师按题区录入答案、满分和评分点，未填写题区需要明确提示。
-3. 扩展学生答卷处理任务：有标准答案时生成独立评分草稿字段，无标准答案时只生成 OCR draft 并标记待补答案。
-4. 扩展教师复核页：显示标准答案、评分规则、OCR draft、建议分和建议评语；教师确认后才写入最终分数/评语。
-5. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
-6. 继续迭代 `layout_ocr_anchor_v1`：补写作/大答题区 fallback、减少物理页过切，并把真实样本 pass/review/fail 作为质量门禁。
-7. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
-8. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
-9. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
+1. 扩展 `SubmissionAnnotation` 评分草稿字段：`suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons`、`grading_status`、`answer_key_updated_at`。
+2. 扩展学生答卷处理任务：有标准答案时生成独立评分草稿；无标准答案时只生成 OCR draft 并标记待补答案。
+3. 扩展教师复核页：显示标准答案、评分规则、OCR draft、建议分和建议评语；教师确认后才写入最终分数/评语。
+4. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
+5. 继续迭代 `layout_ocr_anchor_v1`：补写作/大答题区 fallback、减少物理页过切，并把真实样本 pass/review/fail 作为质量门禁。
+6. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。
+7. 将当前人工确认的 identity homography 替换为可插拔自动配准结果。
+8. 设计批注 PDF 导出，把教师最终复核结果回写到卷面。
 
 ## 风险与阻塞
 

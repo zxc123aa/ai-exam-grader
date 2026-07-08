@@ -155,6 +155,80 @@ test("Can upload a blank paper and mark a template region", async ({
   await expect(page.getByTestId("saved-region-Q1 revised")).not.toBeVisible()
 })
 
+test("Can prepare a standard answer for a question region", async ({
+  page,
+}) => {
+  const title = `Answer Key Exam ${Date.now()}`
+
+  await page.goto("/exams")
+  await page.getByRole("button", { name: "New Exam" }).first().click()
+  await page.getByPlaceholder("English Midterm").fill(title)
+  await page.getByRole("button", { name: "Create" }).click()
+  await expect(page.getByText("Exam created")).toBeVisible()
+
+  const row = page.getByRole("row").filter({ hasText: title })
+  await expect(row).toBeVisible()
+
+  await row.getByRole("button", { name: "Files" }).click()
+  await page.getByTestId("exam-file-input").setInputFiles({
+    name: "blank.png",
+    mimeType: "image/png",
+    buffer: pngBuffer,
+  })
+  await page.getByTestId("exam-file-upload-button").click()
+  await expect(page.getByText("Exam file uploaded")).toBeVisible()
+  await page.keyboard.press("Escape")
+
+  await row.getByRole("link", { name: "Mark" }).click()
+  await expect(page.getByText("Page 1 of 1")).toBeVisible()
+
+  const canvas = page.getByTestId("region-marking-canvas")
+  const box = await canvas.boundingBox()
+  expect(box).not.toBeNull()
+  if (!box) return
+
+  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width * 0.56, box.y + box.height * 0.42)
+  await page.mouse.up()
+
+  await page.getByPlaceholder("Q1").fill("Q1")
+  await page.getByRole("button", { name: "Save Region" }).click()
+  await expect(page.getByText("Region saved")).toBeVisible()
+
+  await page.goto("/exams")
+  const updatedRow = page.getByRole("row").filter({ hasText: title })
+  await expect(updatedRow).toBeVisible()
+  await updatedRow.getByRole("link", { name: "Answers" }).click()
+
+  await expect(page.getByRole("heading", { name: title })).toBeVisible()
+  await expect(page.getByTestId("answer-region-list-Q1")).toContainText(
+    /missing/i,
+  )
+  await page.getByTestId("standard-answer-text").fill("Use conservation law.")
+  await page.getByTestId("standard-answer-max-score").fill("6")
+  await page
+    .getByTestId("standard-answer-rubric")
+    .fill("Award formula, substitution, and final unit.")
+  await page
+    .getByTestId("standard-answer-scoring-points")
+    .fill("point-1 | 2 | required | Writes the correct formula")
+  await page.getByRole("combobox", { name: "Status" }).click()
+  await page.getByRole("option", { name: "Ready" }).click()
+  await page.getByTestId("standard-answer-save-button").click()
+
+  await expect(page.getByText("Standard answer saved")).toBeVisible()
+  await expect(page.getByTestId("answer-region-list-Q1")).toContainText(
+    /ready/i,
+  )
+
+  await page.reload()
+  await expect(page.getByTestId("standard-answer-text")).toHaveValue(
+    "Use conservation law.",
+  )
+  await expect(page.getByTestId("standard-answer-max-score")).toHaveValue("6")
+})
+
 test("Can load suggested regions and confirm one as a template region", async ({
   page,
 }) => {

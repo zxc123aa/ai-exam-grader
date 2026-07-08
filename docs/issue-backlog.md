@@ -539,9 +539,10 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 4 / 标准答案与评分闭环
 - 目标：新增一等标准答案模型，按已确认 `ExamRegion` 保存参考答案、满分和评分规则，为后续评分草稿提供依据。
+- 验证：已提交 `1f3951b Add standard answer API`；`pytest tests/api/routes/test_exams.py -q` 通过，`PYTHONPATH=backend python3 scripts/smoke-openapi.py` 通过，前端 OpenAPI client 已同步生成。
 - 计划文档：`docs/template-answer-grading-plan.md`
 - 设计方向：
   - 第一版标准答案必须绑定 `region_type=question` 的 `ExamRegion`，不支持未标定题区的独立题号答案。
@@ -551,18 +552,19 @@
   - `scoring_points` 第一版最小结构固定为 `{id, description, points, required}`。
   - API 归属在考试下，沿用现有考试权限边界。
 - 验收标准：
-  - 后端存在标准答案 SQLModel、Alembic migration 和 CRUD API。
-  - 可按考试读取全部标准答案，并可按题区创建/更新/删除。
-  - 跨用户不能读取或修改他人考试的标准答案。
-  - 删除题区或考试时，相关标准答案不会留下孤立脏数据。
+  - 后端存在标准答案 SQLModel、Alembic migration 和 CRUD API。已完成。
+  - 可按考试读取全部标准答案，并可按题区创建/更新/删除。已完成。
+  - 跨用户不能读取或修改他人考试的标准答案。已完成。
+  - 删除题区或考试时，相关标准答案不会留下孤立脏数据。已完成。
 
 ### AEG-037 标准答案工作台
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 4 / 标准答案与评分闭环
 - 目标：新增教师可用的标准答案工作台，按模板题区录入答案、满分和评分规则。
+- 验证：新增 `/exams/$examId/answers`；`npm run --workspace frontend lint`、`npm run --workspace frontend build` 通过；`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium ../node_modules/.bin/playwright test exams.spec.ts -g "Can prepare a standard answer" --project chromium` 通过。
 - 计划文档：`docs/template-answer-grading-plan.md`
 - 设计方向：
   - 入口放在考试列表或考试操作区，与 Marking、Submissions 并列。
@@ -570,10 +572,10 @@
   - 右侧展示空白卷页面预览、选中题区高亮、参考答案、满分和评分规则编辑区。
   - 未标定题区时提示先进入标定页。
 - 验收标准：
-  - 教师可以逐题保存标准答案、满分和评分规则。
-  - 已保存、未保存、草稿状态在题区列表中清晰可见。
-  - 切换题区不会丢失已保存内容。
-  - 前端 OpenAPI client 与类型已同步生成。
+  - 教师可以逐题保存标准答案、满分和评分规则。已完成。
+  - 已保存、未保存、草稿状态在题区列表中清晰可见。已完成。
+  - 切换题区不会丢失已保存内容。已完成。
+  - 前端 OpenAPI client 与类型已同步生成。已完成。
 
 ### AEG-038 基于标准答案的评分草稿接入
 
