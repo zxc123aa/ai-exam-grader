@@ -119,17 +119,20 @@
 - 已新增 `/exams/$examId/answers` 标准答案工作台，考试列表新增 Answers 入口；教师可按题区录入参考答案、满分、rubric、评分点和 `draft|ready` 状态。
 - 标准答案工作台已显示题区覆盖状态：ready、draft、missing；无 question 题区时提示回到 Marking。
 - 标准答案工作台 E2E 已通过：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium ../node_modules/.bin/playwright test exams.spec.ts -g "Can prepare a standard answer" --project chromium`，2 passed。
+- 已新增批注评分草稿字段：`suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons`、`grading_status`、`answer_key_updated_at`。
+- Worker 已接入 ready 标准答案：OCR 成功且置信度达标时写入建议分和 reasons；无 ready 标准答案时写 `skipped_missing_answer`；OCR 不可用或低置信度时写 `needs_review`。
+- 标准答案更新后，同题区已有 `succeeded/needs_review` 评分草稿会标记为 `stale`，不覆盖教师最终 `score/comment/status`。
 
 ## 进行中
 
-- 周期 4 下一块能力：优先补齐评分草稿数据字段、Worker 接入和复核页展示，不再直接从 OCR 跳到最终分。
+- 周期 4 下一块能力：优先补齐复核页标准答案/评分草稿展示和教师采用建议的交互，不再直接从 OCR 跳到最终分。
 - 题目区域自动分割仍处在候选阶段：`layout_ocr_anchor_v1` 已明显改善整页误框，但仍有写作页无题号漏检、物理页过切和题号误锚定问题，不能自动落库。
 
 ## 下一步
 
-1. 扩展 `SubmissionAnnotation` 评分草稿字段：`suggested_score`、`suggested_comment`、`grading_confidence`、`grading_reasons`、`grading_status`、`answer_key_updated_at`。
-2. 扩展学生答卷处理任务：有标准答案时生成独立评分草稿；无标准答案时只生成 OCR draft 并标记待补答案。
-3. 扩展教师复核页：显示标准答案、评分规则、OCR draft、建议分和建议评语；教师确认后才写入最终分数/评语。
+1. 扩展教师复核页：读取标准答案，显示标准答案、评分规则、OCR draft、建议分和建议评语。
+2. 增加“采用建议”交互：教师确认后才把建议分/建议评语复制到最终 `score/comment/status`。
+3. 补充 OCR 失败/低置信度评分草稿测试，并增加复核页 Playwright 覆盖。
 4. 前端显示扫描预处理 `scan_quality` 和 warnings，`review` 结果进入 OCR/判分前必须可被教师确认。
 5. 继续迭代 `layout_ocr_anchor_v1`：补写作/大答题区 fallback、减少物理页过切，并把真实样本 pass/review/fail 作为质量门禁。
 6. 接入 Kimi 题区级 fallback，先以 PaddleOCR `confidence < 0.90` 作为实验触发线。

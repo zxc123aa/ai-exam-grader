@@ -1388,11 +1388,14 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert task["output_ref"]["stages"]["region_crops"] == "succeeded"
     assert task["output_ref"]["stages"]["registration"]["source"] == "identity_v1"
     assert task["output_ref"]["stages"]["ocr"]["status"] == "needs_configuration"
+    assert task["output_ref"]["stages"]["grading"]["status"] == "skipped_missing_answer"
     assert len(task["output_ref"]["region_crops"]) == 1
     assert task["output_ref"]["region_crops"][0]["label"] == "Q1"
     assert task["output_ref"]["region_crops"][0]["storage_key"].endswith(".png")
     assert len(task["output_ref"]["ocr_results"]) == 1
     assert task["output_ref"]["ocr_results"][0]["status"] == "not_configured"
+    assert len(task["output_ref"]["grading_results"]) == 1
+    assert task["output_ref"]["grading_results"][0]["status"] == "skipped_missing_answer"
     assert task["output_ref"]["created_annotation_count"] == 1
 
     annotations_response = client.get(
@@ -1408,6 +1411,9 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert annotations["data"][0]["ocr_status"] == "not_configured"
     assert annotations["data"][0]["ocr_engine"] == "disabled"
     assert annotations["data"][0]["ocr_text"] is None
+    assert annotations["data"][0]["grading_status"] == "skipped_missing_answer"
+    assert annotations["data"][0]["suggested_score"] is None
+    assert annotations["data"][0]["grading_reasons"][0]["type"] == "missing_standard_answer"
     annotation_id = annotations["data"][0]["id"]
 
     crop_response = client.get(
@@ -1455,7 +1461,7 @@ def test_student_submission_processing_task_writes_paddle_http_ocr_result(
         files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
     )
     submission_id = upload_response.json()["id"]
-    client.post(
+    region_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/regions",
         headers=superuser_token_headers,
         json={
@@ -1468,6 +1474,27 @@ def test_student_submission_processing_task_writes_paddle_http_ocr_result(
             "height": 0.2,
         },
     )
+    region_id = region_response.json()["id"]
+    answer_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers",
+        headers=superuser_token_headers,
+        json={
+            "exam_region_id": region_id,
+            "answer_text": "Recognized answer",
+            "max_score": 5,
+            "rubric_text": "Match the expected answer.",
+            "scoring_points": [
+                {
+                    "id": "content",
+                    "description": "Recognized answer content",
+                    "points": 5,
+                    "required": True,
+                }
+            ],
+            "status": "ready",
+        },
+    )
+    assert answer_response.status_code == 200
 
     response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/processing-tasks",
@@ -1478,9 +1505,12 @@ def test_student_submission_processing_task_writes_paddle_http_ocr_result(
     task = response.json()
     assert task["status"] == "succeeded"
     assert task["output_ref"]["stages"]["ocr"] == "succeeded"
+    assert task["output_ref"]["stages"]["grading"] == "succeeded"
     assert task["output_ref"]["ocr_results"][0]["status"] == "succeeded"
     assert task["output_ref"]["ocr_results"][0]["engine"] == "paddleocr-gpu-cu130"
     assert task["output_ref"]["ocr_results"][0]["confidence"] == 0.94
+    assert task["output_ref"]["grading_results"][0]["status"] == "succeeded"
+    assert task["output_ref"]["grading_results"][0]["suggested_score"] == 5
 
     annotations_response = client.get(
         f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
@@ -1491,6 +1521,27 @@ def test_student_submission_processing_task_writes_paddle_http_ocr_result(
     assert annotation["ocr_engine"] == "paddleocr-gpu-cu130"
     assert annotation["ocr_confidence"] == 0.94
     assert annotation["ocr_text"] == "Recognized answer"
+    assert annotation["max_score"] == 5
+    assert annotation["grading_status"] == "succeeded"
+    assert annotation["suggested_score"] == 5
+    assert annotation["suggested_comment"]
+    assert annotation["grading_confidence"] == 0.94
+    assert annotation["grading_reasons"][0]["type"] == "text_overlap_heuristic_v0"
+    assert annotation["answer_key_updated_at"] is not None
+
+    stale_response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/answers/{answer_response.json()['id']}",
+        headers=superuser_token_headers,
+        json={"answer_text": "Updated recognized answer"},
+    )
+    assert stale_response.status_code == 200
+    stale_annotations_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+    )
+    stale_annotation = stale_annotations_response.json()["data"][0]
+    assert stale_annotation["grading_status"] == "stale"
+    assert stale_annotation["score"] is None
 
 
 def test_submission_annotation_rejects_region_from_other_exam(

@@ -125,6 +125,14 @@ class SubmissionAnnotationStatus(StrEnum):
     REJECTED = "rejected"
 
 
+class AnnotationGradingStatus(StrEnum):
+    NOT_STARTED = "not_started"
+    SUCCEEDED = "succeeded"
+    SKIPPED_MISSING_ANSWER = "skipped_missing_answer"
+    NEEDS_REVIEW = "needs_review"
+    STALE = "stale"
+
+
 class StandardAnswerStatus(StrEnum):
     DRAFT = "draft"
     READY = "ready"
@@ -629,6 +637,27 @@ class SubmissionAnnotation(SubmissionAnnotationBase, table=True):
     exam_region_id: uuid.UUID | None = Field(
         default=None, foreign_key="examregion.id", nullable=True, ondelete="SET NULL"
     )
+    suggested_score: float | None = Field(default=None, ge=0)
+    suggested_comment: str | None = Field(default=None, max_length=2000)
+    grading_confidence: float | None = Field(default=None, ge=0, le=1)
+    grading_reasons: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    grading_status: AnnotationGradingStatus = Field(
+        default=AnnotationGradingStatus.NOT_STARTED,
+        sa_column=Column(
+            SAEnum(
+                AnnotationGradingStatus,
+                name="annotationgradingstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    answer_key_updated_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
     submission: StudentSubmission | None = Relationship(back_populates="annotations")
 
 
@@ -636,6 +665,12 @@ class SubmissionAnnotationPublic(SubmissionAnnotationBase):
     id: uuid.UUID
     submission_id: uuid.UUID
     exam_region_id: uuid.UUID | None = None
+    suggested_score: float | None = None
+    suggested_comment: str | None = None
+    grading_confidence: float | None = None
+    grading_reasons: list[dict] = Field(default_factory=list)
+    grading_status: AnnotationGradingStatus = AnnotationGradingStatus.NOT_STARTED
+    answer_key_updated_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 

@@ -1,3 +1,4 @@
+import re
 import uuid
 
 import dramatiq
@@ -7,9 +8,12 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.db import engine
 from app.models import (
+    AnnotationGradingStatus,
     ExamRegion,
     ProcessingTask,
     ProcessingTaskStatus,
+    StandardAnswer,
+    StandardAnswerStatus,
     StoredFile,
     StudentSubmission,
     SubmissionAnnotation,
@@ -21,6 +25,119 @@ from app.services.submission_crops import save_region_crop
 
 redis_broker = RedisBroker(url=settings.REDIS_URL)
 dramatiq.set_broker(redis_broker)
+
+
+def tokenize_for_grading(text: str) -> set[str]:
+    tokens = re.findall(r"[A-Za-z0-9_]+|[\u4e00-\u9fff]", text.lower())
+    return {token for token in tokens if token.strip()}
+
+
+def build_grading_draft(
+    *,
+    annotation: SubmissionAnnotation,
+    standard_answer: StandardAnswer | None,
+) -> dict:
+    if not standard_answer or standard_answer.status != StandardAnswerStatus.READY:
+        annotation.suggested_score = None
+        annotation.suggested_comment = None
+        annotation.grading_confidence = None
+        annotation.grading_reasons = [
+            {
+                "type": "missing_standard_answer",
+                "message": "No ready standard answer is available for this region.",
+            }
+        ]
+        annotation.grading_status = AnnotationGradingStatus.SKIPPED_MISSING_ANSWER
+        annotation.answer_key_updated_at = None
+        return {
+            "region_id": str(annotation.exam_region_id),
+            "label": annotation.label,
+            "status": annotation.grading_status,
+            "reason": "missing_ready_standard_answer",
+        }
+
+    annotation.max_score = standard_answer.max_score
+    annotation.answer_key_updated_at = standard_answer.updated_at
+
+    if annotation.ocr_status != "succeeded":
+        annotation.suggested_score = None
+        annotation.suggested_comment = "OCR draft is not available for automatic scoring."
+        annotation.grading_confidence = 0
+        annotation.grading_reasons = [
+            {
+                "type": "ocr_not_succeeded",
+                "ocr_status": annotation.ocr_status,
+                "message": "Teacher review is required before scoring.",
+            }
+        ]
+        annotation.grading_status = AnnotationGradingStatus.NEEDS_REVIEW
+        return {
+            "region_id": str(annotation.exam_region_id),
+            "label": annotation.label,
+            "status": annotation.grading_status,
+            "reason": "ocr_not_succeeded",
+            "answer_key_updated_at": standard_answer.updated_at.isoformat()
+            if standard_answer.updated_at
+            else None,
+        }
+
+    if annotation.ocr_confidence is not None and annotation.ocr_confidence < 0.9:
+        annotation.suggested_score = None
+        annotation.suggested_comment = "OCR confidence is low; teacher review is required."
+        annotation.grading_confidence = annotation.ocr_confidence
+        annotation.grading_reasons = [
+            {
+                "type": "low_ocr_confidence",
+                "ocr_confidence": annotation.ocr_confidence,
+                "threshold": 0.9,
+            }
+        ]
+        annotation.grading_status = AnnotationGradingStatus.NEEDS_REVIEW
+        return {
+            "region_id": str(annotation.exam_region_id),
+            "label": annotation.label,
+            "status": annotation.grading_status,
+            "reason": "low_ocr_confidence",
+            "answer_key_updated_at": standard_answer.updated_at.isoformat()
+            if standard_answer.updated_at
+            else None,
+        }
+
+    answer_tokens = tokenize_for_grading(standard_answer.answer_text)
+    student_tokens = tokenize_for_grading(annotation.ocr_text or "")
+    matched_tokens = sorted(answer_tokens & student_tokens)
+    coverage = len(matched_tokens) / len(answer_tokens) if answer_tokens else 0
+    suggested_score = round(standard_answer.max_score * coverage, 2)
+    confidence = min(annotation.ocr_confidence or 0, coverage)
+    annotation.suggested_score = suggested_score
+    annotation.suggested_comment = (
+        "Draft score based on OCR/reference-answer text overlap; teacher must confirm."
+    )
+    annotation.grading_confidence = round(confidence, 4)
+    annotation.grading_reasons = [
+        {
+            "type": "text_overlap_heuristic_v0",
+            "matched_token_count": len(matched_tokens),
+            "reference_token_count": len(answer_tokens),
+            "coverage": round(coverage, 4),
+        },
+        {
+            "type": "scoring_points_available",
+            "count": len(standard_answer.scoring_points),
+        },
+    ]
+    annotation.grading_status = AnnotationGradingStatus.SUCCEEDED
+    return {
+        "region_id": str(annotation.exam_region_id),
+        "label": annotation.label,
+        "status": annotation.grading_status,
+        "suggested_score": suggested_score,
+        "max_score": standard_answer.max_score,
+        "grading_confidence": annotation.grading_confidence,
+        "answer_key_updated_at": standard_answer.updated_at.isoformat()
+        if standard_answer.updated_at
+        else None,
+    }
 
 
 @dramatiq.actor
@@ -106,6 +223,12 @@ def run_submission_processing_task(task_id: str) -> None:
                 .where(ExamRegion.exam_id == exam_id)
                 .order_by(ExamRegion.page_number, ExamRegion.created_at)
             ).all()
+            standard_answers = session.exec(
+                select(StandardAnswer).where(StandardAnswer.exam_id == exam_id)
+            ).all()
+            standard_answers_by_region_id = {
+                answer.exam_region_id: answer for answer in standard_answers
+            }
             existing_annotations = session.exec(
                 select(SubmissionAnnotation).where(
                     SubmissionAnnotation.submission_id == submission_id
@@ -120,6 +243,7 @@ def run_submission_processing_task(task_id: str) -> None:
             created_annotations = 0
             region_crops = []
             ocr_results = []
+            grading_results = []
             for region in regions:
                 crop = save_region_crop(
                     stored_file=stored_file,
@@ -162,6 +286,12 @@ def run_submission_processing_task(task_id: str) -> None:
                 annotation.ocr_confidence = ocr_draft.confidence
                 annotation.ocr_status = ocr_draft.status
                 annotation.ocr_engine = ocr_draft.engine
+                grading_results.append(
+                    build_grading_draft(
+                        annotation=annotation,
+                        standard_answer=standard_answers_by_region_id.get(region.id),
+                    )
+                )
                 annotation.updated_at = get_datetime_utc()
             session.commit()
 
@@ -177,6 +307,29 @@ def run_submission_processing_task(task_id: str) -> None:
                     else "partial",
                     "engine": ocr_results[0]["engine"],
                 }
+            grading_statuses = {result["status"] for result in grading_results}
+            if not grading_results:
+                grading_stage: str | dict = "skipped"
+            elif grading_statuses == {AnnotationGradingStatus.SUCCEEDED}:
+                grading_stage = "succeeded"
+            elif AnnotationGradingStatus.SKIPPED_MISSING_ANSWER in grading_statuses:
+                grading_stage = {
+                    "status": "skipped_missing_answer",
+                    "succeeded_count": sum(
+                        result["status"] == AnnotationGradingStatus.SUCCEEDED
+                        for result in grading_results
+                    ),
+                    "total_count": len(grading_results),
+                }
+            else:
+                grading_stage = {
+                    "status": "needs_review",
+                    "succeeded_count": sum(
+                        result["status"] == AnnotationGradingStatus.SUCCEEDED
+                        for result in grading_results
+                    ),
+                    "total_count": len(grading_results),
+                }
 
             output_ref = {
                 "pipeline": "submission_processing_v1",
@@ -191,11 +344,12 @@ def run_submission_processing_task(task_id: str) -> None:
                     },
                     "region_crops": "succeeded",
                     "ocr": ocr_stage,
-                    "grading": "not_started",
+                    "grading": grading_stage,
                 },
                 "region_count": len(regions),
                 "region_crops": region_crops,
                 "ocr_results": ocr_results,
+                "grading_results": grading_results,
                 "created_annotation_count": created_annotations,
             }
             set_task_state(

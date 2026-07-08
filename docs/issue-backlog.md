@@ -581,9 +581,10 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：In Progress
 - 所属周期：周期 4 / 标准答案与评分闭环
 - 目标：扩展学生答卷处理任务，把题区 OCR 结果、裁剪图和标准答案结合，生成教师可复核的建议分和评语。
+- 进展：后端评分草稿字段、migration 和 Worker 第一版已落地；有 ready 标准答案且 OCR 成功时写入建议分、建议评语、置信度和 reasons，无 ready 标准答案时写 `skipped_missing_answer`；标准答案更新会把旧草稿标记为 `stale`。复核页展示和教师一键采用建议仍待完成。
 - 计划文档：`docs/template-answer-grading-plan.md`
 - 设计方向：
   - 第一版以主观题评分草稿为主，不自动定稿。
@@ -593,10 +594,10 @@
   - 评分草稿记录 `answer_key_updated_at`；标准答案更新后，旧草稿标记为 `stale` 并要求重新处理。
   - 评分结果必须保留题区裁剪图、OCR 文本和标准答案作为证据。
 - 验收标准：
-  - 复核页能显示标准答案、评分规则、OCR draft、建议分和建议评语。
+  - 复核页能显示标准答案、评分规则、OCR draft、建议分和建议评语。待完成。
   - 教师保存后仍使用现有最终 `score/comment/status` 字段作为确认结果。
-  - 处理任务输出能区分 `grading=succeeded|skipped_missing_answer|needs_review|stale`。
-  - 后端测试覆盖有标准答案、无标准答案、OCR 失败三种路径。
+  - 处理任务输出能区分 `grading=succeeded|skipped_missing_answer|needs_review|stale`。部分完成：处理任务输出覆盖前三类，标准答案更新会把旧批注标为 `stale`。
+  - 后端测试覆盖有标准答案、无标准答案、OCR 失败三种路径。部分完成：已覆盖有 ready 标准答案、无 ready 标准答案和 stale；OCR 失败/低置信度路径待补。
 
 ### AEG-039 答案卷 OCR / AI 生成标准答案草稿
 

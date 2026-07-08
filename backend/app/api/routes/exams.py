@@ -14,6 +14,7 @@ from app.api.deps import CurrentUser, SessionDep
 from app.core import security
 from app.core.config import settings
 from app.models import (
+    AnnotationGradingStatus,
     Exam,
     ExamCreate,
     ExamDocument,
@@ -1203,6 +1204,19 @@ def update_standard_answer(
     answer.sqlmodel_update(answer_in.model_dump(exclude_unset=True))
     answer.updated_at = get_datetime_utc()
     session.add(answer)
+    affected_annotations = session.exec(
+        select(SubmissionAnnotation).where(
+            SubmissionAnnotation.exam_region_id == answer.exam_region_id
+        )
+    ).all()
+    for annotation in affected_annotations:
+        if annotation.grading_status in {
+            AnnotationGradingStatus.SUCCEEDED,
+            AnnotationGradingStatus.NEEDS_REVIEW,
+        }:
+            annotation.grading_status = AnnotationGradingStatus.STALE
+            annotation.updated_at = get_datetime_utc()
+            session.add(annotation)
     session.commit()
     session.refresh(answer)
     return answer
