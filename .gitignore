@@ -12,3 +12,6 @@ __pycache__/
 *.key
 data/
 materials/
+.tools/
+outputs/
+.workbuddy/

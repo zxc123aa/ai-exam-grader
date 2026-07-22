@@ -21,7 +21,10 @@ from app.models import (
     get_datetime_utc,
 )
 from app.services.ocr import extract_ocr_draft
-from app.services.submission_crops import save_region_crop
+from app.services.submission_crops import (
+    resolve_exam_region_paper_page,
+    save_region_crop,
+)
 
 redis_broker = RedisBroker(url=settings.REDIS_URL)
 dramatiq.set_broker(redis_broker)
@@ -251,6 +254,7 @@ def run_submission_processing_task(task_id: str) -> None:
                     owner_id=stored_file.uploaded_by_id,
                     submission_id=submission.id,
                     upload_dir=settings.LOCAL_UPLOAD_DIR,
+                    page_number=resolve_exam_region_paper_page(session, region),
                 )
                 region_crops.append(crop)
                 ocr_draft = extract_ocr_draft(

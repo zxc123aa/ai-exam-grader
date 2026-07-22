@@ -21,7 +21,7 @@ export async function logInUser(page: Page, email: string, password: string) {
 
   await page.getByTestId("email-input").fill(email)
   await page.getByTestId("password-input").fill(password)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
   await page.waitForURL("/")
   await expect(
     page.getByRole("heading", { name: "AI Exam Grader" }),

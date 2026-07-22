@@ -1,0 +1,6 @@
+.env
+kimi.txt
+node_modules/
+data/jobs/*.json
+data/benchmarks/*.json
+data/exports/*.md

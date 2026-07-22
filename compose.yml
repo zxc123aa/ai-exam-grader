@@ -111,7 +111,7 @@ services:
       - LOCAL_UPLOAD_DIR=/app/data/uploads
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-opencv_v1}
+      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
 
   backend:
@@ -153,7 +153,7 @@ services:
       - LOCAL_UPLOAD_DIR=/app/data/uploads
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-opencv_v1}
+      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
 
     healthcheck:
@@ -215,7 +215,7 @@ services:
       - LOCAL_UPLOAD_DIR=/app/data/uploads
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-opencv_v1}
+      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
     command:
       - dramatiq

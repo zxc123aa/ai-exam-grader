@@ -1,0 +1,82 @@
+{
+  "layouts": [
+    {
+      "id": "fe1559f1-182f-4507-93c7-8ff7e1b280f5",
+      "blockId": "fe1559f1-182f-4507-93c7-8ff7e1b280f5",
+      "pageId": "fe1559f1-182f-4507-93c7-8ff7e1b280f5",
+      "fileName": "1.jpg",
+      "error": "system memory overloaded (current: 94.1%, threshold: 90%)",
+      "elapsedMs": 0
+    },
+    {
+      "id": "37727e28-e149-4672-a59b-b0bd18f08fed",
+      "blockId": "37727e28-e149-4672-a59b-b0bd18f08fed",
+      "pageId": "37727e28-e149-4672-a59b-b0bd18f08fed",
+      "fileName": "2.jpg",
+      "error": "system memory overloaded (current: 94.1%, threshold: 90%)",
+      "elapsedMs": 0
+    }
+  ],
+  "results": [],
+  "blocks": [],
+  "verificationMode": "fast",
+  "timing": {
+    "orientationMs": 0,
+    "layoutMs": 0,
+    "layoutModelMs": 0,
+    "refinementMs": 0,
+    "cropMs": 0,
+    "ocrMs": 0,
+    "totalElapsedMs": 3378
+  },
+  "concurrency": 8,
+  "batchCount": 0,
+  "modelRequestCount": 0,
+  "fallbackBatchCount": 0,
+  "mergedContinuationCount": 0,
+  "tokenUsage": {
+    "inputTokens": 0,
+    "outputTokens": 0,
+    "totalTokens": 0
+  },
+  "tokenUsageRecorded": false,
+  "estimatedCostUsd": null,
+  "metadata": {
+    "pipeline_version": "reference-node-gemini-v3",
+    "prompt_hash": "a20e715d3d1c32756a0bd3436f8c72e3085c288312bb5ce10b554026bf7a3ac4",
+    "prompt_hash_scope": "server_source_including_prompts",
+    "model": "gemini-3.5-flash",
+    "layout_model": "gemini-3.5-flash",
+    "provider": "fluxnode.org",
+    "thresholds": {
+      "grading_eligibility": 0.8,
+      "verification_failure_confidence_cap": 0.85,
+      "evidence_text_similarity_min": 0.68,
+      "layout_refinement_min_confidence": 0.68
+    },
+    "layout_refinement": {
+      "enabled": true,
+      "engine": "horizontal_projection_v2",
+      "first_question_anchor_engine": "printed_question_anchor_v1"
+    },
+    "git_commit": "30feadc06721e8a15c9633d3581c9690bafb26a6",
+    "generated_at": "2026-07-15T18:09:48.745Z",
+    "token_usage": {
+      "inputTokens": 0,
+      "outputTokens": 0,
+      "totalTokens": 0
+    },
+    "token_usage_recorded": false
+  },
+  "variant": "candidate",
+  "run_index": 1,
+  "runner": {
+    "api": "http://localhost:3417",
+    "git_commit": "30feadc06721e8a15c9633d3581c9690bafb26a6",
+    "wall_elapsed_ms": 3526,
+    "source_images": [
+      "../../2_试卷分析文件/material/1.jpg",
+      "../../2_试卷分析文件/material/2.jpg"
+    ]
+  }
+}

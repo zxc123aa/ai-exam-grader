@@ -77,7 +77,7 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
     mutationFn: (data: FormData) =>
       UsersService.updateUser({ userId: user.id, requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("User updated successfully")
+      showSuccessToast("用户信息更新成功")
       setIsOpen(false)
       onSuccess()
     },
@@ -103,16 +103,14 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
         onClick={() => setIsOpen(true)}
       >
         <Pencil />
-        Edit User
+        编辑用户
       </DropdownMenuItem>
       <DialogContent className="sm:max-w-md">
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)}>
             <DialogHeader>
-              <DialogTitle>Edit User</DialogTitle>
-              <DialogDescription>
-                Update the user details below.
-              </DialogDescription>
+              <DialogTitle>编辑用户</DialogTitle>
+              <DialogDescription>修改以下用户信息。</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <FormField
@@ -121,11 +119,11 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Email <span className="text-destructive">*</span>
+                      邮箱 <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Email"
+                        placeholder="请输入邮箱"
                         type="email"
                         {...field}
                         required
@@ -141,9 +139,9 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="full_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>姓名</FormLabel>
                     <FormControl>
-                      <Input placeholder="Full name" type="text" {...field} />
+                      <Input placeholder="请输入姓名" type="text" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -155,10 +153,10 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Set Password</FormLabel>
+                    <FormLabel>设置新密码</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder="请输入新密码"
                         type="password"
                         {...field}
                       />
@@ -173,10 +171,10 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                 name="confirm_password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Confirm Password</FormLabel>
+                    <FormLabel>确认新密码</FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder="请再次输入新密码"
                         type="password"
                         {...field}
                       />
@@ -197,7 +195,9 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is superuser?</FormLabel>
+                    <FormLabel className="font-normal">
+                      设为超级管理员
+                    </FormLabel>
                   </FormItem>
                 )}
               />
@@ -213,7 +213,7 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is active?</FormLabel>
+                    <FormLabel className="font-normal">启用账号</FormLabel>
                   </FormItem>
                 )}
               />
@@ -222,11 +222,11 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" disabled={mutation.isPending}>
-                  Cancel
+                  取消
                 </Button>
               </DialogClose>
               <LoadingButton type="submit" loading={mutation.isPending}>
-                Save
+                保存
               </LoadingButton>
             </DialogFooter>
           </form>

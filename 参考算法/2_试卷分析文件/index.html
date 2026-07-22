@@ -1,0 +1,228 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>纸上答案 / 试卷识别工作台</title>
+    <link rel="stylesheet" href="/styles.css" />
+    <link rel="stylesheet" href="/components.css" />
+  </head>
+  <body>
+    <div class="shell">
+      <header class="masthead">
+        <div class="brand">
+          <span class="brand-mark">PA</span>
+          <div>
+            <p class="eyebrow">PAPER / ANSWER</p>
+            <h1>试卷识别工作台</h1>
+          </div>
+        </div>
+        <div class="status" id="health"><i></i><span>连接检查中</span></div>
+      </header>
+
+      <main>
+        <section class="batch-import" id="batch-import">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">01 / BATCH INTAKE</p>
+              <h3>批量导入工作台</h3>
+            </div>
+            <p id="batch-status">先填写批次信息</p>
+          </div>
+          <div class="batch-meta-grid">
+            <label
+              ><span>批次名称</span
+              ><input id="batch-title" placeholder="2025年八年级期中考"
+            /></label>
+            <label
+              ><span>学年</span><input id="batch-year" placeholder="2025-2026"
+            /></label>
+            <label
+              ><span>年级</span><input id="batch-grade" placeholder="八年级"
+            /></label>
+            <label
+              ><span>班级</span><input id="batch-class" placeholder="7班"
+            /></label>
+            <label class="batch-wide"
+              ><span>考试名称</span><input id="batch-exam" placeholder="期中考"
+            /></label>
+          </div>
+          <div class="batch-actions">
+            <label class="folder-picker" for="batch-folder-input"
+              ><span>选择总目录</span><small>科目 / 姓名_学号 / 图片</small
+              ><input
+                id="batch-folder-input"
+                type="file"
+                webkitdirectory
+                directory
+                multiple
+                accept="image/jpeg,image/png,image/webp"
+            /></label>
+            <button
+              class="button ghost"
+              id="order-pages"
+              type="button"
+              disabled
+            >
+              <span>AI 整理页序</span>
+            </button>
+            <button
+              class="button primary"
+              id="upload-batch"
+              type="button"
+              disabled
+            >
+              <span>确认并上传</span>
+            </button>
+          </div>
+          <div class="batch-summary" id="batch-summary">
+            <span>还没有读取总目录</span>
+          </div>
+          <div class="batch-subjects" id="batch-subjects">
+            <div class="blank-state compact">
+              <span>◇</span><b>选择包含多个科目的总目录</b
+              ><small>每名学生可包含 2–3 张试卷图片</small>
+            </div>
+          </div>
+        </section>
+
+        <section class="intro">
+          <div>
+            <p class="eyebrow">A quiet OCR desk for noisy paper</p>
+            <h2>把一叠实拍试卷，<em>还原成可校订的答案册。</em></h2>
+          </div>
+          <p class="intro-copy">
+            先辨认物理版面，再逐题读取印刷题干与手写回答。每个裁块、续题关系和模型耗时都留在任务轨迹中。
+          </p>
+        </section>
+
+        <section class="workspace">
+          <aside class="rail">
+            <div class="rail-title">
+              <span>01 / 输入</span><strong>图片底稿</strong>
+            </div>
+            <label class="dropzone" id="dropzone" for="file-input"
+              ><span class="drop-icon">＋</span><b>拖入试卷图片</b
+              ><small>JPG · PNG · WebP / 可多选</small
+              ><input id="file-input" type="file" accept="image/*" multiple
+            /></label>
+            <div class="file-list" id="file-list">
+              <div class="empty-note">
+                还没有图片。建议一次放入同一份试卷的所有页。
+              </div>
+            </div>
+            <div class="model-picker">
+              <label
+                ><span>中转提供者</span
+                ><select id="provider-select" disabled>
+                  <option>提供者读取中…</option>
+                </select></label
+              ><label
+                ><span>本次使用模型</span
+                ><select id="model-select" disabled>
+                  <option>模型读取中…</option>
+                </select></label
+              ><small>方向、版面和 OCR 锁定使用同一“提供者 + 模型”</small>
+            </div>
+            <div class="actions">
+              <button class="button primary" id="analyze" disabled>
+                <span>分析版面</span><kbd>⌘ 1</kbd></button
+              ><button class="button ghost" id="recognize" disabled>
+                <span>逐块识别</span><kbd>⌘ 2</kbd>
+              </button>
+            </div>
+            <div class="timing-card">
+              <span>当前任务耗时</span><strong id="total-time">—</strong
+              ><small id="phase">等待导入</small>
+            </div>
+            <div class="history">
+              <div class="rail-title">
+                <span>ARCHIVE</span><strong>最近任务</strong>
+              </div>
+              <div id="history-list" class="history-list">读取中…</div>
+            </div>
+          </aside>
+
+          <section class="content">
+            <div class="section-head benchmark-head">
+              <div>
+                <p class="eyebrow">MODEL BENCHMARK</p>
+                <h3>模型耗时对比</h3>
+              </div>
+              <button class="button tiny" id="clear-benchmarks" type="button">
+                清空记录
+              </button>
+            </div>
+            <div class="benchmark-wrap">
+              <table class="benchmark-table">
+                <thead>
+                  <tr>
+                    <th>模型 / 输入</th>
+                    <th>方向</th>
+                    <th>版面</th>
+                    <th>裁切</th>
+                    <th>OCR</th>
+                    <th>总耗时</th>
+                    <th>平均置信度</th>
+                    <th>结果</th>
+                    <th>Token</th>
+                  </tr>
+                </thead>
+                <tbody id="benchmark-body">
+                  <tr>
+                    <td colspan="9">读取对比记录…</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="section-head">
+              <div>
+                <p class="eyebrow">02 / LAYOUT MAP</p>
+                <h3>版面与裁块</h3>
+              </div>
+              <p id="layout-summary">等待图片</p>
+            </div>
+            <div id="layout-grid" class="layout-grid">
+              <div class="blank-state">
+                <span>◎</span><b>先放入试卷图片</b
+                ><small>版面分析后，这里会显示每张原图与题目块。</small>
+              </div>
+            </div>
+
+            <div class="section-head results-head">
+              <div>
+                <p class="eyebrow">03 / ANSWER LEDGER</p>
+                <h3>题目与考生回答</h3>
+              </div>
+              <div class="results-tools">
+                <p id="results-summary" class="results-summary"></p>
+                <div class="export-actions">
+                  <button class="button tiny" id="save" disabled>
+                    保存任务</button
+                  ><button class="button tiny" id="export-json" disabled>
+                    导出 JSON</button
+                  ><button class="button tiny" id="export-md" disabled>
+                    导出 Markdown
+                  </button>
+                </div>
+              </div>
+            </div>
+            <div id="results" class="results">
+              <div class="blank-state compact">
+                <span>⌁</span><b>识别结果会出现在这里</b
+                ><small>每道题可直接修改，之后再保存。</small>
+              </div>
+            </div>
+          </section>
+        </section>
+      </main>
+      <footer>
+        <span>LOCAL WORKBENCH / MULTI-MODEL VISION</span
+        ><span id="model-label">模型读取中</span>
+      </footer>
+    </div>
+    <div id="toast" class="toast"></div>
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>

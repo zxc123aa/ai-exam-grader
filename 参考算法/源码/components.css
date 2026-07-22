@@ -1,0 +1,38 @@
+.history-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  padding: 0;
+  text-align: left;
+  color: inherit;
+  font: inherit;
+}
+
+.retry-block {
+  margin-left: 10px;
+  border: 1px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+  font: 10px var(--mono);
+  padding: 5px 8px;
+  cursor: pointer;
+}
+
+.retry-block:disabled {
+  opacity: .5;
+}
+
+.rename-paper {
+  margin-left: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--muted);
+  font: 10px var(--mono);
+  padding: 4px 7px;
+  cursor: pointer;
+}
+
+.rename-paper:hover {
+  color: var(--accent);
+  border-color: var(--accent);
+}

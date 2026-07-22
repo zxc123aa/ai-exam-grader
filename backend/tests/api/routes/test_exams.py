@@ -11,10 +11,12 @@ from sqlmodel import Session
 from starlette.datastructures import Headers
 
 from app import crud
+from app.api.routes import exams as exams_route
 from app.core.config import settings
 from app.models import UserCreate
 from app.services import ocr, question_segmentation, scan_preprocessing
 from app.services.file_storage import store_upload_file
+from app.services.pdf_rendering import merge_pdf_bytes
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
 
@@ -208,6 +210,56 @@ def test_read_exam_files(
     assert content["data"][0]["stored_file"]["original_filename"] == "blank.jpg"
 
 
+def test_upload_multiple_exam_files_and_reorder_pages(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Multi-page Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files/batch",
+        headers=superuser_token_headers,
+        files=[
+            ("files", ("1.jpg", b"\xff\xd8\xff first page", "image/jpeg")),
+            ("files", ("2.jpg", b"\xff\xd8\xff second page", "image/jpeg")),
+            ("files", ("appendix.pdf", PDF_BYTES, "application/pdf")),
+        ],
+        data={"document_type": "blank_exam"},
+    )
+
+    assert upload_response.status_code == 200
+    uploaded = upload_response.json()["data"]
+    assert [item["stored_file"]["original_filename"] for item in uploaded] == [
+        "1.jpg",
+        "2.jpg",
+        "appendix.pdf",
+    ]
+    assert [item["sort_order"] for item in uploaded] == [1, 2, 3]
+    assert sum(item["page_count"] for item in uploaded) == 3
+
+    reversed_ids = [item["id"] for item in reversed(uploaded)]
+    reorder_response = client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files/order",
+        headers=superuser_token_headers,
+        json={"document_ids": reversed_ids},
+    )
+
+    assert reorder_response.status_code == 200
+    reordered = reorder_response.json()["data"]
+    assert [item["id"] for item in reordered] == reversed_ids
+    assert [item["sort_order"] for item in reordered] == [1, 2, 3]
+
+    list_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files",
+        headers=superuser_token_headers,
+    )
+    assert [item["id"] for item in list_response.json()["data"]] == reversed_ids
+
+
 def test_read_exam_file_content(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
@@ -321,6 +373,7 @@ def test_read_exam_region_candidates(
         f"{settings.API_V1_STR}/exams/{exam_id}/files",
         headers=superuser_token_headers,
         files={"file": ("layout.png", QUESTION_LAYOUT_BYTES, "image/png")},
+        data={"preprocess": "none"},
     )
     document_id = upload_response.json()["id"]
 
@@ -395,6 +448,7 @@ def test_read_exam_region_candidates_with_ocr_anchor_engine(
         f"{settings.API_V1_STR}/exams/{exam_id}/files",
         headers=superuser_token_headers,
         files={"file": ("layout.png", QUESTION_LAYOUT_BYTES, "image/png")},
+        data={"preprocess": "none"},
     )
     document_id = upload_response.json()["id"]
 
@@ -409,6 +463,71 @@ def test_read_exam_region_candidates_with_ocr_anchor_engine(
     assert content["engine"] == "layout_ocr_anchor_v1"
     assert content["count"] == 3
     assert content["data"][0]["source"] == "layout_ocr_anchor_v1"
+
+
+def test_gemini_region_candidates_expose_projection_refinement(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Gemini refined layout exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files",
+        headers=superuser_token_headers,
+        files={"file": ("layout.png", VALID_PNG_BYTES, "image/png")},
+    )
+    document_id = upload_response.json()["id"]
+    upright_image = "data:image/png;base64," + base64.b64encode(
+        VALID_PNG_BYTES
+    ).decode()
+
+    monkeypatch.setattr(
+        exams_route,
+        "layout_stored_file",
+        lambda **_kwargs: {
+            "layouts": [
+                {
+                    "rotation": 0,
+                    "uprightImage": upright_image,
+                    "orientationElapsedMs": 80,
+                    "regionModelElapsedMs": 120,
+                    "refinementElapsedMs": 7,
+                    "regions": [
+                        {
+                            "questionNumber": "1",
+                            "label": "第1题",
+                            "ymin": 100,
+                            "xmin": 50,
+                            "ymax": 300,
+                            "xmax": 480,
+                            "refinement": {
+                                "applied": True,
+                                "confidence": 0.87,
+                            },
+                        }
+                    ],
+                }
+            ]
+        },
+    )
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/files/{document_id}/region-candidates"
+        "?engine=gemini_layout_v1",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["layout_ms"] == 120
+    assert content["refinement_ms"] == 7
+    assert content["data"][0]["confidence"] == 0.87
+    assert "horizontal-projection-snap" in content["data"][0]["reasons"]
 
 
 def test_read_pdf_exam_file_page_image_not_found(
@@ -930,8 +1049,11 @@ def test_read_student_submissions(
 
 
 def test_preprocess_student_submission_photo_creates_pdf_submission(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
 ) -> None:
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "opencv_v1")
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
@@ -952,10 +1074,10 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     assert content["student_identifier"] == "SCAN001"
     assert content["status"] == "registration_pending"
     assert content["registration_status"] == "pending"
-    assert content["registration_notes"].startswith("Preprocessed from mobile photo")
-    assert "scan_quality=" in content["registration_notes"]
+    assert content["registration_notes"].startswith("手机照片已预处理")
+    assert "扫描质量：" in content["registration_notes"]
     assert content["registration_homography"]["source"] == (
-        "mobile_photo_preprocessing_v1"
+        "mobile_document_preprocessing_v2"
     )
     assert content["registration_homography"]["scan_engine"] == "opencv_v1"
     assert content["registration_homography"]["quality"]["status"] in {
@@ -968,7 +1090,8 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
         "center_fallback",
     }
     assert content["registration_homography"]["split"]["gutter_ratio"] is not None
-    assert len(content["registration_homography"]["split"]["pages"]) == 2
+    assert len(content["registration_homography"]["pages"]) == 2
+    assert content["original_stored_file_id"] is not None
     assert content["stored_file"]["original_filename"] == "phone-preprocessed.pdf"
     assert content["stored_file"]["content_type"] == "application/pdf"
     assert content["page_count"] == 2
@@ -1021,11 +1144,21 @@ def test_preprocess_student_submission_photo_uses_scan_http_engine(
                 "split": {"strategy": "scan_service_single_page"},
             }
 
-    def fake_post(*_args, **_kwargs):
-        return FakeResponse()
+    class FakeClient:
+        def __init__(self, *, trust_env: bool):
+            assert trust_env is False
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def post(self, *_args, **_kwargs):
+            return FakeResponse()
 
     monkeypatch.setattr(settings, "SCAN_ENGINE", "scan_http")
-    monkeypatch.setattr(scan_preprocessing.httpx, "post", fake_post)
+    monkeypatch.setattr(scan_preprocessing.httpx, "Client", FakeClient)
 
     response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/submissions/preprocess-photo",
@@ -1038,7 +1171,7 @@ def test_preprocess_student_submission_photo_uses_scan_http_engine(
     content = response.json()
     assert content["student_name"] == "Student Scan HTTP"
     assert content["page_count"] == 1
-    assert "scan_quality=review" in content["registration_notes"]
+    assert "扫描质量：review" in content["registration_notes"]
     assert content["registration_homography"]["scan_engine"] == "scan_http"
     assert content["registration_homography"]["quality"]["status"] == "review"
     assert content["registration_homography"]["quality"]["warnings"][0]["code"] == (
@@ -1047,6 +1180,127 @@ def test_preprocess_student_submission_photo_uses_scan_http_engine(
     assert content["registration_homography"]["split"]["strategy"] == (
         "scan_service_single_page"
     )
+
+
+def test_append_student_submission_pages_pdf(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Append PDF Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", PDF_BYTES, "application/pdf")},
+        data={"student_name": "Student A"},
+    )
+    submission_id = upload_response.json()["id"]
+    assert upload_response.json()["page_count"] == 1
+
+    append_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages",
+        headers=superuser_token_headers,
+        files={"file": ("student-a-page2.pdf", PDF_BYTES, "application/pdf")},
+    )
+
+    assert append_response.status_code == 200
+    content = append_response.json()
+    assert content["id"] == submission_id
+    assert content["student_name"] == "Student A"
+    assert content["page_count"] == 2
+    assert content["stored_file"]["content_type"] == "application/pdf"
+
+    for page_number in (1, 2):
+        page_response = client.get(
+            f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}"
+            f"/pages/{page_number}/image",
+            headers=superuser_token_headers,
+        )
+        assert page_response.status_code == 200
+        assert page_response.headers["content-type"] == "image/png"
+
+
+def test_append_student_submission_pages_photo_runs_split(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "opencv_v1")
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Append Photo Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", PDF_BYTES, "application/pdf")},
+        data={"student_name": "Student Photo"},
+    )
+    submission_id = upload_response.json()["id"]
+    assert upload_response.json()["page_count"] == 1
+
+    append_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages",
+        headers=superuser_token_headers,
+        files={"file": ("phone.jpg", SCAN_PHOTO_BYTES, "image/jpeg")},
+    )
+
+    assert append_response.status_code == 200
+    content = append_response.json()
+    assert content["id"] == submission_id
+    assert content["stored_file"]["content_type"] == "application/pdf"
+    # 1 original PDF page + 2 pages split from the double-page photo
+    assert content["page_count"] == 3
+
+    page_response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}"
+        "/pages/3/image",
+        headers=superuser_token_headers,
+    )
+    assert page_response.status_code == 200
+    assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def test_append_student_submission_pages_confirmed_registration_conflict(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Submission Append Conflict Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", PDF_BYTES, "application/pdf")},
+    )
+    submission_id = upload_response.json()["id"]
+    client.patch(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/registration",
+        headers=superuser_token_headers,
+        json={
+            "registration_status": "manual_confirmed",
+            "registration_quality": 1,
+            "registration_notes": "Teacher confirmed",
+            "registration_homography": {
+                "matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
+            },
+        },
+    )
+
+    append_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages",
+        headers=superuser_token_headers,
+        files={"file": ("student-a-page2.pdf", PDF_BYTES, "application/pdf")},
+    )
+
+    assert append_response.status_code == 409
 
 
 def test_read_student_submission_page_image(
@@ -1251,6 +1505,153 @@ def test_read_student_submission_region_crop(
     assert response.status_code == 200
     assert response.headers["content-type"] == "image/png"
     assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+
+
+def build_single_page_pdf(color: tuple[int, int, int]) -> bytes:
+    buffer = BytesIO()
+    Image.new("RGB", (200, 200), color=color).save(buffer, format="PDF")
+    return buffer.getvalue()
+
+
+def test_read_student_submission_template_regions_global_page_number(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Global Page Regions Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    two_page_pdf = merge_pdf_bytes(
+        build_single_page_pdf((255, 255, 255)),
+        build_single_page_pdf((255, 255, 255)),
+    )
+    document_ids = []
+    for name in ("doc-a.pdf", "doc-b.pdf"):
+        upload_doc_response = client.post(
+            f"{settings.API_V1_STR}/exams/{exam_id}/files",
+            headers=superuser_token_headers,
+            files={"file": (name, two_page_pdf, "application/pdf")},
+            data={"document_type": "blank_exam"},
+        )
+        assert upload_doc_response.status_code == 200
+        assert upload_doc_response.json()["page_count"] == 2
+        document_ids.append(upload_doc_response.json()["id"])
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+    )
+    submission_id = upload_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "exam_document_id": document_ids[1],
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 0.5,
+        },
+    )
+    assert region_response.status_code == 200
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions",
+        headers=superuser_token_headers,
+    )
+    assert response.status_code == 200
+    content = response.json()
+    assert content["count"] == 1
+    # Second 2-page document, document-local page 1 -> global paper page 3.
+    assert content["data"][0]["page_number"] == 3
+
+    filtered = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions",
+        headers=superuser_token_headers,
+        params={"page_number": 3},
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["count"] == 1
+
+    unfiltered = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions",
+        headers=superuser_token_headers,
+        params={"page_number": 1},
+    )
+    assert unfiltered.status_code == 200
+    assert unfiltered.json()["count"] == 0
+
+
+def test_read_student_submission_region_crop_uses_global_page_number(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"title": "Global Page Crop Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    two_page_pdf = merge_pdf_bytes(
+        build_single_page_pdf((255, 255, 255)),
+        build_single_page_pdf((255, 255, 255)),
+    )
+    document_ids = []
+    for name in ("doc-a.pdf", "doc-b.pdf"):
+        upload_doc_response = client.post(
+            f"{settings.API_V1_STR}/exams/{exam_id}/files",
+            headers=superuser_token_headers,
+            files={"file": (name, two_page_pdf, "application/pdf")},
+            data={"document_type": "blank_exam"},
+        )
+        assert upload_doc_response.status_code == 200
+        document_ids.append(upload_doc_response.json()["id"])
+    # Submission pages: 1 = red, 2 = green, 3 = blue.
+    submission_pdf = merge_pdf_bytes(
+        build_single_page_pdf((220, 30, 30)),
+        build_single_page_pdf((30, 220, 30)),
+        build_single_page_pdf((30, 30, 220)),
+    )
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", submission_pdf, "application/pdf")},
+    )
+    submission_id = upload_response.json()["id"]
+    region_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/regions",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "region_type": "question",
+            "page_number": 1,
+            "exam_document_id": document_ids[1],
+            "x": 0.0,
+            "y": 0.0,
+            "width": 0.5,
+            "height": 0.5,
+        },
+    )
+    region_id = region_response.json()["id"]
+
+    response = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    crop = Image.open(BytesIO(response.content)).convert("RGB")
+    pixels = list(crop.getdata())
+    avg_r = sum(pixel[0] for pixel in pixels) / len(pixels)
+    avg_g = sum(pixel[1] for pixel in pixels) / len(pixels)
+    avg_b = sum(pixel[2] for pixel in pixels) / len(pixels)
+    # The crop must come from submission page 3 (blue), not document-local
+    # page 1 (red).
+    assert avg_b > avg_r + 80
+    assert avg_b > avg_g + 80
 
 
 def test_create_update_and_delete_submission_annotation(

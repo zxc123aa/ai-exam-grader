@@ -1,0 +1,306 @@
+{
+  "samples": [
+    {
+      "sample_id": "p1_left_auto",
+      "kind": "page",
+      "path": "materials/physics/evaluation/pages/p1_left_auto.jpg",
+      "source": "materials/physics/1.jpg",
+      "notes": "current scan preprocessing output; expected page 1"
+    },
+    {
+      "sample_id": "p1_right_auto",
+      "kind": "page",
+      "path": "materials/physics/evaluation/pages/p1_right_auto.jpg",
+      "source": "materials/physics/1.jpg",
+      "notes": "current scan preprocessing output; expected page 2"
+    },
+    {
+      "sample_id": "p2_left_auto",
+      "kind": "page",
+      "path": "materials/physics/evaluation/pages/p2_left_auto.jpg",
+      "source": "materials/physics/2.jpg",
+      "notes": "current scan preprocessing output"
+    },
+    {
+      "sample_id": "p2_right_auto",
+      "kind": "page",
+      "path": "materials/physics/evaluation/pages/p2_right_auto.jpg",
+      "source": "materials/physics/2.jpg",
+      "notes": "current scan preprocessing output"
+    },
+    {
+      "sample_id": "p1_header",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p1_header.jpg",
+      "source": "p1_left_auto",
+      "notes": "title/header"
+    },
+    {
+      "sample_id": "p1_q1_q2",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p1_q1_q2.jpg",
+      "source": "p1_left_auto",
+      "notes": "choice questions 1-2"
+    },
+    {
+      "sample_id": "p1_q3_q4_diagrams",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p1_q3_q4_diagrams.jpg",
+      "source": "p1_left_auto",
+      "notes": "force diagrams and choice text"
+    },
+    {
+      "sample_id": "p1_q5_q6_figures",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p1_q5_q6_figures.jpg",
+      "source": "p1_left_auto",
+      "notes": "photo/cartoon figure options"
+    },
+    {
+      "sample_id": "p2_q7_q10",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p2_q7_q10.jpg",
+      "source": "p1_right_auto",
+      "notes": "right-page choice questions with diagrams"
+    },
+    {
+      "sample_id": "p2_q11_q16",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p2_q11_q16.jpg",
+      "source": "p1_right_auto",
+      "notes": "fill-in-the-blank questions"
+    },
+    {
+      "sample_id": "p3_q18",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p3_q18.jpg",
+      "source": "p2_left_auto",
+      "notes": "drawing question"
+    },
+    {
+      "sample_id": "p3_q19",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p3_q19.jpg",
+      "source": "p2_left_auto",
+      "notes": "experiment question with diagrams"
+    },
+    {
+      "sample_id": "p3_q20",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p3_q20.jpg",
+      "source": "p2_left_auto",
+      "notes": "lever experiment question"
+    },
+    {
+      "sample_id": "p4_q21",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p4_q21.jpg",
+      "source": "p2_right_auto",
+      "notes": "calculation question"
+    },
+    {
+      "sample_id": "p4_q22",
+      "kind": "region",
+      "path": "materials/physics/evaluation/crops/p4_q22.jpg",
+      "source": "p2_right_auto",
+      "notes": "application question"
+    }
+  ],
+  "results": [
+    {
+      "sample_id": "p1_left_auto",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.49,
+      "text": "运载火箭\n2024年\nA.动能增\n2024-2025年度第二学期\n8.用下列\n得分：\nm\n满分：100分\n考试时间：60分钟\n)\n线\nB.鲜花香气四溢是一种扩散现象\nG\n电型\nD.水和酒精混合后总体积减少表明分子间有引力\nC.铁块很难被压缩表明分子间没有间隙\n9. 如图,甲\n轮的摩擦\n7N\nA.甲做的\n3N\n0\n3N\n10.在水平\n0\n0\nD\n两个草莓\nSN\nA\nB\nC\n时，甲、乙\n名\nA.甲容器\nA. 马路上行驶的汽车有惯性，静止的汽车不具有惯性\nC.乙容器\nC. 超载运行的大货车不容易停下来是因为其质量大惯性大\n二、填空\n11.在体育\n压强存在\n获得升力的原理相同的是(\n）\n12.杜甫诗\n现\n吹气\n速度变大，\n饮料时，\n13.如图所\n甲\n丙\n丁\n其两端靠\n乙\nA. 甲图：往纸片中间吹气，纸片会靠拢\n这是利用\nB. 乙图：用吸管吸牛奶，牛奶盒发生形变\nC. 丙图：轮船通过三峡船闸\nD. 丁图：覆杯实验中松手后硬纸片不会掉下\n5.以下是公交车上与压强有关的设计，其中为了增大压强的是(\n密\nA.宽大的轮子\nB.凹型的座位\nC.宽厚的拉环\nD. 锥形逃生锤\n6. 如图所示的情景中，人对物体做功的是(\n14.如图所\n竿与小明\n间的距离\n15.如图所\n小伊所用\nA.人推一块大石头没推动\n“不变”)\nB.人捡起地面上的石块\nC. 人举着哑铃不动 D.人抱着箱子在水平地面上行走\n16.有一个\n八年级物理 第1页（共4页）\n止时处于",
+      "confidence": 0.9327861500691764,
+      "usage": {
+        "text_count": 78,
+        "score_count": 79
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p1_right_auto",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.36,
+      "text": "A.动能增大，势能减小\n7\nC.动能不变，势能增大\nD动能增大，势能增大\n)\n0\nA\n轮的摩擦。下列说法正确的是(\nB\nc\nA.甲做的有用功多 B.乙做的总功多\nD\n第9题\nC.甲做总功的功率大 D.乙所用装置的机械效率小\nA.甲容器中草莓受到的浮力更大\nC.乙容器中盐水对容器底部的压强更大\nB.两容器中盐水的密度相等\n二、填空题（本大题有7小题，每空2分，共28分）\nD.甲容器对桌面的压强更大\n甲第10题乙\n压强存在的著名实验是\n物理学史上，证明大气\n实验。\n速度变大，导致屋顶上表面受到的压强\n饮料时，饮料是在\n(选填“增大”或“减小”)的缘故：我们用吸管“吸”\n作用下被“吸”入口中的。\n其两端靠在墙面的不同地方，在水面处做出标记就找到了\n这是利用了\n的原理。\n高度（选填“相同”或“不同”），\n是有水的透明胶管\n第13题\n第14题\n第15题\n14.如图所示，钓鱼竿可以看作一个\n（选填“省力”“费力”或“等臂”）杠杆，其支点在钓鱼\n竿与小明右手的接触处，若要更加省力，则小明应该\n(选填“增大”或“减小”)两只手之\n间的距离。\n15.如图所示，小伊同学用该滑轮组将重80N的物体匀速提高，动滑轮重为20N，不计绳重和摩擦，则\n小伊所用拉力F=N：若物重增大，该滑轮组机械效率将\n(选填“变大“变小”或\n“不变”）。\n16.有一个质量为0.2kg的物体，将它完全浸入盛满水的烧杯中，溢出水的质量为0.3kg，物体在水中静\n止时处于\n状态(选填“漂浮”“悬浮”或“沉底”)，受到的浮力为\n_N。(g=10N/kg)\n八年级物理 第2页（共4页）",
+      "confidence": 0.9689007048704186,
+      "usage": {
+        "text_count": 49,
+        "score_count": 49
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p2_left_auto",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.37,
+      "text": "18. 根据要求规范作图。\n（1）在图甲中画出潜水艇静止在水中时受力的示意图。。\n(2) 在图乙中画出使用羊角锤拔钉子时动力F的力臂L。\n0\n甲\n乙\n图所示的甲、乙、丙探究实验：将三个小球A、B、C先后从同一斜面的不同高度h、h8、hc三个位\n置滚下（mx=mg<mc.h=h>hg），推动小木块运动一段距离后静止，请你根据生活经验和所学的物理\n探究方法，对以下问题进行判断。\nh\nhc\n甲\n乙\n丙\n(1）实验中通过观察木块被小球撞击后在水平面上运动距离的长短来判断安全隐患大小，该处采用的\n研究方法是\n(2)让质量相同的小球从斜面的不同高度由静止滚下，可以用来探究小球的动能大小与\n的关系。\n(3) 通过\n两次实验可以研究超载对安全隐患的影响（选填实验代号“甲、乙、丙”），得到\n的结论是：速度相同时，车辆质量越大，隐患越大；\n（4）若水平面足够光滑（完全没有阻力），则\n（选填“能”或“不能”）完成该实验探究。\n20. 如图所示，莹莹同学利用铁架台，带有均匀刻度的杠杆，细线，弹簧测力计，钩码若干（每个钩\n码质量相同）等实验器材，探究杠杆的平衡条件。\n甲\n乙\n丙\n（1）实验前，杠杆静止在图甲所示的位置，为了便于测量力臂，应使杠杆在水平位置平衡。为此，应\n将平衡螺母向\n（选填“左”或“右”）调节；\n（2）将杠杆调成水平位置平衡后，如图乙所示，在A点挂3个钩码，则应在B点挂\n码，才能使杠杆在水平位置保持平衡：随后两边各取下一个钩码，杠杆\n(选填“左”或“右”)\n八年级物理 第3页（共4页）",
+      "confidence": 0.9699191468102591,
+      "usage": {
+        "text_count": 35,
+        "score_count": 35
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p2_right_auto",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.24,
+      "text": "21. 如图所示，小磊骑自行车上学的途中，沿直线匀速经过一段长100m\n的平直路面，用时25s。该过程中前后轮与地面的总接触面积为20cm²。\n若小磊的质量为50kg，自行车重为150N，骑行时受到的阻力为总重的\n0.03倍(ρ=1.0×103kg/m³，g=10N/Kg)，求:\n(1)小磊所受的重力大小？\n(2) 该段骑行过程中，车对水平地面的压强是多少？\n(3）求骑行过程中动力做功的功率是多大？\n22. 为减少溺水事故的发生，大学生小铭研发了救生手环。小铭选择了一个安全的湖泊进行试验。他\n戴上该手环下潜到湖面下2m处(未接触湖底)，打开手环开关，手环瞬间弹出一个体积为3.5×102m³的\n气囊，如图乙所示，随后气囊迅速将小铭带出水面。已知小铭的质量为63kg，人体密度约为\n1.05×103kg/m³，不计手环的质量和体积。求：\n(1)手环在湖面下2m深时，受到水的压强是多少？\n(2)小铭下潜到湖面下2m 深处，人体受到的浮力有多大？\n(3)气囊完全打开瞬间小铭受到的合力大小？\n(4)测试中发现人从浅水区走向深水区时身体会变得越来越\n“轻”，请你结合所学的物理知识解释说明产生这种现象的原\n因。\n甲\n乙\n932600\n八年级物理第4页（共4页）",
+      "confidence": 0.9528257222402663,
+      "usage": {
+        "text_count": 21,
+        "score_count": 21
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p1_header",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.06,
+      "text": "2024-2025年度第二\n得分：\n满分：100分\n考试时间：60分钟\n气四溢是一种扩散现象\n少表明分子间有引力",
+      "confidence": 0.9935578107833862,
+      "usage": {
+        "text_count": 6,
+        "score_count": 6
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p1_q1_q2",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.12,
+      "text": "1.下列现象用分子动理论的观点解释，其中正确的是(\n台型\nD.水和酒精混合后总体积减少表明\nC.铁块很难被压缩表明分子间没有间隙\n9\n车\n7N\n3N\n5N\nA\n3N\n0\n4N\n1\n0\nSN\nD\n医\nA\nB\nC\n8时",
+      "confidence": 0.8940698558633978,
+      "usage": {
+        "text_count": 22,
+        "score_count": 22
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p1_q3_q4_diagrams",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.11,
+      "text": "3N\n0\n0\nSN\nD\nA\nB\nC\nA. 马路上行驶的汽车有惯性，静止的汽车不具有惯性\nC. 超载运行的大货车不容易停下来是因为其质量大惯性大\n获得升力的原理相同的是(\n证\n吹气",
+      "confidence": 0.804116282079901,
+      "usage": {
+        "text_count": 13,
+        "score_count": 14
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p1_q5_q6_figures",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.15,
+      "text": "甲\n乙\n丙\n丁\nA. 甲图：往纸片中间吹气，纸片会靠拢\nB. 乙图：用吸管吸牛奶，牛奶盒发生形变\nC. 丙图：轮船通过三峡船闸\nD.丁图：覆杯实验中松手后硬纸片不会掉下\n5.以下是公交车上与压强有关的设计，其中为了增大压强的是(\n房\n密\nA.宽大的轮子\nB.凹型的座位\nC.宽厚的拉环\nD. 锥形逃生锤\n6. 如图所示的情景中，人对物体做功的是(\nA.人推一块大石头没推动\nB.人捡起地面上的石块\nC.人举着哑铃不动 D.人抱着箱子在水平地面上行走",
+      "confidence": 0.951795828969855,
+      "usage": {
+        "text_count": 19,
+        "score_count": 19
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p2_q7_q10",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.13,
+      "text": "A.动能增大，势能减小\n7\nC.动能不变，势能增大\nD动能增大，势能增大\nA\n纶的摩擦。下列说法正确的是(\nB\nc\nA.甲做的有用功多 B.乙做的总功多\nD\n第9题\nC.甲做总功的功率大\nD.乙所用装置的机械效率小\n甲容器中草莓受到的浮力更大\nC.乙容器中盐水对容器底部的压强更大\nB.两容器中盐水的密度相等\n二、填空题（本大题有7小题，每空2分，共28分）\nD.甲容器对桌面的压强更大\n甲第10题乙\n1. 在体育测试中，铅球出手后仍能向前",
+      "confidence": 0.9180331712677365,
+      "usage": {
+        "text_count": 20,
+        "score_count": 21
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p2_q11_q16",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.24,
+      "text": "题有7小题，每空2分，共28分）\n甲第10题乙\n压强存在的著名实验是\n：物理学史上。证明大气\n实验。\n速度变大，导致屋顶上表面受到的压强\n料时，饮料是在\n(选填“增大”或“减小”)的缘故：我们用吸管“吸”\n作用下被“吸”入口中的。\n其两端靠在墙面的不同地方，在水面处做出标记就找到了\n这是利用了\n的原理。\n高度（选填“相同”或“不同”），\n是有水的透明胶管\n第13题\n第14题\n第15题\n4.如图所示，钓鱼竿可以看作一个\n(选填“省力“费力”或“等臂”）杠杆，其支点在钓鱼\n与小明右手的接触处，若要更加省力，则小明应该\n(选填“增大”或“减小”）两只手之\n间的距离。\n5.如图所示，小伊同学用该滑轮组将重80N的物体匀速提高，动滑轮重为20N，不计绳重和摩擦，则\n伊所用拉力F=N：若物重增大，该滑轮组机械效率将\n(选填“变大“变小”或\n不变”）。\n6.有一个质量为0.2kg的物体，将它完全浸入盛满水的烧杯中，溢出水的质量为0.3kg，物体在水中静",
+      "confidence": 0.9763854168079518,
+      "usage": {
+        "text_count": 27,
+        "score_count": 27
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p3_q18",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.09,
+      "text": "18. 根据要求规范作图。\n（1）在图甲中画出潜水艇静止在水中时受力的示意图。。\n(2) 在图乙中画出使用羊角锤拔钉子时动力F的力臂L。\n0\n甲\n19. 为了模拟研究汽车超载和超速带来的安全隐患，海口市某初中物理兴趣小组的小俊同学设计了如\n乙",
+      "confidence": 0.9585139410836356,
+      "usage": {
+        "text_count": 7,
+        "score_count": 7
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p3_q19",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.27,
+      "text": "兴趣小组的小俊同学设计了如\n置滚下（mx=mg<mc.h=h>hg），推动小木块运动一段距离后静止，请你根据生活经验和所学的物理\n探究方法，对以下问题进行判断。\n4\nh\nhc\n甲\n乙\n丙\n(1）实验中通过观察木块被小球撞击后在水平面上运动距离的长短来判断安全隐患大小，该处采用的\n研究方法是\n(2)让质量相同的小球从斜面的不同高度由静止滚下，可以用来探究小球的动能大小与\n1\n的关系。\n(3) 通过\n两次实验可以研究超载对安全隐患的影响（选填实验代号“甲、乙、丙”），得到\n的结论是：速度相同时，车辆质量越大，隐患越大；\n（4）若水平面足够光滑（完全没有阻力），则\n（选填“能”或“不能”）完成该实验探究。\n20. 如图所示，莹莹同学利用铁架台，带有均匀刻度的杠杆，细线，弹簧测力计，钩码若干（每个钩\n码质量相同）等实验器材，探究杠杆的平衡条件。",
+      "confidence": 0.9264109787486848,
+      "usage": {
+        "text_count": 21,
+        "score_count": 21
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p3_q20",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.11,
+      "text": "甲\n乙\n丙\n（1）实验前，杠杆静止在图甲所示的位置，为了便于测量力臂，应使杠杆在水平位置平衡。为此，应\n将平衡螺母向\n（选填“左”或“右”）调节；\n（2）将杠杆调成水平位置平衡后，如图乙所示，在A点挂3个钩码，则应在B点挂\n个钩\n码，才能使杠杆在水平位置保持平衡：随后两边各取下一个钩码，杠杆\n(选填“左”或“右”)\n八年级物理第3页（共4页）",
+      "confidence": 0.9873437447981401,
+      "usage": {
+        "text_count": 11,
+        "score_count": 11
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p4_q21",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.06,
+      "text": "0.03倍(ρg=1.0×103kg/m³，g=10N/Kg)，求：\n(1）小磊所受的重力大小？\n(2) 该段骑行过程中，车对水平地面的压强是多少？\n(3）求骑行过程中动力做功的功率是多大？",
+      "confidence": 0.938350036740303,
+      "usage": {
+        "text_count": 4,
+        "score_count": 4
+      },
+      "error": null
+    },
+    {
+      "sample_id": "p4_q22",
+      "engine": "paddleocr-gpu-cu130",
+      "status": "succeeded",
+      "elapsed_seconds": 0.17,
+      "text": "22.为减少溺水事故的发生，\n戴上该手环下潜到湖面下2m处(未接触湖底)，打开手环开关，手环瞬间弹出一个体积为3.5×10²m²的\n气囊，如图乙所示，随后气囊迅速将小铭带出水面。已知小铭的质量为63kg，人体密度约为\n1.05×103kg/m3，不计手环的质量和体积。求：\n(1)手环在湖面下2m深时，受到水的压强是多少？\n(2)小铭下潜到湖面下2m深处，人体受到的浮力有多大？\n(3)气囊完全打开瞬间小铭受到的合力大小？\n(4)测试中发现人从浅水区走向深水区时身体会变得越来越\n“轻”，请你结合所学的物理知识解释说明产生这种现象的原\n因。\n甲\n乙",
+      "confidence": 0.9843864987293879,
+      "usage": {
+        "text_count": 12,
+        "score_count": 12
+      },
+      "error": null
+    }
+  ]
+}

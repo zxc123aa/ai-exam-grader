@@ -198,8 +198,12 @@ def collect_output_images(value: Any) -> list[np.ndarray]:
     return images
 
 
-def encode_jpeg_base64(image: np.ndarray) -> str:
-    ok, buffer = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 94])
+def encode_png_base64(image: np.ndarray) -> str:
+    # Scan preprocessing is quality-first and runs over the local service
+    # network. Lossless PNG avoids a second JPEG generation before OCR.
+    ok, buffer = cv2.imencode(
+        ".png", image, [int(cv2.IMWRITE_PNG_COMPRESSION), 3]
+    )
     if not ok:
         raise HTTPException(status_code=500, detail="Could not encode page image")
     return base64.b64encode(buffer.tobytes()).decode("ascii")
@@ -308,8 +312,8 @@ async def preprocess_scan(
             output_images = [original]
         pages = [
             {
-                "name": f"page_{index}.jpg",
-                "image_base64": encode_jpeg_base64(image),
+                "name": f"page_{index}.png",
+                "image_base64": encode_png_base64(image),
                 "width": int(image.shape[1]),
                 "height": int(image.shape[0]),
             }

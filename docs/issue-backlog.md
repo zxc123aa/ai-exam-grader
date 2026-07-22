@@ -135,6 +135,62 @@
 
 ## 后续待拆
 
+## 题目确认与答案版本工作流
+
+### AEG-040 工作流 Spec、状态机和迁移基线
+- 类型：Design
+- 优先级：P0
+- 状态：Done
+- 验收：Spec、决策记录、迁移顺序和 DoD 完整；migration `c7d9e1f3a526` 已通过升降级。
+
+### AEG-041 ExamQuestion 与多区域关联
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：一道题可关联多个区域，考试内 question_key 唯一，旧区域可回填；区域明确关联试卷文件。
+
+### AEG-042 题目识别任务与确认工作区
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：Node 结果只写草稿，人工确认后生成题目主数据；页面显示考生作答、置信度与分阶段耗时。
+
+### AEG-043 不可变答案版本与历史迁移
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：现有答案迁移为 revision 1，发布版本不可修改；旧版更新/删除接口拒绝已发布答案。
+
+### AEG-044 GPT-5.6 SOL 解题生成
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：根据确认题目并发生成结构化答案草稿并记录 provider、model、耗时和网关返回的 Token 用量；网关未返回时不伪造。
+
+### AEG-045 答案文档导入与匹配
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：支持 matched/conflict/unmatched，未经确认不得生成答案修订。
+
+### AEG-046 评分准则确认与答案发布
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：标准答案、总体规则、评分点合计全部校验后才能发布不可变答案修订。
+
+### AEG-047 批改绑定题目与答案修订
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 验收：创建批改批次时锁定 revision map；新 GradingItem 保存 question_id 和 answer_revision_id，多区域题目只生成一个评分项。
+
+### AEG-048 E2E、回滚和历史兼容验收
+- 类型：Verification
+- 优先级：P0
+- 状态：Done
+- 验收：迁移升降级与旧数据回填通过；后端 118 passed；前端 lint/build 通过；动态 Playwright 2 passed。
+
 ## 周期 1：人工试卷标定基础能力
 
 ### AEG-010 创建考试 Web 工作流
@@ -467,14 +523,14 @@
 - 所属周期：周期 3 前置 / 后续 App 采集周期
 - 目标：扫描预处理先建立质量门禁和可复核闭环，避免裁题、漏页、混页结果静默进入 OCR/判分。
 - 计划文档：`docs/scan-preprocessing-stability-plan.md`
-- 进展：已新增软质量门禁，预处理结果输出 `quality_status=pass|review` 和 `quality_warnings[]`；API 已写入 `registration_homography.quality`，`registration_notes` 已包含 `scan_quality=...`；本地脚本已输出质量状态和 warning。
-- 验证：`pytest backend/tests/services/test_exam_photo_preprocessing.py -q` 已通过，5 passed；`pytest backend/tests/api/routes/test_exams.py::test_preprocess_student_submission_photo_creates_pdf_submission -q` 已通过，1 passed。
+- 进展：已新增软质量门禁，预处理结果输出 `quality_status=pass|review` 和 `quality_warnings[]`；模板卷/答案卷保存到 `ExamDocument.preprocessing_*`，学生答卷保存到配准 metadata；前端已显示质量分、中文 warning、原图保留状态、页面策略和总耗时。
+- 验证：扫描专项测试 12 passed；考试 API 44 passed；全量后端 125 passed；真实 `material/2.jpg` API 上传与 Playwright 页面展示均已通过。
 - 验收标准：
   - 预处理结果必须带结构化质量状态和 warnings。已完成第一版。
   - 模糊、低置信度中缝、半页 fallback、页面比例异常、边缘疑似裁切必须能触发 review。已完成第一版。
-  - 前端能显示 scan quality 和 warning。待完成。
+  - 前端能显示 scan quality 和 warning。已完成。
   - review 结果进入 OCR/判分前必须可被教师确认。待完成。
-  - 真实失败样例能沉淀为回归记录。待扩展。
+  - 真实失败样例能沉淀为回归记录。已完成首个双页真实样例，后续继续扩展样本集。
 
 ### AEG-033 扫描引擎 V2 独立服务与可插拔架构
 
@@ -483,14 +539,14 @@
 - 状态：In Progress
 - 所属周期：周期 3 前置 / 扫描稳定性阶段
 - 目标：停止继续堆 OpenCV 补丁，建立可替换扫描引擎边界，支持后续 Paddle 文档预处理、页面 polygon 分割模型或移动端扫描 SDK 接入。
-- 进展：已新增 `SCAN_ENGINE=opencv_v1|scan_http` 和 `SCAN_HTTP_URL`；后端 `preprocess-photo` 已通过统一 scan adapter 调用；已复用现有 `ocr-service` Paddle GPU 容器新增 `/preprocess`；`scan_http` 已有 fake HTTP 回归测试覆盖。Docker 实机已验证 `/preprocess` 对 `materials/physics/2.jpg` 返回 1 个 Paddle DocPreprocessor 预处理图，耗时约 14.5s。
+- 进展：已升级为 `SCAN_ENGINE=opencv_v1|scan_http|hybrid_v2`。`hybrid_v2` 先做 OpenCV 页面候选与独立 Homography，歧义时调用 Gemini 3.5 Flash 页面 polygon 并做几何校验/反馈重试，再逐页调用 Paddle DocPreprocessor 做方向与 UVDoc 展开；内部 HTTP 显式禁用系统代理。真实双页样例发现 UVDoc 输出清晰度损失约一半，现已通过 72% 清晰度保留门槛拒绝退化结果，并回退到 Homography。
 - 决策：OpenCV v1 保留为 baseline/fallback；模型能力先复用现有 `ocr-service` 容器，避免重复构建 Paddle 镜像。后续负载上来后再拆独立服务。
 - 验收标准：
-  - 默认 `opencv_v1` 不破坏现有手机照片转 PDF 流程。已完成。
+  - 默认 `hybrid_v2` 不破坏现有手机照片转 PDF 流程，并保留 `opencv_v1` 回退。已完成。
   - `scan_http` 能通过 HTTP 返回页面图、质量状态和 split metadata。已完成 fake 回归。
   - `ocr-service` 能提供 `/ocr` 和 `/preprocess`。已完成 Docker 实机验证。
-  - 真实 Paddle 文档预处理对 `materials/physics/1.jpg`、`2.jpg` 完成 A/B 评估。已完成第一张 `2.jpg`，结论是 DocPreprocessor 不是双页拆分器。
-  - 若真实评估仍不稳，进入页面 polygon 分割模型标注与训练。待决策。
+  - 真实 Paddle 文档预处理对双页图片必须逐页调用。已在 `material/2.jpg` 完成验证。
+  - 页面 polygon 模型输出必须经过页数、覆盖率、中心间距、凸性和重叠率门控。已完成。
 
 ### AEG-034 题目区域自动候选分割
 

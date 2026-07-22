@@ -55,9 +55,10 @@ function PaginationLink({
       data-active={isActive}
       className={cn(
         buttonVariants({
-          variant: isActive ? "outline" : "ghost",
+          variant: isActive ? "default" : "ghost",
           size,
         }),
+        isActive && "bg-primary text-primary-foreground hover:bg-primary/90",
         className
       )}
       {...props}
@@ -77,7 +78,7 @@ function PaginationPrevious({
       {...props}
     >
       <ChevronLeftIcon />
-      <span className="hidden sm:block">Previous</span>
+      <span className="hidden sm:block">上一页</span>
     </PaginationLink>
   )
 }
@@ -93,7 +94,7 @@ function PaginationNext({
       className={cn("gap-1 px-2.5 sm:pr-2.5", className)}
       {...props}
     >
-      <span className="hidden sm:block">Next</span>
+      <span className="hidden sm:block">下一页</span>
       <ChevronRightIcon />
     </PaginationLink>
   )
@@ -111,7 +112,7 @@ function PaginationEllipsis({
       {...props}
     >
       <MoreHorizontalIcon className="size-4" />
-      <span className="sr-only">More pages</span>
+      <span className="sr-only">更多页</span>
     </span>
   )
 }

@@ -1,0 +1,23 @@
+{
+  "name": "exam-analysis-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node --use-env-proxy server.js",
+    "test:layout": "node scripts/test-layout-refinement.mjs",
+    "test:ocr": "node scripts/test-ocr-pipeline.mjs",
+    "eval:test": "node ../evaluation/physics_full_paper/scripts/test-evaluator.mjs",
+    "eval:prelabel": "node ../evaluation/physics_full_paper/scripts/build-prelabel.mjs",
+    "eval:leakage": "node ../evaluation/physics_full_paper/scripts/check-gold-leakage.mjs",
+    "eval:run-current": "node ../evaluation/physics_full_paper/scripts/run-current.mjs --runs 3",
+    "eval:report": "node ../evaluation/physics_full_paper/scripts/evaluate-runs.mjs"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2",
+    "sharp": "^0.35.3",
+    "uuid": "^11.1.0"
+  }
+}

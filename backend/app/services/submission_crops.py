@@ -5,10 +5,15 @@ from io import BytesIO
 from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
+from sqlmodel import Session, col, select
 
-from app.models import ExamRegion, StoredFile
+from app.models import ExamDocument, ExamDocumentType, ExamRegion, StoredFile
 from app.services.file_storage import get_stored_file_path
-from app.services.pdf_rendering import InvalidPdfError, render_pdf_page_png
+from app.services.pdf_rendering import (
+    InvalidPdfError,
+    get_pdf_page_count,
+    render_pdf_page_png,
+)
 
 
 class SubmissionCropError(RuntimeError):
@@ -41,9 +46,50 @@ def render_stored_file_page_image(
         raise SubmissionCropError("Stored image could not be opened")
 
 
-def crop_region_image(*, stored_file: StoredFile, region: ExamRegion) -> Image.Image:
+def stored_file_page_count(stored_file: StoredFile) -> int:
+    page_count = 1
+    path = get_stored_file_path(stored_file)
+    if stored_file.content_type == "application/pdf" and path.exists():
+        try:
+            page_count = get_pdf_page_count(path)
+        except InvalidPdfError:
+            page_count = 1
+    return page_count
+
+
+def resolve_exam_region_paper_page(session: Session, region: ExamRegion) -> int:
+    """Return the region's 1-based page number across the whole exam paper.
+
+    ``ExamRegion.page_number`` is local to its blank-exam document; the global
+    paper page is the sum of page counts of all blank-exam documents ordered
+    before it (by sort_order, then created_at) plus the document-local page.
+    """
+    if region.exam_document_id is None:
+        return region.page_number
+    documents = session.exec(
+        select(ExamDocument)
+        .where(ExamDocument.exam_id == region.exam_id)
+        .where(ExamDocument.document_type == ExamDocumentType.BLANK_EXAM)
+        .order_by(col(ExamDocument.sort_order).asc(), col(ExamDocument.created_at).asc())
+    ).all()
+    page_offset = 0
+    for document in documents:
+        if document.id == region.exam_document_id:
+            return page_offset + region.page_number
+        if document.stored_file is not None:
+            page_offset += stored_file_page_count(document.stored_file)
+    return region.page_number
+
+
+def crop_region_image(
+    *,
+    stored_file: StoredFile,
+    region: ExamRegion,
+    page_number: int | None = None,
+) -> Image.Image:
     image = render_stored_file_page_image(
-        stored_file=stored_file, page_number=region.page_number
+        stored_file=stored_file,
+        page_number=page_number if page_number is not None else region.page_number,
     )
     try:
         image_width, image_height = image.size
@@ -58,8 +104,15 @@ def crop_region_image(*, stored_file: StoredFile, region: ExamRegion) -> Image.I
         image.close()
 
 
-def crop_region_png(*, stored_file: StoredFile, region: ExamRegion) -> bytes:
-    cropped = crop_region_image(stored_file=stored_file, region=region)
+def crop_region_png(
+    *,
+    stored_file: StoredFile,
+    region: ExamRegion,
+    page_number: int | None = None,
+) -> bytes:
+    cropped = crop_region_image(
+        stored_file=stored_file, region=region, page_number=page_number
+    )
     try:
         buffer = BytesIO()
         cropped.save(buffer, format="PNG")
@@ -81,8 +134,14 @@ def save_region_crop(
     owner_id: uuid.UUID,
     submission_id: uuid.UUID,
     upload_dir: Path,
+    page_number: int | None = None,
 ) -> dict:
-    cropped = crop_region_image(stored_file=stored_file, region=region)
+    cropped = crop_region_image(
+        stored_file=stored_file, region=region, page_number=page_number
+    )
+    resolved_page_number = (
+        page_number if page_number is not None else region.page_number
+    )
     try:
         storage_key = build_region_crop_storage_key(
             owner_id=owner_id,
@@ -96,7 +155,7 @@ def save_region_crop(
         return {
             "region_id": str(region.id),
             "label": region.label,
-            "page_number": region.page_number,
+            "page_number": resolved_page_number,
             "storage_key": storage_key,
             "width": width,
             "height": height,

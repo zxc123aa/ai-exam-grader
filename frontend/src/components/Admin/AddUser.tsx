@@ -75,7 +75,7 @@ const AddUser = () => {
     mutationFn: (data: UserCreate) =>
       UsersService.createUser({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("User created successfully")
+      showSuccessToast("用户创建成功")
       form.reset()
       setIsOpen(false)
     },
@@ -94,14 +94,14 @@ const AddUser = () => {
       <DialogTrigger asChild>
         <Button className="my-4">
           <Plus className="mr-2" />
-          Add User
+          添加用户
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add User</DialogTitle>
+          <DialogTitle>添加用户</DialogTitle>
           <DialogDescription>
-            Fill in the form below to add a new user to the system.
+            填写以下信息，为系统添加新用户。
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -113,11 +113,11 @@ const AddUser = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Email <span className="text-destructive">*</span>
+                      邮箱 <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Email"
+                        placeholder="请输入邮箱"
                         type="email"
                         {...field}
                         required
@@ -133,9 +133,9 @@ const AddUser = () => {
                 name="full_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Full Name</FormLabel>
+                    <FormLabel>姓名</FormLabel>
                     <FormControl>
-                      <Input placeholder="Full name" type="text" {...field} />
+                      <Input placeholder="请输入姓名" type="text" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -148,11 +148,11 @@ const AddUser = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Set Password <span className="text-destructive">*</span>
+                      设置密码 <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder="请输入密码"
                         type="password"
                         {...field}
                         required
@@ -169,12 +169,11 @@ const AddUser = () => {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Confirm Password{" "}
-                      <span className="text-destructive">*</span>
+                      确认密码 <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
                       <Input
-                        placeholder="Password"
+                        placeholder="请再次输入密码"
                         type="password"
                         {...field}
                         required
@@ -196,7 +195,9 @@ const AddUser = () => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is superuser?</FormLabel>
+                    <FormLabel className="font-normal">
+                      设为超级管理员
+                    </FormLabel>
                   </FormItem>
                 )}
               />
@@ -212,7 +213,7 @@ const AddUser = () => {
                         onCheckedChange={field.onChange}
                       />
                     </FormControl>
-                    <FormLabel className="font-normal">Is active?</FormLabel>
+                    <FormLabel className="font-normal">启用账号</FormLabel>
                   </FormItem>
                 )}
               />
@@ -221,11 +222,11 @@ const AddUser = () => {
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" disabled={mutation.isPending}>
-                  Cancel
+                  取消
                 </Button>
               </DialogClose>
               <LoadingButton type="submit" loading={mutation.isPending}>
-                Save
+                保存
               </LoadingButton>
             </DialogFooter>
           </form>

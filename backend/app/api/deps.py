@@ -40,7 +40,13 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         )
     user = session.get(User, token_data.sub)
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        # A token whose subject no longer exists is an invalid credential,
+        # not a missing resource. Returning 401 lets clients discard it and
+        # send the user back through login after a database reset/deletion.
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+        )
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return user

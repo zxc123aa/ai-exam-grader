@@ -55,7 +55,7 @@ const ChangePassword = () => {
     mutationFn: (data: UpdatePassword) =>
       UsersService.updatePasswordMe({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("Password updated successfully")
+      showSuccessToast("密码修改成功")
       form.reset()
     },
     onError: handleError.bind(showErrorToast),
@@ -67,7 +67,7 @@ const ChangePassword = () => {
 
   return (
     <div className="max-w-md">
-      <h3 className="text-lg font-semibold py-4">Change Password</h3>
+      <h3 className="text-lg font-semibold py-4">修改密码</h3>
       <Form {...form}>
         <form
           onSubmit={form.handleSubmit(onSubmit)}
@@ -78,7 +78,7 @@ const ChangePassword = () => {
             name="current_password"
             render={({ field, fieldState }) => (
               <FormItem>
-                <FormLabel>Current Password</FormLabel>
+                <FormLabel>当前密码</FormLabel>
                 <FormControl>
                   <PasswordInput
                     data-testid="current-password-input"
@@ -97,7 +97,7 @@ const ChangePassword = () => {
             name="new_password"
             render={({ field, fieldState }) => (
               <FormItem>
-                <FormLabel>New Password</FormLabel>
+                <FormLabel>新密码</FormLabel>
                 <FormControl>
                   <PasswordInput
                     data-testid="new-password-input"
@@ -116,7 +116,7 @@ const ChangePassword = () => {
             name="confirm_password"
             render={({ field, fieldState }) => (
               <FormItem>
-                <FormLabel>Confirm Password</FormLabel>
+                <FormLabel>确认新密码</FormLabel>
                 <FormControl>
                   <PasswordInput
                     data-testid="confirm-password-input"
@@ -135,7 +135,7 @@ const ChangePassword = () => {
             loading={mutation.isPending}
             className="self-start"
           >
-            Update Password
+            更新密码
           </LoadingButton>
         </form>
       </Form>

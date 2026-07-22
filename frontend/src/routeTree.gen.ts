@@ -18,7 +18,11 @@ import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutExamsRouteImport } from './routes/_layout/exams'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutExamsExamIdRouteImport } from './routes/_layout/exams_.$examId'
+import { Route as LayoutExamsExamIdScoresRouteImport } from './routes/_layout/exams_.$examId.scores'
+import { Route as LayoutExamsExamIdQuestionsRouteImport } from './routes/_layout/exams_.$examId.questions'
 import { Route as LayoutExamsExamIdMarkingRouteImport } from './routes/_layout/exams_.$examId.marking'
+import { Route as LayoutExamsExamIdGradingRouteImport } from './routes/_layout/exams_.$examId.grading'
 import { Route as LayoutExamsExamIdAnswersRouteImport } from './routes/_layout/exams_.$examId.answers'
 import { Route as LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport } from './routes/_layout/exams_.$examId.submissions.$submissionId.review'
 
@@ -66,23 +70,45 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutExamsExamIdRoute = LayoutExamsExamIdRouteImport.update({
+  id: '/exams_/$examId',
+  path: '/exams/$examId',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutExamsExamIdScoresRoute = LayoutExamsExamIdScoresRouteImport.update({
+  id: '/scores',
+  path: '/scores',
+  getParentRoute: () => LayoutExamsExamIdRoute,
+} as any)
+const LayoutExamsExamIdQuestionsRoute =
+  LayoutExamsExamIdQuestionsRouteImport.update({
+    id: '/questions',
+    path: '/questions',
+    getParentRoute: () => LayoutExamsExamIdRoute,
+  } as any)
 const LayoutExamsExamIdMarkingRoute =
   LayoutExamsExamIdMarkingRouteImport.update({
-    id: '/exams_/$examId/marking',
-    path: '/exams/$examId/marking',
-    getParentRoute: () => LayoutRoute,
+    id: '/marking',
+    path: '/marking',
+    getParentRoute: () => LayoutExamsExamIdRoute,
+  } as any)
+const LayoutExamsExamIdGradingRoute =
+  LayoutExamsExamIdGradingRouteImport.update({
+    id: '/grading',
+    path: '/grading',
+    getParentRoute: () => LayoutExamsExamIdRoute,
   } as any)
 const LayoutExamsExamIdAnswersRoute =
   LayoutExamsExamIdAnswersRouteImport.update({
-    id: '/exams_/$examId/answers',
-    path: '/exams/$examId/answers',
-    getParentRoute: () => LayoutRoute,
+    id: '/answers',
+    path: '/answers',
+    getParentRoute: () => LayoutExamsExamIdRoute,
   } as any)
 const LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute =
   LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport.update({
-    id: '/exams_/$examId/submissions/$submissionId/review',
-    path: '/exams/$examId/submissions/$submissionId/review',
-    getParentRoute: () => LayoutRoute,
+    id: '/submissions/$submissionId/review',
+    path: '/submissions/$submissionId/review',
+    getParentRoute: () => LayoutExamsExamIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -94,8 +120,12 @@ export interface FileRoutesByFullPath {
   '/admin': typeof LayoutAdminRoute
   '/exams': typeof LayoutExamsRoute
   '/settings': typeof LayoutSettingsRoute
+  '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
+  '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/exams/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/exams/$examId/scores': typeof LayoutExamsExamIdScoresRoute
   '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesByTo {
@@ -107,8 +137,12 @@ export interface FileRoutesByTo {
   '/exams': typeof LayoutExamsRoute
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
+  '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
+  '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/exams/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/exams/$examId/scores': typeof LayoutExamsExamIdScoresRoute
   '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesById {
@@ -122,8 +156,12 @@ export interface FileRoutesById {
   '/_layout/exams': typeof LayoutExamsRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
+  '/_layout/exams_/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/_layout/exams_/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
+  '/_layout/exams_/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/_layout/exams_/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
+  '/_layout/exams_/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/_layout/exams_/$examId/scores': typeof LayoutExamsExamIdScoresRoute
   '/_layout/exams_/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRouteTypes {
@@ -137,8 +175,12 @@ export interface FileRouteTypes {
     | '/admin'
     | '/exams'
     | '/settings'
+    | '/exams/$examId'
     | '/exams/$examId/answers'
+    | '/exams/$examId/grading'
     | '/exams/$examId/marking'
+    | '/exams/$examId/questions'
+    | '/exams/$examId/scores'
     | '/exams/$examId/submissions/$submissionId/review'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -150,8 +192,12 @@ export interface FileRouteTypes {
     | '/exams'
     | '/settings'
     | '/'
+    | '/exams/$examId'
     | '/exams/$examId/answers'
+    | '/exams/$examId/grading'
     | '/exams/$examId/marking'
+    | '/exams/$examId/questions'
+    | '/exams/$examId/scores'
     | '/exams/$examId/submissions/$submissionId/review'
   id:
     | '__root__'
@@ -164,8 +210,12 @@ export interface FileRouteTypes {
     | '/_layout/exams'
     | '/_layout/settings'
     | '/_layout/'
+    | '/_layout/exams_/$examId'
     | '/_layout/exams_/$examId/answers'
+    | '/_layout/exams_/$examId/grading'
     | '/_layout/exams_/$examId/marking'
+    | '/_layout/exams_/$examId/questions'
+    | '/_layout/exams_/$examId/scores'
     | '/_layout/exams_/$examId/submissions/$submissionId/review'
   fileRoutesById: FileRoutesById
 }
@@ -242,38 +292,86 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/exams_/$examId': {
+      id: '/_layout/exams_/$examId'
+      path: '/exams/$examId'
+      fullPath: '/exams/$examId'
+      preLoaderRoute: typeof LayoutExamsExamIdRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/exams_/$examId/scores': {
+      id: '/_layout/exams_/$examId/scores'
+      path: '/scores'
+      fullPath: '/exams/$examId/scores'
+      preLoaderRoute: typeof LayoutExamsExamIdScoresRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
+    '/_layout/exams_/$examId/questions': {
+      id: '/_layout/exams_/$examId/questions'
+      path: '/questions'
+      fullPath: '/exams/$examId/questions'
+      preLoaderRoute: typeof LayoutExamsExamIdQuestionsRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
     '/_layout/exams_/$examId/marking': {
       id: '/_layout/exams_/$examId/marking'
-      path: '/exams/$examId/marking'
+      path: '/marking'
       fullPath: '/exams/$examId/marking'
       preLoaderRoute: typeof LayoutExamsExamIdMarkingRouteImport
-      parentRoute: typeof LayoutRoute
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
+    '/_layout/exams_/$examId/grading': {
+      id: '/_layout/exams_/$examId/grading'
+      path: '/grading'
+      fullPath: '/exams/$examId/grading'
+      preLoaderRoute: typeof LayoutExamsExamIdGradingRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
     }
     '/_layout/exams_/$examId/answers': {
       id: '/_layout/exams_/$examId/answers'
-      path: '/exams/$examId/answers'
+      path: '/answers'
       fullPath: '/exams/$examId/answers'
       preLoaderRoute: typeof LayoutExamsExamIdAnswersRouteImport
-      parentRoute: typeof LayoutRoute
+      parentRoute: typeof LayoutExamsExamIdRoute
     }
     '/_layout/exams_/$examId/submissions/$submissionId/review': {
       id: '/_layout/exams_/$examId/submissions/$submissionId/review'
-      path: '/exams/$examId/submissions/$submissionId/review'
+      path: '/submissions/$submissionId/review'
       fullPath: '/exams/$examId/submissions/$submissionId/review'
       preLoaderRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRouteImport
-      parentRoute: typeof LayoutRoute
+      parentRoute: typeof LayoutExamsExamIdRoute
     }
   }
 }
+
+interface LayoutExamsExamIdRouteChildren {
+  LayoutExamsExamIdAnswersRoute: typeof LayoutExamsExamIdAnswersRoute
+  LayoutExamsExamIdGradingRoute: typeof LayoutExamsExamIdGradingRoute
+  LayoutExamsExamIdMarkingRoute: typeof LayoutExamsExamIdMarkingRoute
+  LayoutExamsExamIdQuestionsRoute: typeof LayoutExamsExamIdQuestionsRoute
+  LayoutExamsExamIdScoresRoute: typeof LayoutExamsExamIdScoresRoute
+  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
+}
+
+const LayoutExamsExamIdRouteChildren: LayoutExamsExamIdRouteChildren = {
+  LayoutExamsExamIdAnswersRoute: LayoutExamsExamIdAnswersRoute,
+  LayoutExamsExamIdGradingRoute: LayoutExamsExamIdGradingRoute,
+  LayoutExamsExamIdMarkingRoute: LayoutExamsExamIdMarkingRoute,
+  LayoutExamsExamIdQuestionsRoute: LayoutExamsExamIdQuestionsRoute,
+  LayoutExamsExamIdScoresRoute: LayoutExamsExamIdScoresRoute,
+  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute:
+    LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute,
+}
+
+const LayoutExamsExamIdRouteWithChildren =
+  LayoutExamsExamIdRoute._addFileChildren(LayoutExamsExamIdRouteChildren)
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
   LayoutExamsRoute: typeof LayoutExamsRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
-  LayoutExamsExamIdAnswersRoute: typeof LayoutExamsExamIdAnswersRoute
-  LayoutExamsExamIdMarkingRoute: typeof LayoutExamsExamIdMarkingRoute
-  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
+  LayoutExamsExamIdRoute: typeof LayoutExamsExamIdRouteWithChildren
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
@@ -281,10 +379,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutExamsRoute: LayoutExamsRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
-  LayoutExamsExamIdAnswersRoute: LayoutExamsExamIdAnswersRoute,
-  LayoutExamsExamIdMarkingRoute: LayoutExamsExamIdMarkingRoute,
-  LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute:
-    LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute,
+  LayoutExamsExamIdRoute: LayoutExamsExamIdRouteWithChildren,
 }
 
 const LayoutRouteWithChildren =

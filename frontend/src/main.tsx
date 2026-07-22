@@ -10,6 +10,7 @@ import ReactDOM from "react-dom/client"
 import { ApiError, OpenAPI } from "./client"
 import { ThemeProvider } from "./components/theme-provider"
 import { Toaster } from "./components/ui/sonner"
+import { useAppUpdateCache } from "./hooks/useAppUpdateCache"
 import "./index.css"
 import { routeTree } from "./routeTree.gen"
 
@@ -40,8 +41,14 @@ declare module "@tanstack/react-router" {
   }
 }
 
+const AppUpdateCacheGuard = () => {
+  useAppUpdateCache()
+  return null
+}
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <StrictMode>
+    <AppUpdateCacheGuard />
     <ThemeProvider defaultTheme="dark" storageKey="vite-ui-theme">
       <QueryClientProvider client={queryClient}>
         <RouterProvider router={router} />

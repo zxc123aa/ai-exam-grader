@@ -1,10 +1,11 @@
 import uuid
 from datetime import UTC, datetime
+from decimal import Decimal
 from enum import StrEnum
-from typing import Optional
+from typing import Any, Literal, Optional
 
 from pydantic import EmailStr, model_validator
-from sqlalchemy import Column, DateTime, UniqueConstraint
+from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, Relationship, SQLModel
@@ -116,6 +117,7 @@ class StudentSubmissionStatus(StrEnum):
 class SubmissionRegistrationStatus(StrEnum):
     PENDING = "pending"
     MANUAL_CONFIRMED = "manual_confirmed"
+    AUTO_CONFIRMED = "auto_confirmed"
     FAILED = "failed"
 
 
@@ -136,6 +138,79 @@ class AnnotationGradingStatus(StrEnum):
 class StandardAnswerStatus(StrEnum):
     DRAFT = "draft"
     READY = "ready"
+
+
+class GradingRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed_with_errors"
+    FAILED = "failed"
+
+
+class GradingItemStatus(StrEnum):
+    QUEUED = "queued"
+    EXTRACTING = "extracting"
+    GRADING = "grading"
+    COMPLETED = "completed"
+    NEEDS_REVIEW = "needs_review"
+    FAILED = "failed"
+
+
+class QuestionType(StrEnum):
+    SINGLE_CHOICE = "single_choice"
+    MULTIPLE_CHOICE = "multiple_choice"
+    TRUE_FALSE = "true_false"
+    FILL_BLANK = "fill_blank"
+    CALCULATION = "calculation"
+    PROOF = "proof"
+    SHORT_ANSWER = "short_answer"
+    ESSAY = "essay"
+
+
+class ExamQuestionStatus(StrEnum):
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+
+
+class QuestionRegionRole(StrEnum):
+    PRIMARY = "primary"
+    CONTINUATION = "continuation"
+    FIGURE = "figure"
+
+
+class WorkflowRunStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    COMPLETED_WITH_ERRORS = "completed_with_errors"
+    FAILED = "failed"
+
+
+class QuestionRecognitionItemStatus(StrEnum):
+    DRAFT = "draft"
+    CONFIRMED = "confirmed"
+    EXCLUDED = "excluded"
+
+
+class AnswerPreparationSource(StrEnum):
+    MODEL = "model"
+    DOCUMENT = "document"
+
+
+class AnswerPreparationItemStatus(StrEnum):
+    QUEUED = "queued"
+    RUNNING = "running"
+    MATCHED = "matched"
+    CONFLICT = "conflict"
+    UNMATCHED = "unmatched"
+    FAILED = "failed"
+    CONFIRMED = "confirmed"
+
+
+class StandardAnswerRevisionStatus(StrEnum):
+    DRAFT = "draft"
+    PUBLISHED = "published"
 
 
 class ExamBase(SQLModel):
@@ -223,10 +298,14 @@ class StoredFile(StoredFileBase, table=True):
     )
     uploaded_by: User | None = Relationship(back_populates="files")
     exam_documents: list["ExamDocument"] = Relationship(
-        back_populates="stored_file", cascade_delete=True
+        back_populates="stored_file",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "ExamDocument.stored_file_id"},
     )
     student_submissions: list["StudentSubmission"] = Relationship(
-        back_populates="stored_file", cascade_delete=True
+        back_populates="stored_file",
+        cascade_delete=True,
+        sa_relationship_kwargs={"foreign_keys": "StudentSubmission.stored_file_id"},
     )
 
 
@@ -238,6 +317,7 @@ class StoredFilePublic(StoredFileBase):
 
 class ExamDocumentBase(SQLModel):
     document_type: ExamDocumentType = ExamDocumentType.BLANK_EXAM
+    sort_order: int = Field(default=1, ge=1)
 
 
 class ExamDocument(ExamDocumentBase, table=True):
@@ -263,8 +343,17 @@ class ExamDocument(ExamDocumentBase, table=True):
     stored_file_id: uuid.UUID = Field(
         foreign_key="storedfile.id", nullable=False, ondelete="CASCADE"
     )
+    original_stored_file_id: uuid.UUID | None = Field(
+        default=None, foreign_key="storedfile.id", nullable=True, ondelete="SET NULL"
+    )
+    preprocessing_status: str = Field(default="not_required", max_length=50)
+    preprocessing_quality: float | None = Field(default=None, ge=0, le=1)
+    preprocessing_metadata: dict | None = Field(default=None, sa_column=Column(JSONB))
     exam: Exam | None = Relationship(back_populates="documents")
-    stored_file: StoredFile | None = Relationship(back_populates="exam_documents")
+    stored_file: StoredFile | None = Relationship(
+        back_populates="exam_documents",
+        sa_relationship_kwargs={"foreign_keys": "ExamDocument.stored_file_id"},
+    )
 
 
 class ExamDocumentPublic(ExamDocumentBase):
@@ -273,12 +362,41 @@ class ExamDocumentPublic(ExamDocumentBase):
     stored_file_id: uuid.UUID
     stored_file: StoredFilePublic
     page_count: int = 1
+    original_stored_file_id: uuid.UUID | None = None
+    preprocessing_status: str = "not_required"
+    preprocessing_quality: float | None = None
+    preprocessing_metadata: dict | None = None
     created_at: datetime | None = None
 
 
 class ExamDocumentsPublic(SQLModel):
     data: list[ExamDocumentPublic]
     count: int
+
+
+class ExamDocumentOrderUpdate(SQLModel):
+    document_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class ExamDocumentRecognitionRequest(SQLModel):
+    document_ids: list[uuid.UUID] = Field(min_length=1)
+    verification_mode: Literal["fast", "selective", "evidence"] = "fast"
+
+
+class DocumentQuadPoint(SQLModel):
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class DocumentPageQuad(SQLModel):
+    label: str | None = Field(default=None, max_length=50)
+    points: list[DocumentQuadPoint] = Field(min_length=4, max_length=4)
+
+
+class ExamDocumentQuadPreprocessRequest(SQLModel):
+    pages: list[DocumentPageQuad] = Field(min_length=1, max_length=2)
+    detector: str = Field(default="manual_corner_editor", max_length=100)
+    margin_mode: str = Field(default="conservative", regex="^(conservative|minimal)$")
 
 
 class ExamRegionBase(SQLModel):
@@ -300,7 +418,7 @@ class ExamRegionBase(SQLModel):
 
 
 class ExamRegionCreate(ExamRegionBase):
-    pass
+    exam_document_id: uuid.UUID | None = None
 
 
 class ExamRegionUpdate(SQLModel):
@@ -311,6 +429,7 @@ class ExamRegionUpdate(SQLModel):
     y: float | None = Field(default=None, ge=0, le=1)
     width: float | None = Field(default=None, gt=0, le=1)
     height: float | None = Field(default=None, gt=0, le=1)
+    exam_document_id: uuid.UUID | None = None
 
 
 class ExamRegion(ExamRegionBase, table=True):
@@ -337,6 +456,13 @@ class ExamRegion(ExamRegionBase, table=True):
     exam_id: uuid.UUID = Field(
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
+    exam_document_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="examdocument.id",
+        nullable=True,
+        ondelete="CASCADE",
+        index=True,
+    )
     exam: Exam | None = Relationship(back_populates="regions")
     standard_answer: Optional["StandardAnswer"] = Relationship(
         back_populates="exam_region", cascade_delete=True
@@ -346,8 +472,13 @@ class ExamRegion(ExamRegionBase, table=True):
 class ExamRegionPublic(ExamRegionBase):
     id: uuid.UUID
     exam_id: uuid.UUID
+    exam_document_id: uuid.UUID | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+    # 关联题目信息（无关联时为 None）；续页区域 role 为 "continuation"。
+    question_key: str | None = None
+    question_label: str | None = None
+    region_role: str | None = None
 
 
 class ExamRegionsPublic(SQLModel):
@@ -373,6 +504,278 @@ class ExamRegionCandidatesPublic(SQLModel):
     count: int
     page_number: int
     engine: str
+    elapsed_ms: int = 0
+    orientation_ms: int = 0
+    layout_ms: int = 0
+    refinement_ms: int = 0
+    rotation: int = 0
+    upright_image: str | None = None
+    provider: str | None = None
+    provider_label: str | None = None
+    requested_provider: str | None = None
+    provider_failover_count: int = 0
+
+
+class ExamQuestion(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("exam_id", "question_key", name="uq_examquestion_exam_key"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    question_key: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=255)
+    question_text: str = Field(min_length=1, max_length=20000)
+    question_type: str | None = Field(default=None, max_length=50)
+    recognition_confidence: Decimal | None = Field(
+        default=None,
+        sa_column=Column(Numeric(5, 4), nullable=True),
+    )
+    status: ExamQuestionStatus = Field(
+        default=ExamQuestionStatus.DRAFT,
+        sa_column=Column(
+            SAEnum(
+                ExamQuestionStatus,
+                name="examquestionstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    confirmed_by_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    confirmed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExamQuestionRegion(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "question_id", "exam_region_id", name="uq_examquestionregion_pair"
+        ),
+        UniqueConstraint("exam_region_id", name="uq_examquestionregion_region"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    question_id: uuid.UUID = Field(
+        foreign_key="examquestion.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    exam_region_id: uuid.UUID = Field(
+        foreign_key="examregion.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    sequence: int = Field(default=1, ge=1)
+    role: QuestionRegionRole = Field(
+        default=QuestionRegionRole.PRIMARY,
+        sa_column=Column(
+            SAEnum(
+                QuestionRegionRole,
+                name="questionregionrole",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class QuestionRecognitionRun(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    created_by_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    provider: str = Field(default="fluxnode_gemini", max_length=100)
+    model: str = Field(default="gemini-3.5-flash", max_length=200)
+    engine: str = Field(default="reference-node", max_length=100)
+    status: WorkflowRunStatus = Field(
+        default=WorkflowRunStatus.QUEUED,
+        sa_column=Column(
+            SAEnum(
+                WorkflowRunStatus,
+                name="workflowrunstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    document_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    timing: dict = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    raw_output: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    error_message: str | None = Field(default=None, max_length=2000)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    started_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    completed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    confirmed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class QuestionRecognitionItem(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "source_item_key", name="uq_questionrecognitionitem_run_source"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    run_id: uuid.UUID = Field(
+        foreign_key="questionrecognitionrun.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    source_item_key: str = Field(max_length=255)
+    question_key: str = Field(min_length=1, max_length=100)
+    label: str = Field(min_length=1, max_length=255)
+    question_text: str = Field(default="", max_length=20000)
+    student_answer_text: str | None = Field(default=None, max_length=12000)
+    question_type: str | None = Field(default=None, max_length=50)
+    confidence: Decimal | None = Field(
+        default=None, sa_column=Column(Numeric(5, 4), nullable=True)
+    )
+    notes: str | None = Field(default=None, max_length=4000)
+    region_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    region_snapshots: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    raw_result: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    status: QuestionRecognitionItemStatus = Field(
+        default=QuestionRecognitionItemStatus.DRAFT,
+        sa_column=Column(
+            SAEnum(
+                QuestionRecognitionItemStatus,
+                name="questionrecognitionitemstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    confirmed_question_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="examquestion.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExamQuestionPublic(SQLModel):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    question_key: str
+    label: str
+    question_text: str
+    question_type: str | None = None
+    recognition_confidence: float | None = None
+    status: ExamQuestionStatus
+    region_ids: list[uuid.UUID] = Field(default_factory=list)
+    confirmed_by_id: uuid.UUID | None = None
+    confirmed_at: datetime | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ExamQuestionsPublic(SQLModel):
+    data: list[ExamQuestionPublic]
+    count: int
+
+
+class QuestionRecognitionRunCreate(SQLModel):
+    document_ids: list[uuid.UUID] = Field(min_length=1)
+
+
+class MarkingRecognitionImport(SQLModel):
+    document_ids: list[uuid.UUID] = Field(min_length=1)
+    covered_page_ids: list[str] = Field(min_length=1)
+    results: list[dict] = Field(min_length=1)
+    blocks: list[dict] = Field(min_length=1)
+    layouts: list[dict] = Field(default_factory=list)
+    timing: dict = Field(default_factory=dict)
+
+
+class QuestionRecognitionRunPublic(SQLModel):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    created_by_id: uuid.UUID
+    provider: str
+    model: str
+    engine: str
+    status: WorkflowRunStatus
+    document_ids: list[str]
+    timing: dict
+    error_message: str | None = None
+    item_count: int = 0
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    confirmed_at: datetime | None = None
+
+
+class QuestionRecognitionRunsPublic(SQLModel):
+    data: list[QuestionRecognitionRunPublic]
+    count: int
+
+
+class QuestionRecognitionItemPublic(SQLModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    source_item_key: str
+    question_key: str
+    label: str
+    question_text: str
+    student_answer_text: str | None = None
+    question_type: str | None = None
+    confidence: float | None = None
+    notes: str | None = None
+    region_ids: list[str]
+    region_snapshots: list[dict]
+    status: QuestionRecognitionItemStatus
+    confirmed_question_id: uuid.UUID | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class QuestionRecognitionItemUpdate(SQLModel):
+    question_key: str | None = Field(default=None, min_length=1, max_length=100)
+    label: str | None = Field(default=None, min_length=1, max_length=255)
+    question_text: str | None = Field(default=None, max_length=20000)
+    student_answer_text: str | None = Field(default=None, max_length=12000)
+    question_type: str | None = Field(default=None, max_length=50)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    notes: str | None = Field(default=None, max_length=4000)
+    region_ids: list[uuid.UUID] | None = None
+    status: QuestionRecognitionItemStatus | None = None
 
 
 class StandardAnswerBase(SQLModel):
@@ -458,11 +861,41 @@ class StandardAnswer(StandardAnswerBase, table=True):
             nullable=False,
         ),
     )
+    version: int = Field(default=1, ge=1)
+    source_provider: str | None = Field(default=None, max_length=100)
+    source_model: str | None = Field(default=None, max_length=200)
+    generation_confidence: float | None = Field(default=None, ge=0, le=1)
+    answer_hash: str | None = Field(default=None, max_length=64)
+    published_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    published_by_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    question_text: str | None = Field(default=None, max_length=12000)
+    question_type: str | None = Field(default=None, max_length=50)
+    rubric_config: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    validation_report: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
     exam_id: uuid.UUID = Field(
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
     exam_region_id: uuid.UUID = Field(
         foreign_key="examregion.id", nullable=False, ondelete="CASCADE"
+    )
+    question_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="examquestion.id",
+        nullable=True,
+        ondelete="CASCADE",
+        index=True,
+    )
+    current_revision_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="standardanswerrevision.id",
+        nullable=True,
+        ondelete="SET NULL",
     )
     exam: Exam | None = Relationship(back_populates="standard_answers")
     exam_region: ExamRegion | None = Relationship(back_populates="standard_answer")
@@ -472,6 +905,19 @@ class StandardAnswerPublic(StandardAnswerBase):
     id: uuid.UUID
     exam_id: uuid.UUID
     exam_region_id: uuid.UUID
+    question_id: uuid.UUID | None = None
+    current_revision_id: uuid.UUID | None = None
+    version: int = 1
+    source_provider: str | None = None
+    source_model: str | None = None
+    generation_confidence: float | None = None
+    answer_hash: str | None = None
+    published_at: datetime | None = None
+    published_by_id: uuid.UUID | None = None
+    question_text: str | None = None
+    question_type: str | None = None
+    rubric_config: dict = Field(default_factory=dict)
+    validation_report: dict = Field(default_factory=dict)
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -481,9 +927,284 @@ class StandardAnswersPublic(SQLModel):
     count: int
 
 
+class AnswerPreparationRun(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    created_by_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    source_type: AnswerPreparationSource = Field(
+        sa_column=Column(
+            SAEnum(
+                AnswerPreparationSource,
+                name="answerpreparationsource",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        )
+    )
+    provider: str = Field(default="pomoai", max_length=100)
+    model: str = Field(default="gpt-5.6-sol", max_length=200)
+    document_ids: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    status: WorkflowRunStatus = Field(
+        default=WorkflowRunStatus.QUEUED,
+        sa_column=Column(
+            SAEnum(
+                WorkflowRunStatus,
+                name="workflowrunstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+                create_type=False,
+            ),
+            nullable=False,
+        ),
+    )
+    timing: dict = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    raw_output: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    error_message: str | None = Field(default=None, max_length=2000)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    started_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    completed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    confirmed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class AnswerPreparationItem(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "run_id", "source_item_key", name="uq_answerpreparationitem_run_source"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    run_id: uuid.UUID = Field(
+        foreign_key="answerpreparationrun.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    question_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="examquestion.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+    source_item_key: str = Field(max_length=255)
+    source_question_key: str | None = Field(default=None, max_length=100)
+    answer_text: str = Field(default="", max_length=20000)
+    max_score: Decimal = Field(
+        default=Decimal("1.00"),
+        sa_column=Column(Numeric(8, 2), nullable=False),
+    )
+    rubric_text: str | None = Field(default=None, max_length=12000)
+    scoring_points: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    confidence: Decimal | None = Field(
+        default=None, sa_column=Column(Numeric(5, 4), nullable=True)
+    )
+    match_reason: str | None = Field(default=None, max_length=2000)
+    raw_result: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    status: AnswerPreparationItemStatus = Field(
+        default=AnswerPreparationItemStatus.QUEUED,
+        sa_column=Column(
+            SAEnum(
+                AnswerPreparationItemStatus,
+                name="answerpreparationitemstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    revision_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="standardanswerrevision.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    error_message: str | None = Field(default=None, max_length=2000)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class StandardAnswerRevision(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "standard_answer_id",
+            "revision_number",
+            name="uq_standardanswerrevision_answer_number",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    standard_answer_id: uuid.UUID = Field(
+        foreign_key="standardanswer.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    question_id: uuid.UUID = Field(
+        foreign_key="examquestion.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    revision_number: int = Field(ge=1)
+    question_key: str = Field(min_length=1, max_length=100)
+    question_text: str = Field(min_length=1, max_length=20000)
+    question_type: str | None = Field(default=None, max_length=50)
+    answer_text: str = Field(min_length=1, max_length=20000)
+    max_score: Decimal = Field(sa_column=Column(Numeric(8, 2), nullable=False))
+    rubric_text: str | None = Field(default=None, max_length=12000)
+    scoring_points: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    source_provider: str | None = Field(default=None, max_length=100)
+    source_model: str | None = Field(default=None, max_length=200)
+    generation_confidence: Decimal | None = Field(
+        default=None, sa_column=Column(Numeric(5, 4), nullable=True)
+    )
+    content_hash: str = Field(min_length=64, max_length=64)
+    status: StandardAnswerRevisionStatus = Field(
+        default=StandardAnswerRevisionStatus.DRAFT,
+        sa_column=Column(
+            SAEnum(
+                StandardAnswerRevisionStatus,
+                name="standardanswerrevisionstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    created_by_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    published_by_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    preparation_item_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="answerpreparationitem.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    published_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class AnswerPreparationRunCreate(SQLModel):
+    source_type: AnswerPreparationSource
+    document_ids: list[uuid.UUID] = Field(default_factory=list)
+    provider: str = Field(default="pomoai", max_length=100)
+    model: str = Field(default="gpt-5.6-sol", max_length=200)
+
+
+class AnswerPreparationRunPublic(SQLModel):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    created_by_id: uuid.UUID
+    source_type: AnswerPreparationSource
+    provider: str
+    model: str
+    document_ids: list[str]
+    status: WorkflowRunStatus
+    timing: dict
+    error_message: str | None = None
+    item_count: int = 0
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+    confirmed_at: datetime | None = None
+
+
+class AnswerPreparationRunsPublic(SQLModel):
+    data: list[AnswerPreparationRunPublic]
+    count: int
+
+
+class AnswerPreparationItemPublic(SQLModel):
+    id: uuid.UUID
+    run_id: uuid.UUID
+    question_id: uuid.UUID | None = None
+    source_item_key: str
+    source_question_key: str | None = None
+    answer_text: str
+    max_score: float
+    rubric_text: str | None = None
+    scoring_points: list[dict]
+    confidence: float | None = None
+    match_reason: str | None = None
+    status: AnswerPreparationItemStatus
+    revision_id: uuid.UUID | None = None
+    error_message: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class AnswerPreparationItemUpdate(SQLModel):
+    question_id: uuid.UUID | None = None
+    answer_text: str | None = Field(default=None, min_length=1, max_length=20000)
+    max_score: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    rubric_text: str | None = Field(default=None, max_length=12000)
+    scoring_points: list[dict] | None = None
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    match_reason: str | None = Field(default=None, max_length=2000)
+    status: AnswerPreparationItemStatus | None = None
+
+
+class StandardAnswerRevisionPublic(SQLModel):
+    id: uuid.UUID
+    standard_answer_id: uuid.UUID
+    question_id: uuid.UUID
+    revision_number: int
+    question_key: str
+    question_text: str
+    question_type: str | None = None
+    answer_text: str
+    max_score: float
+    rubric_text: str | None = None
+    scoring_points: list[dict]
+    source_provider: str | None = None
+    source_model: str | None = None
+    generation_confidence: float | None = None
+    content_hash: str
+    status: StandardAnswerRevisionStatus
+    created_by_id: uuid.UUID
+    published_by_id: uuid.UUID | None = None
+    preparation_item_id: uuid.UUID | None = None
+    created_at: datetime
+    published_at: datetime | None = None
+
+
+class StandardAnswerRevisionsPublic(SQLModel):
+    data: list[StandardAnswerRevisionPublic]
+    count: int
+
+
+class StandardAnswerPublishRequest(SQLModel):
+    revision_ids: list[uuid.UUID] = Field(default_factory=list)
+
+
 class StudentSubmissionBase(SQLModel):
     student_name: str | None = Field(default=None, max_length=255)
     student_identifier: str | None = Field(default=None, max_length=100)
+    class_name: str | None = Field(default=None, max_length=100)
     status: StudentSubmissionStatus = StudentSubmissionStatus.REGISTRATION_PENDING
     registration_status: SubmissionRegistrationStatus = (
         SubmissionRegistrationStatus.PENDING
@@ -495,6 +1216,7 @@ class StudentSubmissionBase(SQLModel):
 class StudentSubmissionCreate(SQLModel):
     student_name: str | None = Field(default=None, max_length=255)
     student_identifier: str | None = Field(default=None, max_length=100)
+    class_name: str | None = Field(default=None, max_length=100)
 
 
 class StudentSubmissionRegistrationUpdate(SQLModel):
@@ -537,15 +1259,23 @@ class StudentSubmission(StudentSubmissionBase, table=True):
         ),
     )
     registration_homography: dict | None = Field(default=None, sa_column=Column(JSONB))
-    registered_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    registered_at: datetime | None = Field(
+        default=None, sa_type=DateTime(timezone=True)
+    )  # type: ignore
     exam_id: uuid.UUID = Field(
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
     stored_file_id: uuid.UUID = Field(
         foreign_key="storedfile.id", nullable=False, ondelete="CASCADE"
     )
+    original_stored_file_id: uuid.UUID | None = Field(
+        default=None, foreign_key="storedfile.id", nullable=True, ondelete="SET NULL"
+    )
     exam: Exam | None = Relationship(back_populates="submissions")
-    stored_file: StoredFile | None = Relationship(back_populates="student_submissions")
+    stored_file: StoredFile | None = Relationship(
+        back_populates="student_submissions",
+        sa_relationship_kwargs={"foreign_keys": "StudentSubmission.stored_file_id"},
+    )
     annotations: list["SubmissionAnnotation"] = Relationship(
         back_populates="submission", cascade_delete=True
     )
@@ -557,6 +1287,7 @@ class StudentSubmissionPublic(StudentSubmissionBase):
     stored_file_id: uuid.UUID
     stored_file: StoredFilePublic
     page_count: int = 1
+    original_stored_file_id: uuid.UUID | None = None
     registration_homography: dict | None = None
     registered_at: datetime | None = None
     created_at: datetime | None = None
@@ -565,6 +1296,39 @@ class StudentSubmissionPublic(StudentSubmissionBase):
 
 class StudentSubmissionsPublic(SQLModel):
     data: list[StudentSubmissionPublic]
+    count: int
+
+
+class ExamScoreSummaryQuestion(SQLModel):
+    label: str
+    score: float | None = None
+    max_score: float | None = None
+    # "final" = 教师复核后的最终分（score_source == "human"），
+    # "ai_suggested" = AI 建议分（尚无教师确认）。
+    score_source: str | None = None
+    annotation_id: uuid.UUID | None = None
+
+
+class ExamScoreSummaryRow(SQLModel):
+    submission_id: uuid.UUID
+    student_name: str | None = None
+    student_identifier: str | None = None
+    class_name: str | None = None
+    total_score: float | None = None
+    total_max_score: float | None = None
+    questions: list[ExamScoreSummaryQuestion] = Field(default_factory=list)
+    status: StudentSubmissionStatus = StudentSubmissionStatus.REGISTRATION_PENDING
+    registration_status: SubmissionRegistrationStatus = (
+        SubmissionRegistrationStatus.PENDING
+    )
+    registration_quality: float | None = None
+    registration_notes: str | None = None
+    page_count: int | None = None
+    pending_review_count: int = 0
+
+
+class ExamScoreSummaryPublic(SQLModel):
+    data: list[ExamScoreSummaryRow]
     count: int
 
 
@@ -608,6 +1372,7 @@ class SubmissionAnnotationUpdate(SQLModel):
     score: float | None = Field(default=None, ge=0)
     max_score: float | None = Field(default=None, ge=0)
     comment: str | None = Field(default=None, max_length=2000)
+    audit_reason: str | None = Field(default=None, max_length=1000)
 
 
 class SubmissionAnnotation(SubmissionAnnotationBase, table=True):
@@ -658,6 +1423,17 @@ class SubmissionAnnotation(SubmissionAnnotationBase, table=True):
         default=None,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    score_source: str | None = Field(default=None, max_length=50)
+    model_score: float | None = Field(default=None, ge=0)
+    model_confidence: float | None = Field(default=None, ge=0, le=1)
+    grading_version: str | None = Field(default=None, max_length=100)
+    grading_evidence: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    auto_published_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
     submission: StudentSubmission | None = Relationship(back_populates="annotations")
 
 
@@ -671,6 +1447,12 @@ class SubmissionAnnotationPublic(SubmissionAnnotationBase):
     grading_reasons: list[dict] = Field(default_factory=list)
     grading_status: AnnotationGradingStatus = AnnotationGradingStatus.NOT_STARTED
     answer_key_updated_at: datetime | None = None
+    score_source: str | None = None
+    model_score: float | None = None
+    model_confidence: float | None = None
+    grading_version: str | None = None
+    grading_evidence: list[dict] = Field(default_factory=list)
+    auto_published_at: datetime | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
 
@@ -727,6 +1509,270 @@ class ProcessingTaskPublic(ProcessingTaskBase):
     output_ref: dict | None = None
     created_at: datetime | None = None
     updated_at: datetime | None = None
+
+
+class GradingRunCreate(SQLModel):
+    exam_id: uuid.UUID
+    vision_provider: str | None = Field(default=None, max_length=100)
+    vision_model: str | None = Field(default=None, max_length=200)
+    provider: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=200)
+    fallback_models: list[str] = Field(default_factory=list)
+    submission_ids: list[uuid.UUID] = Field(default_factory=list)
+    review_threshold: float = Field(default=0.8, ge=0, le=1)
+    max_concurrency: int = Field(default=8, ge=1, le=8)
+    recognition_run_id: uuid.UUID | None = None
+
+
+class RecognitionRunCreate(SQLModel):
+    exam_id: uuid.UUID
+    submission_id: uuid.UUID
+    provider: str = Field(default="fluxnode_gemini", max_length=100)
+    model: str = Field(default="gemini-3.5-flash", max_length=200)
+    max_concurrency: int = Field(default=8, ge=1, le=8)
+    verification_mode: Literal["fast", "selective", "evidence"] = "selective"
+
+
+class RecognitionItemPublic(SQLModel):
+    item_id: uuid.UUID
+    submission_id: uuid.UUID
+    exam_region_id: uuid.UUID
+    label: str
+    status: GradingItemStatus
+    question_text: str | None = None
+    student_answer: str | None = None
+    final_answer: str | None = None
+    confidence: float | None = None
+    notes: list[str] = Field(default_factory=list)
+    printed_question_marks: list[dict[str, str]] = Field(default_factory=list)
+    answer_entries: list[dict[str, Any]] = Field(default_factory=list)
+    unassigned_evidence: list[str] = Field(default_factory=list)
+    grading_answer: str | None = None
+    grading_eligible: bool = False
+    answer_verification: dict[str, Any] = Field(default_factory=dict)
+    error_message: str | None = None
+
+
+class RecognitionItemUpdate(SQLModel):
+    question_text: str | None = Field(default=None, max_length=12000)
+    student_answer: str | None = Field(default=None, max_length=8000)
+    final_answer: str | None = Field(default=None, max_length=2000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    notes: list[str] | None = None
+    approve_for_grading: bool | None = None
+    approval_source: str | None = Field(default=None, max_length=50)
+
+
+class GradingRun(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    created_by_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    provider: str = Field(max_length=100)
+    model: str = Field(max_length=200)
+    fallback_models: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    answer_version: int = Field(default=1, ge=1)
+    status: GradingRunStatus = Field(
+        default=GradingRunStatus.QUEUED,
+        sa_column=Column(
+            SAEnum(
+                GradingRunStatus,
+                name="gradingrunstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    total_submissions: int = Field(default=0, ge=0)
+    completed_count: int = Field(default=0, ge=0)
+    review_count: int = Field(default=0, ge=0)
+    failed_count: int = Field(default=0, ge=0)
+    total_items: int = Field(default=0, ge=0)
+    completed_items: int = Field(default=0, ge=0)
+    extracted_items: int = Field(default=0, ge=0)
+    objective_items: int = Field(default=0, ge=0)
+    subjective_items: int = Field(default=0, ge=0)
+    current_concurrency: int = Field(default=0, ge=0)
+    throttle_count: int = Field(default=0, ge=0)
+    config_snapshot: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    error_message: str | None = Field(default=None, max_length=2000)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    started_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    completed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class GradingRunPublic(SQLModel):
+    id: uuid.UUID
+    exam_id: uuid.UUID
+    created_by_id: uuid.UUID
+    provider: str
+    model: str
+    fallback_models: list[str]
+    answer_version: int
+    status: GradingRunStatus
+    total_submissions: int
+    completed_count: int
+    review_count: int
+    failed_count: int
+    average_confidence: float | None = None
+    total_items: int = 0
+    completed_items: int = 0
+    extracted_items: int = 0
+    objective_items: int = 0
+    subjective_items: int = 0
+    current_concurrency: int = 0
+    throttle_count: int = 0
+    config_snapshot: dict
+    timing: dict = Field(default_factory=dict)
+    error_message: str | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    completed_at: datetime | None = None
+
+
+class GradingRunsPublic(SQLModel):
+    data: list[GradingRunPublic]
+    count: int
+
+
+class GradingItem(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint(
+            "grading_run_id",
+            "submission_id",
+            "exam_region_id",
+            name="uq_gradingitem_run_submission_region",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    grading_run_id: uuid.UUID = Field(
+        foreign_key="gradingrun.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    submission_id: uuid.UUID = Field(
+        foreign_key="studentsubmission.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    exam_region_id: uuid.UUID = Field(
+        foreign_key="examregion.id", nullable=False, ondelete="CASCADE"
+    )
+    question_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="examquestion.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+    answer_revision_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="standardanswerrevision.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+    annotation_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="submissionannotation.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    status: GradingItemStatus = Field(
+        default=GradingItemStatus.QUEUED,
+        sa_column=Column(
+            SAEnum(
+                GradingItemStatus,
+                name="gradingitemstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    attempts: int = Field(default=0, ge=0)
+    extraction_result: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    grading_result: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    error_message: str | None = Field(default=None, max_length=2000)
+    started_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+    completed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))  # type: ignore
+
+
+class GradingAuditEvent(SQLModel, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    grading_run_id: uuid.UUID | None = Field(
+        default=None, foreign_key="gradingrun.id", nullable=True, ondelete="SET NULL"
+    )
+    submission_id: uuid.UUID = Field(
+        foreign_key="studentsubmission.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    annotation_id: uuid.UUID = Field(
+        foreign_key="submissionannotation.id",
+        nullable=False,
+        ondelete="CASCADE",
+        index=True,
+    )
+    operator_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    source: str = Field(max_length=50)
+    old_score: float | None = None
+    new_score: float | None = None
+    old_comment: str | None = Field(default=None, max_length=2000)
+    new_comment: str | None = Field(default=None, max_length=2000)
+    reason: str | None = Field(default=None, max_length=1000)
+    metadata_json: dict = Field(
+        default_factory=dict, sa_column=Column(JSONB, nullable=False)
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class GradingAuditEventPublic(SQLModel):
+    id: uuid.UUID
+    grading_run_id: uuid.UUID | None = None
+    submission_id: uuid.UUID
+    annotation_id: uuid.UUID
+    operator_id: uuid.UUID | None = None
+    source: str
+    old_score: float | None = None
+    new_score: float | None = None
+    old_comment: str | None = None
+    new_comment: str | None = None
+    reason: str | None = None
+    metadata_json: dict
+    created_at: datetime
+
+
+class GradingReviewItem(SQLModel):
+    submission_id: uuid.UUID
+    student_name: str | None = None
+    student_identifier: str | None = None
+    annotation_id: uuid.UUID | None = None
+    label: str | None = None
+    score: float | None = None
+    max_score: float | None = None
+    confidence: float | None = None
+    risk: str
+    priority: int
 
 
 # Generic message

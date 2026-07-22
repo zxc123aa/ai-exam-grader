@@ -1,6 +1,6 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
-import { Plus } from "lucide-react"
+import { Dices, Plus } from "lucide-react"
 import { useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
@@ -31,7 +31,7 @@ import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
 
 const formSchema = z.object({
-  title: z.string().min(1, { message: "Title is required" }).max(255),
+  title: z.string().min(1, { message: "请输入考试名称" }).max(255),
   subject: z.string().max(100).optional(),
   grade_level: z.string().max(100).optional(),
 })
@@ -62,7 +62,7 @@ export default function AddExam() {
     mutationFn: (data: ExamCreate) =>
       ExamsService.createExam({ requestBody: data }),
     onSuccess: () => {
-      showSuccessToast("Exam created")
+      showSuccessToast("考试创建成功")
       form.reset()
       setIsOpen(false)
     },
@@ -80,19 +80,36 @@ export default function AddExam() {
     })
   }
 
+  const fillRandomDemo = () => {
+    const subjects = ["物理", "数学", "语文", "英语", "化学"]
+    const grades = ["七年级", "八年级", "九年级", "高一年级"]
+    const titles = [
+      "期中检测题",
+      "阶段性质量检测",
+      "单元综合测试",
+      "期末模拟卷",
+    ]
+    const subject = subjects[Math.floor(Math.random() * subjects.length)]
+    const grade = grades[Math.floor(Math.random() * grades.length)]
+    const title = `${grade}${subject}${titles[Math.floor(Math.random() * titles.length)]}`
+    form.setValue("title", title, { shouldValidate: true })
+    form.setValue("subject", subject)
+    form.setValue("grade_level", grade)
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button>
           <Plus />
-          New Exam
+          新建考试
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>New Exam</DialogTitle>
+          <DialogTitle>新建考试</DialogTitle>
           <DialogDescription>
-            Create an exam record before uploading the blank paper.
+            创建考试后导入这套卷子的图片或 PDF，然后识别题目内容并生成标准答案。
           </DialogDescription>
         </DialogHeader>
         <Form {...form}>
@@ -104,10 +121,10 @@ export default function AddExam() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel>
-                      Title <span className="text-destructive">*</span>
+                      考试名称 <span className="text-destructive">*</span>
                     </FormLabel>
                     <FormControl>
-                      <Input placeholder="English Midterm" {...field} />
+                      <Input placeholder="八年级期中考试" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -118,9 +135,9 @@ export default function AddExam() {
                 name="subject"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Subject</FormLabel>
+                    <FormLabel>科目</FormLabel>
                     <FormControl>
-                      <Input placeholder="English" {...field} />
+                      <Input placeholder="语文" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -131,9 +148,9 @@ export default function AddExam() {
                 name="grade_level"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Grade Level</FormLabel>
+                    <FormLabel>年级</FormLabel>
                     <FormControl>
-                      <Input placeholder="Grade 8" {...field} />
+                      <Input placeholder="八年级" {...field} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -143,12 +160,23 @@ export default function AddExam() {
             <DialogFooter>
               <DialogClose asChild>
                 <Button variant="outline" disabled={mutation.isPending}>
-                  Cancel
+                  取消
                 </Button>
               </DialogClose>
               <LoadingButton type="submit" loading={mutation.isPending}>
-                Create
+                创建
               </LoadingButton>
+              {import.meta.env.DEV && (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  onClick={fillRandomDemo}
+                  disabled={mutation.isPending}
+                >
+                  <Dices />
+                  随机演示信息
+                </Button>
+              )}
             </DialogFooter>
           </form>
         </Form>

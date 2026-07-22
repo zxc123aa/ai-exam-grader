@@ -6,6 +6,433 @@ export const AnnotationGradingStatusSchema = {
     title: 'AnnotationGradingStatus'
 } as const;
 
+export const AnswerPreparationItemPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        run_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Run Id'
+        },
+        question_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Id'
+        },
+        source_item_key: {
+            type: 'string',
+            title: 'Source Item Key'
+        },
+        source_question_key: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Question Key'
+        },
+        answer_text: {
+            type: 'string',
+            title: 'Answer Text'
+        },
+        max_score: {
+            type: 'number',
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Scoring Points'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        match_reason: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Match Reason'
+        },
+        status: {
+            '$ref': '#/components/schemas/AnswerPreparationItemStatus'
+        },
+        revision_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Revision Id'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'run_id', 'source_item_key', 'answer_text', 'max_score', 'scoring_points', 'status', 'created_at', 'updated_at'],
+    title: 'AnswerPreparationItemPublic'
+} as const;
+
+export const AnswerPreparationItemStatusSchema = {
+    type: 'string',
+    enum: ['queued', 'running', 'matched', 'conflict', 'unmatched', 'failed', 'confirmed'],
+    title: 'AnswerPreparationItemStatus'
+} as const;
+
+export const AnswerPreparationItemUpdateSchema = {
+    properties: {
+        question_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Id'
+        },
+        answer_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 20000,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Answer Text'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number',
+                    exclusiveMinimum: 0
+                },
+                {
+                    type: 'string',
+                    pattern: '^(?!^[-+.]*$)[+-]?0*\\d*\\.?\\d{0,2}0*$'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 12000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            anyOf: [
+                {
+                    items: {
+                        additionalProperties: true,
+                        type: 'object'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Scoring Points'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        match_reason: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Match Reason'
+        },
+        status: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/AnswerPreparationItemStatus'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    title: 'AnswerPreparationItemUpdate'
+} as const;
+
+export const AnswerPreparationRunCreateSchema = {
+    properties: {
+        source_type: {
+            '$ref': '#/components/schemas/AnswerPreparationSource'
+        },
+        document_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Document Ids'
+        },
+        provider: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Provider',
+            default: 'pomoai'
+        },
+        model: {
+            type: 'string',
+            maxLength: 200,
+            title: 'Model',
+            default: 'gpt-5.6-sol'
+        }
+    },
+    type: 'object',
+    required: ['source_type'],
+    title: 'AnswerPreparationRunCreate'
+} as const;
+
+export const AnswerPreparationRunPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        created_by_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Created By Id'
+        },
+        source_type: {
+            '$ref': '#/components/schemas/AnswerPreparationSource'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            type: 'string',
+            title: 'Model'
+        },
+        document_ids: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Document Ids'
+        },
+        status: {
+            '$ref': '#/components/schemas/WorkflowRunStatus'
+        },
+        timing: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Timing'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        item_count: {
+            type: 'integer',
+            title: 'Item Count',
+            default: 0
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        completed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Completed At'
+        },
+        confirmed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confirmed At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'exam_id', 'created_by_id', 'source_type', 'provider', 'model', 'document_ids', 'status', 'timing', 'created_at'],
+    title: 'AnswerPreparationRunPublic'
+} as const;
+
+export const AnswerPreparationRunsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/AnswerPreparationRunPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'AnswerPreparationRunsPublic'
+} as const;
+
+export const AnswerPreparationSourceSchema = {
+    type: 'string',
+    enum: ['model', 'document'],
+    title: 'AnswerPreparationSource'
+} as const;
+
+export const Body_exams_append_student_submission_pagesSchema = {
+    properties: {
+        file: {
+            type: 'string',
+            contentMediaType: 'application/octet-stream',
+            title: 'File'
+        },
+        preprocess: {
+            type: 'string',
+            enum: ['auto', 'force', 'none'],
+            title: 'Preprocess',
+            default: 'auto'
+        }
+    },
+    type: 'object',
+    required: ['file'],
+    title: 'Body_exams-append_student_submission_pages'
+} as const;
+
 export const Body_exams_preprocess_student_submission_photoSchema = {
     properties: {
         file: {
@@ -34,6 +461,17 @@ export const Body_exams_preprocess_student_submission_photoSchema = {
                 }
             ],
             title: 'Student Identifier'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
         }
     },
     type: 'object',
@@ -51,11 +489,43 @@ export const Body_exams_upload_exam_fileSchema = {
         document_type: {
             '$ref': '#/components/schemas/ExamDocumentType',
             default: 'blank_exam'
+        },
+        preprocess: {
+            type: 'string',
+            enum: ['auto', 'force', 'none'],
+            title: 'Preprocess',
+            default: 'auto'
         }
     },
     type: 'object',
     required: ['file'],
     title: 'Body_exams-upload_exam_file'
+} as const;
+
+export const Body_exams_upload_exam_filesSchema = {
+    properties: {
+        files: {
+            items: {
+                type: 'string',
+                contentMediaType: 'application/octet-stream'
+            },
+            type: 'array',
+            title: 'Files'
+        },
+        document_type: {
+            '$ref': '#/components/schemas/ExamDocumentType',
+            default: 'blank_exam'
+        },
+        preprocess: {
+            type: 'string',
+            enum: ['auto', 'force', 'none'],
+            title: 'Preprocess',
+            default: 'auto'
+        }
+    },
+    type: 'object',
+    required: ['files'],
+    title: 'Body_exams-upload_exam_files'
 } as const;
 
 export const Body_exams_upload_student_submissionSchema = {
@@ -86,6 +556,23 @@ export const Body_exams_upload_student_submissionSchema = {
                 }
             ],
             title: 'Student Identifier'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        preprocess: {
+            type: 'string',
+            enum: ['auto', 'force', 'none'],
+            title: 'Preprocess',
+            default: 'auto'
         }
     },
     type: 'object',
@@ -163,6 +650,55 @@ export const Body_login_login_access_tokenSchema = {
     title: 'Body_login-login_access_token'
 } as const;
 
+export const DocumentPageQuadSchema = {
+    properties: {
+        label: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        points: {
+            items: {
+                '$ref': '#/components/schemas/DocumentQuadPoint'
+            },
+            type: 'array',
+            maxItems: 4,
+            minItems: 4,
+            title: 'Points'
+        }
+    },
+    type: 'object',
+    required: ['points'],
+    title: 'DocumentPageQuad'
+} as const;
+
+export const DocumentQuadPointSchema = {
+    properties: {
+        x: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'X'
+        },
+        y: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Y'
+        }
+    },
+    type: 'object',
+    required: ['x', 'y'],
+    title: 'DocumentQuadPoint'
+} as const;
+
 export const ExamCreateSchema = {
     properties: {
         title: {
@@ -201,11 +737,34 @@ export const ExamCreateSchema = {
     title: 'ExamCreate'
 } as const;
 
+export const ExamDocumentOrderUpdateSchema = {
+    properties: {
+        document_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Document Ids'
+        }
+    },
+    type: 'object',
+    required: ['document_ids'],
+    title: 'ExamDocumentOrderUpdate'
+} as const;
+
 export const ExamDocumentPublicSchema = {
     properties: {
         document_type: {
             '$ref': '#/components/schemas/ExamDocumentType',
             default: 'blank_exam'
+        },
+        sort_order: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Sort Order',
+            default: 1
         },
         id: {
             type: 'string',
@@ -230,6 +789,46 @@ export const ExamDocumentPublicSchema = {
             title: 'Page Count',
             default: 1
         },
+        original_stored_file_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Original Stored File Id'
+        },
+        preprocessing_status: {
+            type: 'string',
+            title: 'Preprocessing Status',
+            default: 'not_required'
+        },
+        preprocessing_quality: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Preprocessing Quality'
+        },
+        preprocessing_metadata: {
+            anyOf: [
+                {
+                    additionalProperties: true,
+                    type: 'object'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Preprocessing Metadata'
+        },
         created_at: {
             anyOf: [
                 {
@@ -246,6 +845,57 @@ export const ExamDocumentPublicSchema = {
     type: 'object',
     required: ['id', 'exam_id', 'stored_file_id', 'stored_file'],
     title: 'ExamDocumentPublic'
+} as const;
+
+export const ExamDocumentQuadPreprocessRequestSchema = {
+    properties: {
+        pages: {
+            items: {
+                '$ref': '#/components/schemas/DocumentPageQuad'
+            },
+            type: 'array',
+            maxItems: 2,
+            minItems: 1,
+            title: 'Pages'
+        },
+        detector: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Detector',
+            default: 'manual_corner_editor'
+        },
+        margin_mode: {
+            type: 'string',
+            title: 'Margin Mode',
+            default: 'conservative'
+        }
+    },
+    type: 'object',
+    required: ['pages'],
+    title: 'ExamDocumentQuadPreprocessRequest'
+} as const;
+
+export const ExamDocumentRecognitionRequestSchema = {
+    properties: {
+        document_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Document Ids'
+        },
+        verification_mode: {
+            type: 'string',
+            enum: ['fast', 'selective', 'evidence'],
+            title: 'Verification Mode',
+            default: 'fast'
+        }
+    },
+    type: 'object',
+    required: ['document_ids'],
+    title: 'ExamDocumentRecognitionRequest'
 } as const;
 
 export const ExamDocumentTypeSchema = {
@@ -337,6 +987,128 @@ export const ExamPublicSchema = {
     title: 'ExamPublic'
 } as const;
 
+export const ExamQuestionPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        question_key: {
+            type: 'string',
+            title: 'Question Key'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        recognition_confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Recognition Confidence'
+        },
+        status: {
+            '$ref': '#/components/schemas/ExamQuestionStatus'
+        },
+        region_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Region Ids'
+        },
+        confirmed_by_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confirmed By Id'
+        },
+        confirmed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confirmed At'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'exam_id', 'question_key', 'label', 'question_text', 'status', 'created_at', 'updated_at'],
+    title: 'ExamQuestionPublic'
+} as const;
+
+export const ExamQuestionStatusSchema = {
+    type: 'string',
+    enum: ['draft', 'confirmed'],
+    title: 'ExamQuestionStatus'
+} as const;
+
+export const ExamQuestionsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/ExamQuestionPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'ExamQuestionsPublic'
+} as const;
+
 export const ExamRegionCandidateSchema = {
     properties: {
         label: {
@@ -420,6 +1192,80 @@ export const ExamRegionCandidatesPublicSchema = {
         engine: {
             type: 'string',
             title: 'Engine'
+        },
+        elapsed_ms: {
+            type: 'integer',
+            title: 'Elapsed Ms',
+            default: 0
+        },
+        orientation_ms: {
+            type: 'integer',
+            title: 'Orientation Ms',
+            default: 0
+        },
+        layout_ms: {
+            type: 'integer',
+            title: 'Layout Ms',
+            default: 0
+        },
+        refinement_ms: {
+            type: 'integer',
+            title: 'Refinement Ms',
+            default: 0
+        },
+        rotation: {
+            type: 'integer',
+            title: 'Rotation',
+            default: 0
+        },
+        upright_image: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Upright Image'
+        },
+        provider: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Provider'
+        },
+        provider_label: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Provider Label'
+        },
+        requested_provider: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Requested Provider'
+        },
+        provider_failover_count: {
+            type: 'integer',
+            title: 'Provider Failover Count',
+            default: 0
         }
     },
     type: 'object',
@@ -468,6 +1314,18 @@ export const ExamRegionCreateSchema = {
             maximum: 1,
             exclusiveMinimum: 0,
             title: 'Height'
+        },
+        exam_document_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Document Id'
         }
     },
     type: 'object',
@@ -527,6 +1385,18 @@ export const ExamRegionPublicSchema = {
             format: 'uuid',
             title: 'Exam Id'
         },
+        exam_document_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Document Id'
+        },
         created_at: {
             anyOf: [
                 {
@@ -550,6 +1420,39 @@ export const ExamRegionPublicSchema = {
                 }
             ],
             title: 'Updated At'
+        },
+        question_key: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Key'
+        },
+        question_label: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Label'
+        },
+        region_role: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Region Role'
         }
     },
     type: 'object',
@@ -651,6 +1554,18 @@ export const ExamRegionUpdateSchema = {
                 }
             ],
             title: 'Height'
+        },
+        exam_document_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Document Id'
         }
     },
     type: 'object',
@@ -674,6 +1589,203 @@ export const ExamRegionsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'ExamRegionsPublic'
+} as const;
+
+export const ExamScoreSummaryPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/ExamScoreSummaryRow'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'ExamScoreSummaryPublic'
+} as const;
+
+export const ExamScoreSummaryQuestionSchema = {
+    properties: {
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        score_source: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score Source'
+        },
+        annotation_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Annotation Id'
+        }
+    },
+    type: 'object',
+    required: ['label'],
+    title: 'ExamScoreSummaryQuestion'
+} as const;
+
+export const ExamScoreSummaryRowSchema = {
+    properties: {
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        student_identifier: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Identifier'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        total_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Score'
+        },
+        total_max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Max Score'
+        },
+        questions: {
+            items: {
+                '$ref': '#/components/schemas/ExamScoreSummaryQuestion'
+            },
+            type: 'array',
+            title: 'Questions'
+        },
+        status: {
+            '$ref': '#/components/schemas/StudentSubmissionStatus',
+            default: 'registration_pending'
+        },
+        registration_status: {
+            '$ref': '#/components/schemas/SubmissionRegistrationStatus',
+            default: 'pending'
+        },
+        registration_quality: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Quality'
+        },
+        registration_notes: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Registration Notes'
+        },
+        page_count: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Page Count'
+        },
+        pending_review_count: {
+            type: 'integer',
+            title: 'Pending Review Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['submission_id'],
+    title: 'ExamScoreSummaryRow'
 } as const;
 
 export const ExamStatusSchema = {
@@ -755,6 +1867,511 @@ export const ExamsPublicSchema = {
     title: 'ExamsPublic'
 } as const;
 
+export const GradingAuditEventPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        grading_run_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grading Run Id'
+        },
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        annotation_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Annotation Id'
+        },
+        operator_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Operator Id'
+        },
+        source: {
+            type: 'string',
+            title: 'Source'
+        },
+        old_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Old Score'
+        },
+        new_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'New Score'
+        },
+        old_comment: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Old Comment'
+        },
+        new_comment: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'New Comment'
+        },
+        reason: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Reason'
+        },
+        metadata_json: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Metadata Json'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'submission_id', 'annotation_id', 'source', 'metadata_json', 'created_at'],
+    title: 'GradingAuditEventPublic'
+} as const;
+
+export const GradingItemStatusSchema = {
+    type: 'string',
+    enum: ['queued', 'extracting', 'grading', 'completed', 'needs_review', 'failed'],
+    title: 'GradingItemStatus'
+} as const;
+
+export const GradingReviewItemSchema = {
+    properties: {
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        student_identifier: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Identifier'
+        },
+        annotation_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Annotation Id'
+        },
+        label: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        risk: {
+            type: 'string',
+            title: 'Risk'
+        },
+        priority: {
+            type: 'integer',
+            title: 'Priority'
+        }
+    },
+    type: 'object',
+    required: ['submission_id', 'risk', 'priority'],
+    title: 'GradingReviewItem'
+} as const;
+
+export const GradingRunCreateSchema = {
+    properties: {
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        vision_provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Vision Provider'
+        },
+        vision_model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Vision Model'
+        },
+        provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Provider'
+        },
+        model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model'
+        },
+        fallback_models: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Fallback Models'
+        },
+        submission_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Submission Ids'
+        },
+        review_threshold: {
+            type: 'number',
+            maximum: 1,
+            minimum: 0,
+            title: 'Review Threshold',
+            default: 0.8
+        },
+        max_concurrency: {
+            type: 'integer',
+            maximum: 8,
+            minimum: 1,
+            title: 'Max Concurrency',
+            default: 8
+        },
+        recognition_run_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Recognition Run Id'
+        }
+    },
+    type: 'object',
+    required: ['exam_id'],
+    title: 'GradingRunCreate'
+} as const;
+
+export const GradingRunPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        created_by_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Created By Id'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            type: 'string',
+            title: 'Model'
+        },
+        fallback_models: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Fallback Models'
+        },
+        answer_version: {
+            type: 'integer',
+            title: 'Answer Version'
+        },
+        status: {
+            '$ref': '#/components/schemas/GradingRunStatus'
+        },
+        total_submissions: {
+            type: 'integer',
+            title: 'Total Submissions'
+        },
+        completed_count: {
+            type: 'integer',
+            title: 'Completed Count'
+        },
+        review_count: {
+            type: 'integer',
+            title: 'Review Count'
+        },
+        failed_count: {
+            type: 'integer',
+            title: 'Failed Count'
+        },
+        average_confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Average Confidence'
+        },
+        total_items: {
+            type: 'integer',
+            title: 'Total Items',
+            default: 0
+        },
+        completed_items: {
+            type: 'integer',
+            title: 'Completed Items',
+            default: 0
+        },
+        extracted_items: {
+            type: 'integer',
+            title: 'Extracted Items',
+            default: 0
+        },
+        objective_items: {
+            type: 'integer',
+            title: 'Objective Items',
+            default: 0
+        },
+        subjective_items: {
+            type: 'integer',
+            title: 'Subjective Items',
+            default: 0
+        },
+        current_concurrency: {
+            type: 'integer',
+            title: 'Current Concurrency',
+            default: 0
+        },
+        throttle_count: {
+            type: 'integer',
+            title: 'Throttle Count',
+            default: 0
+        },
+        config_snapshot: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Config Snapshot'
+        },
+        timing: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Timing'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        completed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Completed At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'exam_id', 'created_by_id', 'provider', 'model', 'fallback_models', 'answer_version', 'status', 'total_submissions', 'completed_count', 'review_count', 'failed_count', 'config_snapshot', 'created_at'],
+    title: 'GradingRunPublic'
+} as const;
+
+export const GradingRunStatusSchema = {
+    type: 'string',
+    enum: ['queued', 'running', 'completed', 'completed_with_errors', 'failed'],
+    title: 'GradingRunStatus'
+} as const;
+
+export const GradingRunsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/GradingRunPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'GradingRunsPublic'
+} as const;
+
 export const HTTPValidationErrorSchema = {
     properties: {
         detail: {
@@ -767,6 +2384,62 @@ export const HTTPValidationErrorSchema = {
     },
     type: 'object',
     title: 'HTTPValidationError'
+} as const;
+
+export const MarkingRecognitionImportSchema = {
+    properties: {
+        document_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Document Ids'
+        },
+        covered_page_ids: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Covered Page Ids'
+        },
+        results: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Results'
+        },
+        blocks: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Blocks'
+        },
+        layouts: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Layouts'
+        },
+        timing: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Timing'
+        }
+    },
+    type: 'object',
+    required: ['document_ids', 'covered_page_ids', 'results', 'blocks'],
+    title: 'MarkingRecognitionImport'
 } as const;
 
 export const MessageSchema = {
@@ -939,6 +2612,666 @@ export const ProcessingTaskStatusSchema = {
     title: 'ProcessingTaskStatus'
 } as const;
 
+export const QuestionRecognitionItemPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        run_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Run Id'
+        },
+        source_item_key: {
+            type: 'string',
+            title: 'Source Item Key'
+        },
+        question_key: {
+            type: 'string',
+            title: 'Question Key'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        student_answer_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Answer Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        notes: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Notes'
+        },
+        region_ids: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Region Ids'
+        },
+        region_snapshots: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Region Snapshots'
+        },
+        status: {
+            '$ref': '#/components/schemas/QuestionRecognitionItemStatus'
+        },
+        confirmed_question_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confirmed Question Id'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        updated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Updated At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'run_id', 'source_item_key', 'question_key', 'label', 'question_text', 'region_ids', 'region_snapshots', 'status', 'created_at', 'updated_at'],
+    title: 'QuestionRecognitionItemPublic'
+} as const;
+
+export const QuestionRecognitionItemStatusSchema = {
+    type: 'string',
+    enum: ['draft', 'confirmed', 'excluded'],
+    title: 'QuestionRecognitionItemStatus'
+} as const;
+
+export const QuestionRecognitionItemUpdateSchema = {
+    properties: {
+        question_key: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Key'
+        },
+        label: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Label'
+        },
+        question_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 20000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Text'
+        },
+        student_answer_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 12000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Answer Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        notes: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 4000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Notes'
+        },
+        region_ids: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string',
+                        format: 'uuid'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Region Ids'
+        },
+        status: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/QuestionRecognitionItemStatus'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    title: 'QuestionRecognitionItemUpdate'
+} as const;
+
+export const QuestionRecognitionRunCreateSchema = {
+    properties: {
+        document_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Document Ids'
+        }
+    },
+    type: 'object',
+    required: ['document_ids'],
+    title: 'QuestionRecognitionRunCreate'
+} as const;
+
+export const QuestionRecognitionRunPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        created_by_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Created By Id'
+        },
+        provider: {
+            type: 'string',
+            title: 'Provider'
+        },
+        model: {
+            type: 'string',
+            title: 'Model'
+        },
+        engine: {
+            type: 'string',
+            title: 'Engine'
+        },
+        status: {
+            '$ref': '#/components/schemas/WorkflowRunStatus'
+        },
+        document_ids: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Document Ids'
+        },
+        timing: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Timing'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        },
+        item_count: {
+            type: 'integer',
+            title: 'Item Count',
+            default: 0
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        started_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Started At'
+        },
+        completed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Completed At'
+        },
+        confirmed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confirmed At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'exam_id', 'created_by_id', 'provider', 'model', 'engine', 'status', 'document_ids', 'timing', 'created_at'],
+    title: 'QuestionRecognitionRunPublic'
+} as const;
+
+export const QuestionRecognitionRunsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/QuestionRecognitionRunPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'QuestionRecognitionRunsPublic'
+} as const;
+
+export const RecognitionItemPublicSchema = {
+    properties: {
+        item_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Item Id'
+        },
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        exam_region_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Region Id'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        status: {
+            '$ref': '#/components/schemas/GradingItemStatus'
+        },
+        question_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Text'
+        },
+        student_answer: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Answer'
+        },
+        final_answer: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Final Answer'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        notes: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Notes'
+        },
+        printed_question_marks: {
+            items: {
+                additionalProperties: {
+                    type: 'string'
+                },
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Printed Question Marks'
+        },
+        answer_entries: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Answer Entries'
+        },
+        unassigned_evidence: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Unassigned Evidence'
+        },
+        grading_answer: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grading Answer'
+        },
+        grading_eligible: {
+            type: 'boolean',
+            title: 'Grading Eligible',
+            default: false
+        },
+        answer_verification: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Answer Verification'
+        },
+        error_message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Error Message'
+        }
+    },
+    type: 'object',
+    required: ['item_id', 'submission_id', 'exam_region_id', 'label', 'status'],
+    title: 'RecognitionItemPublic'
+} as const;
+
+export const RecognitionItemUpdateSchema = {
+    properties: {
+        question_text: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 12000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Text'
+        },
+        student_answer: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 8000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Answer'
+        },
+        final_answer: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 2000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Final Answer'
+        },
+        confidence: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Confidence'
+        },
+        notes: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Notes'
+        },
+        approve_for_grading: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Approve For Grading'
+        },
+        approval_source: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Approval Source'
+        }
+    },
+    type: 'object',
+    title: 'RecognitionItemUpdate'
+} as const;
+
+export const RecognitionRunCreateSchema = {
+    properties: {
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        submission_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Submission Id'
+        },
+        provider: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Provider',
+            default: 'fluxnode_gemini'
+        },
+        model: {
+            type: 'string',
+            maxLength: 200,
+            title: 'Model',
+            default: 'gemini-3.5-flash'
+        },
+        max_concurrency: {
+            type: 'integer',
+            maximum: 8,
+            minimum: 1,
+            title: 'Max Concurrency',
+            default: 8
+        },
+        verification_mode: {
+            type: 'string',
+            enum: ['fast', 'selective', 'evidence'],
+            title: 'Verification Mode',
+            default: 'selective'
+        }
+    },
+    type: 'object',
+    required: ['exam_id', 'submission_id'],
+    title: 'RecognitionRunCreate'
+} as const;
+
 export const StandardAnswerCreateSchema = {
     properties: {
         answer_text: {
@@ -1039,6 +3372,135 @@ export const StandardAnswerPublicSchema = {
             format: 'uuid',
             title: 'Exam Region Id'
         },
+        question_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Id'
+        },
+        current_revision_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Current Revision Id'
+        },
+        version: {
+            type: 'integer',
+            title: 'Version',
+            default: 1
+        },
+        source_provider: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Provider'
+        },
+        source_model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Model'
+        },
+        generation_confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Generation Confidence'
+        },
+        answer_hash: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Answer Hash'
+        },
+        published_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Published At'
+        },
+        published_by_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Published By Id'
+        },
+        question_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        rubric_config: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Rubric Config'
+        },
+        validation_report: {
+            additionalProperties: true,
+            type: 'object',
+            title: 'Validation Report'
+        },
         created_at: {
             anyOf: [
                 {
@@ -1067,6 +3529,205 @@ export const StandardAnswerPublicSchema = {
     type: 'object',
     required: ['answer_text', 'max_score', 'id', 'exam_id', 'exam_region_id'],
     title: 'StandardAnswerPublic'
+} as const;
+
+export const StandardAnswerPublishRequestSchema = {
+    properties: {
+        revision_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Revision Ids'
+        }
+    },
+    type: 'object',
+    title: 'StandardAnswerPublishRequest'
+} as const;
+
+export const StandardAnswerRevisionPublicSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        standard_answer_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Standard Answer Id'
+        },
+        question_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Question Id'
+        },
+        revision_number: {
+            type: 'integer',
+            title: 'Revision Number'
+        },
+        question_key: {
+            type: 'string',
+            title: 'Question Key'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        answer_text: {
+            type: 'string',
+            title: 'Answer Text'
+        },
+        max_score: {
+            type: 'number',
+            title: 'Max Score'
+        },
+        rubric_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Rubric Text'
+        },
+        scoring_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Scoring Points'
+        },
+        source_provider: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Provider'
+        },
+        source_model: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Model'
+        },
+        generation_confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Generation Confidence'
+        },
+        content_hash: {
+            type: 'string',
+            title: 'Content Hash'
+        },
+        status: {
+            '$ref': '#/components/schemas/StandardAnswerRevisionStatus'
+        },
+        created_by_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Created By Id'
+        },
+        published_by_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Published By Id'
+        },
+        preparation_item_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Preparation Item Id'
+        },
+        created_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Created At'
+        },
+        published_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Published At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'standard_answer_id', 'question_id', 'revision_number', 'question_key', 'question_text', 'answer_text', 'max_score', 'scoring_points', 'content_hash', 'status', 'created_by_id', 'created_at'],
+    title: 'StandardAnswerRevisionPublic'
+} as const;
+
+export const StandardAnswerRevisionStatusSchema = {
+    type: 'string',
+    enum: ['draft', 'published'],
+    title: 'StandardAnswerRevisionStatus'
+} as const;
+
+export const StandardAnswerRevisionsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/StandardAnswerRevisionPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'StandardAnswerRevisionsPublic'
 } as const;
 
 export const StandardAnswerStatusSchema = {
@@ -1254,6 +3915,18 @@ export const StudentSubmissionPublicSchema = {
             ],
             title: 'Student Identifier'
         },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
         status: {
             '$ref': '#/components/schemas/StudentSubmissionStatus',
             default: 'registration_pending'
@@ -1309,6 +3982,18 @@ export const StudentSubmissionPublicSchema = {
             type: 'integer',
             title: 'Page Count',
             default: 1
+        },
+        original_stored_file_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Original Stored File Id'
         },
         registration_homography: {
             anyOf: [
@@ -1776,6 +4461,70 @@ export const SubmissionAnnotationPublicSchema = {
             ],
             title: 'Answer Key Updated At'
         },
+        score_source: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score Source'
+        },
+        model_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model Score'
+        },
+        model_confidence: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Model Confidence'
+        },
+        grading_version: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grading Version'
+        },
+        grading_evidence: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Grading Evidence'
+        },
+        auto_published_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Auto Published At'
+        },
         created_at: {
             anyOf: [
                 {
@@ -1936,6 +4685,18 @@ export const SubmissionAnnotationUpdateSchema = {
                 }
             ],
             title: 'Comment'
+        },
+        audit_reason: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 1000
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Audit Reason'
         }
     },
     type: 'object',
@@ -1963,7 +4724,7 @@ export const SubmissionAnnotationsPublicSchema = {
 
 export const SubmissionRegistrationStatusSchema = {
     type: 'string',
-    enum: ['pending', 'manual_confirmed', 'failed'],
+    enum: ['pending', 'manual_confirmed', 'auto_confirmed', 'failed'],
     title: 'SubmissionRegistrationStatus'
 } as const;
 
@@ -2284,4 +5045,10 @@ export const ValidationErrorSchema = {
     type: 'object',
     required: ['loc', 'msg', 'type'],
     title: 'ValidationError'
+} as const;
+
+export const WorkflowRunStatusSchema = {
+    type: 'string',
+    enum: ['queued', 'running', 'completed', 'completed_with_errors', 'failed'],
+    title: 'WorkflowRunStatus'
 } as const;

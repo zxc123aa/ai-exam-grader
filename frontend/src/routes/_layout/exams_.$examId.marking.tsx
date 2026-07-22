@@ -1,17 +1,17 @@
 import { useQuery } from "@tanstack/react-query"
-import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowLeft, FileText } from "lucide-react"
+import { createFileRoute } from "@tanstack/react-router"
+import { FileText } from "lucide-react"
 
 import { ExamsService } from "@/client"
+import ExamFilesDialog from "@/components/Exams/ExamFilesDialog"
 import RegionMarkingCanvas from "@/components/Exams/RegionMarkingCanvas"
-import { Button } from "@/components/ui/button"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/marking")({
   component: ExamMarking,
   head: () => ({
     meta: [
       {
-        title: "Mark Exam - AI Exam Grader",
+        title: "区域校正 - 智阅卷",
       },
     ],
   }),
@@ -32,41 +32,45 @@ function ExamMarking() {
     queryFn: () => ExamsService.readExamRegions({ examId }),
   })
 
-  const document = filesQuery.data?.data.find(
+  const documents = (filesQuery.data?.data ?? []).filter(
     (item) => item.document_type === "blank_exam",
   )
-  const regions = regionsQuery.data?.data ?? []
+  const documentIds = new Set(documents.map((document) => document.id))
+  const regions = (regionsQuery.data?.data ?? []).filter(
+    (region) =>
+      (region.exam_document_id && documentIds.has(region.exam_document_id)) ||
+      (!region.exam_document_id && documents.length === 1),
+  )
 
   return (
     <div className="grid gap-6">
-      <div>
-        <Button variant="ghost" size="sm" asChild className="-ml-3 mb-2">
-          <Link to="/exams">
-            <ArrowLeft />
-            Exams
-          </Link>
-        </Button>
-        <h1 className="text-2xl font-bold tracking-tight">
-          {examQuery.data?.title ?? "Exam Marking"}
-        </h1>
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-muted-foreground">
-          Draw normalized question regions on the blank paper.
+          多张图片或 PDF 按顺序组成一份完整试卷。
         </p>
+        {examQuery.data && <ExamFilesDialog exam={examQuery.data} />}
       </div>
 
       {filesQuery.isLoading || regionsQuery.isLoading ? (
         <div className="rounded-md border p-8 text-sm text-muted-foreground">
-          Loading marking workspace
+          正在加载区域标注工作区
         </div>
-      ) : !document ? (
-        <div className="rounded-md border p-8 text-sm text-muted-foreground">
-          <FileText className="mb-3 size-6" />
-          Upload a blank exam file before marking regions.
+      ) : documents.length === 0 ? (
+        <div className="flex flex-col gap-4 rounded-md border p-8">
+          <FileText className="size-6 text-muted-foreground" />
+          <div>
+            <h2 className="font-medium">还没有导入试卷</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              请先导入这套卷子的图片或
+              PDF，上传后可以在本页复核区域和页面校正结果。
+            </p>
+          </div>
+          {examQuery.data && <ExamFilesDialog exam={examQuery.data} />}
         </div>
       ) : (
         <RegionMarkingCanvas
           examId={examId}
-          document={document}
+          documents={documents}
           regions={regions}
         />
       )}

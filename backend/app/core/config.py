@@ -27,7 +27,10 @@ def parse_cors(v: Any) -> list[str] | str:
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=ROOT_DIR / ".env",
+        env_file=(
+            ROOT_DIR / "参考算法" / "2_试卷分析文件" / ".env",
+            ROOT_DIR / ".env",
+        ),
         env_ignore_empty=True,
         extra="ignore",
     )
@@ -62,9 +65,33 @@ class Settings(BaseSettings):
     OCR_TESSERACT_COMMAND: str = "tesseract"
     OCR_HTTP_URL: str = "http://ocr-service:8010/ocr"
     OCR_HTTP_TIMEOUT_SECONDS: int = 60
-    SCAN_ENGINE: Literal["opencv_v1", "scan_http"] = "opencv_v1"
-    SCAN_HTTP_URL: str = "http://ocr-service:8010/preprocess"
+    SCAN_ENGINE: Literal[
+        "opencv_v1",
+        "scan_http",
+        "hybrid_v2",
+        "exam_scan_rectifier_v1",
+        "scan_stable_v1",
+    ] = "hybrid_v2"
+    # Local development runs the GPU vision service on the host. Docker Compose
+    # overrides this with http://ocr-service:8010/preprocess.
+    SCAN_HTTP_URL: str = "http://localhost:8010/preprocess"
     SCAN_HTTP_TIMEOUT_SECONDS: int = 120
+    VISION_DEFAULT_PROVIDER: str = "fluxnode_gemini"
+    VISION_DEFAULT_MODEL: str = "gemini-3.5-flash"
+    GRADING_DEFAULT_PROVIDER: str = "pomoai"
+    GRADING_DEFAULT_MODEL: str = "gpt-5.6-sol"
+    VISION_FALLBACK_MODELS: str = "gpt-5.5"
+    VISION_TIMEOUT_SECONDS: int = 180
+    REFERENCE_ALGORITHM_URL: str = "http://localhost:3417"
+    VISION_MAX_CONCURRENCY: int = 4
+    PROVIDER_POMOAI_BASE_URL: str = "https://www.pomoai.ai"
+    PROVIDER_POMOAI_API_KEY: str = ""
+    PROVIDER_FLUXNODE_GEMINI_BASE_URL: str = "https://fluxnode.org"
+    PROVIDER_FLUXNODE_GEMINI_API_KEY: str = ""
+    PROVIDER_FLUXNODE_GROK_BASE_URL: str = "https://fluxnode.org"
+    PROVIDER_FLUXNODE_GROK_API_KEY: str = ""
+    PROVIDER_KIMI_BASE_URL: str = "https://api.kimi.com/coding/v1"
+    PROVIDER_KIMI_API_KEY: str = ""
 
     @computed_field  # type: ignore[prop-decorator]
     @property

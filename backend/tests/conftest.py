@@ -8,11 +8,21 @@ from app.core.config import settings
 from app.core.db import engine, init_db
 from app.main import app
 from app.models import (
+    AnswerPreparationItem,
+    AnswerPreparationRun,
     Exam,
     ExamDocument,
+    ExamQuestion,
+    ExamQuestionRegion,
     ExamRegion,
+    GradingAuditEvent,
+    GradingItem,
+    GradingRun,
     ProcessingTask,
+    QuestionRecognitionItem,
+    QuestionRecognitionRun,
     StandardAnswer,
+    StandardAnswerRevision,
     StoredFile,
     StudentSubmission,
     SubmissionAnnotation,
@@ -24,14 +34,29 @@ from tests.utils.utils import get_superuser_token_headers
 
 @pytest.fixture(scope="session", autouse=True)
 def db() -> Generator[Session]:
+    if "test" not in settings.POSTGRES_DB.casefold():
+        raise RuntimeError(
+            "Refusing to run destructive test cleanup against a non-test database. "
+            "Set POSTGRES_DB to a dedicated database name containing 'test'."
+        )
     with Session(engine) as session:
         init_db(session)
         yield session
         for model in (
             ProcessingTask,
+            GradingAuditEvent,
+            GradingItem,
             SubmissionAnnotation,
+            GradingRun,
             StudentSubmission,
+            StandardAnswerRevision,
+            AnswerPreparationItem,
+            AnswerPreparationRun,
             StandardAnswer,
+            QuestionRecognitionItem,
+            QuestionRecognitionRun,
+            ExamQuestionRegion,
+            ExamQuestion,
             ExamRegion,
             ExamDocument,
             StoredFile,

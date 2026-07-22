@@ -26,7 +26,7 @@ test("Inputs are visible, empty and editable", async ({ page }) => {
 test("Log In button is visible", async ({ page }) => {
   await page.goto("/login")
 
-  await expect(page.getByRole("button", { name: "Log In" })).toBeVisible()
+  await expect(page.getByRole("button", { name: /登录|Log In/ })).toBeVisible()
 })
 
 test("Forgot Password link is visible", async ({ page }) => {
@@ -41,7 +41,7 @@ test("Log in with valid email and password ", async ({ page }) => {
   await page.goto("/login")
 
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
 
   await page.waitForURL("/")
 
@@ -55,7 +55,7 @@ test("Log in with invalid email", async ({ page }) => {
   await page.goto("/login")
 
   await fillForm(page, "invalidemail", firstSuperuserPassword)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
 
   await expect(page.getByText("Invalid email address")).toBeVisible()
 })
@@ -65,7 +65,7 @@ test("Log in with invalid password", async ({ page }) => {
 
   await page.goto("/login")
   await fillForm(page, firstSuperuser, password)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
 
   await expect(page.getByText("Incorrect email or password")).toBeVisible()
 })
@@ -74,7 +74,7 @@ test("Successful log out", async ({ page }) => {
   await page.goto("/login")
 
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
 
   await page.waitForURL("/")
 
@@ -92,7 +92,7 @@ test("Logged-out user cannot access protected routes", async ({ page }) => {
   await page.goto("/login")
 
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
-  await page.getByRole("button", { name: "Log In" }).click()
+  await page.getByRole("button", { name: /登录|Log In/ }).click()
 
   await page.waitForURL("/")
 

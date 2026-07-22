@@ -13,10 +13,10 @@ const PendingExams = () => (
     <TableHeader>
       <TableRow>
         <TableHead>ID</TableHead>
-        <TableHead>Title</TableHead>
-        <TableHead>Description</TableHead>
+        <TableHead>考试名称</TableHead>
+        <TableHead>说明</TableHead>
         <TableHead>
-          <span className="sr-only">Actions</span>
+          <span className="sr-only">操作</span>
         </TableHead>
       </TableRow>
     </TableHeader>

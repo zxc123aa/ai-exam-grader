@@ -2,21 +2,108 @@
 
 export type AnnotationGradingStatus = 'not_started' | 'succeeded' | 'skipped_missing_answer' | 'needs_review' | 'stale';
 
+export type AnswerPreparationItemPublic = {
+    id: string;
+    run_id: string;
+    question_id?: (string | null);
+    source_item_key: string;
+    source_question_key?: (string | null);
+    answer_text: string;
+    max_score: number;
+    rubric_text?: (string | null);
+    scoring_points: Array<{
+        [key: string]: unknown;
+    }>;
+    confidence?: (number | null);
+    match_reason?: (string | null);
+    status: AnswerPreparationItemStatus;
+    revision_id?: (string | null);
+    error_message?: (string | null);
+    created_at: string;
+    updated_at: string;
+};
+
+export type AnswerPreparationItemStatus = 'queued' | 'running' | 'matched' | 'conflict' | 'unmatched' | 'failed' | 'confirmed';
+
+export type AnswerPreparationItemUpdate = {
+    question_id?: (string | null);
+    answer_text?: (string | null);
+    max_score?: (number | string | null);
+    rubric_text?: (string | null);
+    scoring_points?: (Array<{
+    [key: string]: unknown;
+}> | null);
+    confidence?: (number | null);
+    match_reason?: (string | null);
+    status?: (AnswerPreparationItemStatus | null);
+};
+
+export type AnswerPreparationRunCreate = {
+    source_type: AnswerPreparationSource;
+    document_ids?: Array<(string)>;
+    provider?: string;
+    model?: string;
+};
+
+export type AnswerPreparationRunPublic = {
+    id: string;
+    exam_id: string;
+    created_by_id: string;
+    source_type: AnswerPreparationSource;
+    provider: string;
+    model: string;
+    document_ids: Array<(string)>;
+    status: WorkflowRunStatus;
+    timing: {
+        [key: string]: unknown;
+    };
+    error_message?: (string | null);
+    item_count?: number;
+    created_at: string;
+    started_at?: (string | null);
+    completed_at?: (string | null);
+    confirmed_at?: (string | null);
+};
+
+export type AnswerPreparationRunsPublic = {
+    data: Array<AnswerPreparationRunPublic>;
+    count: number;
+};
+
+export type AnswerPreparationSource = 'model' | 'document';
+
+export type Body_exams_append_student_submission_pages = {
+    file: string;
+    preprocess?: 'auto' | 'force' | 'none';
+};
+
+export type preprocess = 'auto' | 'force' | 'none';
+
 export type Body_exams_preprocess_student_submission_photo = {
     file: string;
     student_name?: (string | null);
     student_identifier?: (string | null);
+    class_name?: (string | null);
 };
 
 export type Body_exams_upload_exam_file = {
     file: string;
     document_type?: ExamDocumentType;
+    preprocess?: 'auto' | 'force' | 'none';
+};
+
+export type Body_exams_upload_exam_files = {
+    files: Array<(string)>;
+    document_type?: ExamDocumentType;
+    preprocess?: 'auto' | 'force' | 'none';
 };
 
 export type Body_exams_upload_student_submission = {
     file: string;
     student_name?: (string | null);
     student_identifier?: (string | null);
+    class_name?: (string | null);
+    preprocess?: 'auto' | 'force' | 'none';
 };
 
 export type Body_files_upload_file = {
@@ -32,21 +119,55 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type DocumentPageQuad = {
+    label?: (string | null);
+    points: Array<DocumentQuadPoint>;
+};
+
+export type DocumentQuadPoint = {
+    x: number;
+    y: number;
+};
+
 export type ExamCreate = {
     title: string;
     subject?: (string | null);
     grade_level?: (string | null);
 };
 
+export type ExamDocumentOrderUpdate = {
+    document_ids: Array<(string)>;
+};
+
 export type ExamDocumentPublic = {
     document_type?: ExamDocumentType;
+    sort_order?: number;
     id: string;
     exam_id: string;
     stored_file_id: string;
     stored_file: StoredFilePublic;
     page_count?: number;
+    original_stored_file_id?: (string | null);
+    preprocessing_status?: string;
+    preprocessing_quality?: (number | null);
+    preprocessing_metadata?: ({
+    [key: string]: unknown;
+} | null);
     created_at?: (string | null);
 };
+
+export type ExamDocumentQuadPreprocessRequest = {
+    pages: Array<DocumentPageQuad>;
+    detector?: string;
+    margin_mode?: string;
+};
+
+export type ExamDocumentRecognitionRequest = {
+    document_ids: Array<(string)>;
+    verification_mode?: 'fast' | 'selective' | 'evidence';
+};
+
+export type verification_mode = 'fast' | 'selective' | 'evidence';
 
 export type ExamDocumentsPublic = {
     data: Array<ExamDocumentPublic>;
@@ -64,6 +185,29 @@ export type ExamPublic = {
     owner_id: string;
     created_at?: (string | null);
 };
+
+export type ExamQuestionPublic = {
+    id: string;
+    exam_id: string;
+    question_key: string;
+    label: string;
+    question_text: string;
+    question_type?: (string | null);
+    recognition_confidence?: (number | null);
+    status: ExamQuestionStatus;
+    region_ids?: Array<(string)>;
+    confirmed_by_id?: (string | null);
+    confirmed_at?: (string | null);
+    created_at: string;
+    updated_at: string;
+};
+
+export type ExamQuestionsPublic = {
+    data: Array<ExamQuestionPublic>;
+    count: number;
+};
+
+export type ExamQuestionStatus = 'draft' | 'confirmed';
 
 export type ExamRegionCandidate = {
     label: string;
@@ -83,6 +227,16 @@ export type ExamRegionCandidatesPublic = {
     count: number;
     page_number: number;
     engine: string;
+    elapsed_ms?: number;
+    orientation_ms?: number;
+    layout_ms?: number;
+    refinement_ms?: number;
+    rotation?: number;
+    upright_image?: (string | null);
+    provider?: (string | null);
+    provider_label?: (string | null);
+    requested_provider?: (string | null);
+    provider_failover_count?: number;
 };
 
 export type ExamRegionCreate = {
@@ -93,6 +247,7 @@ export type ExamRegionCreate = {
     y: number;
     width: number;
     height: number;
+    exam_document_id?: (string | null);
 };
 
 export type ExamRegionPublic = {
@@ -105,8 +260,12 @@ export type ExamRegionPublic = {
     height: number;
     id: string;
     exam_id: string;
+    exam_document_id?: (string | null);
     created_at?: (string | null);
     updated_at?: (string | null);
+    question_key?: (string | null);
+    question_label?: (string | null);
+    region_role?: (string | null);
 };
 
 export type ExamRegionsPublic = {
@@ -124,6 +283,36 @@ export type ExamRegionUpdate = {
     y?: (number | null);
     width?: (number | null);
     height?: (number | null);
+    exam_document_id?: (string | null);
+};
+
+export type ExamScoreSummaryPublic = {
+    data: Array<ExamScoreSummaryRow>;
+    count: number;
+};
+
+export type ExamScoreSummaryQuestion = {
+    label: string;
+    score?: (number | null);
+    max_score?: (number | null);
+    score_source?: (string | null);
+    annotation_id?: (string | null);
+};
+
+export type ExamScoreSummaryRow = {
+    submission_id: string;
+    student_name?: (string | null);
+    student_identifier?: (string | null);
+    class_name?: (string | null);
+    total_score?: (number | null);
+    total_max_score?: (number | null);
+    questions?: Array<ExamScoreSummaryQuestion>;
+    status?: StudentSubmissionStatus;
+    registration_status?: SubmissionRegistrationStatus;
+    registration_quality?: (number | null);
+    registration_notes?: (string | null);
+    page_count?: (number | null);
+    pending_review_count?: number;
 };
 
 export type ExamsPublic = {
@@ -140,8 +329,111 @@ export type ExamUpdate = {
     status?: (ExamStatus | null);
 };
 
+export type GradingAuditEventPublic = {
+    id: string;
+    grading_run_id?: (string | null);
+    submission_id: string;
+    annotation_id: string;
+    operator_id?: (string | null);
+    source: string;
+    old_score?: (number | null);
+    new_score?: (number | null);
+    old_comment?: (string | null);
+    new_comment?: (string | null);
+    reason?: (string | null);
+    metadata_json: {
+        [key: string]: unknown;
+    };
+    created_at: string;
+};
+
+export type GradingItemStatus = 'queued' | 'extracting' | 'grading' | 'completed' | 'needs_review' | 'failed';
+
+export type GradingReviewItem = {
+    submission_id: string;
+    student_name?: (string | null);
+    student_identifier?: (string | null);
+    annotation_id?: (string | null);
+    label?: (string | null);
+    score?: (number | null);
+    max_score?: (number | null);
+    confidence?: (number | null);
+    risk: string;
+    priority: number;
+};
+
+export type GradingRunCreate = {
+    exam_id: string;
+    vision_provider?: (string | null);
+    vision_model?: (string | null);
+    provider?: (string | null);
+    model?: (string | null);
+    fallback_models?: Array<(string)>;
+    submission_ids?: Array<(string)>;
+    review_threshold?: number;
+    max_concurrency?: number;
+    recognition_run_id?: (string | null);
+};
+
+export type GradingRunPublic = {
+    id: string;
+    exam_id: string;
+    created_by_id: string;
+    provider: string;
+    model: string;
+    fallback_models: Array<(string)>;
+    answer_version: number;
+    status: GradingRunStatus;
+    total_submissions: number;
+    completed_count: number;
+    review_count: number;
+    failed_count: number;
+    average_confidence?: (number | null);
+    total_items?: number;
+    completed_items?: number;
+    extracted_items?: number;
+    objective_items?: number;
+    subjective_items?: number;
+    current_concurrency?: number;
+    throttle_count?: number;
+    config_snapshot: {
+        [key: string]: unknown;
+    };
+    timing?: {
+        [key: string]: unknown;
+    };
+    error_message?: (string | null);
+    created_at: string;
+    started_at?: (string | null);
+    completed_at?: (string | null);
+};
+
+export type GradingRunsPublic = {
+    data: Array<GradingRunPublic>;
+    count: number;
+};
+
+export type GradingRunStatus = 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+
 export type HTTPValidationError = {
     detail?: Array<ValidationError>;
+};
+
+export type MarkingRecognitionImport = {
+    document_ids: Array<(string)>;
+    covered_page_ids: Array<(string)>;
+    results: Array<{
+        [key: string]: unknown;
+    }>;
+    blocks: Array<{
+        [key: string]: unknown;
+    }>;
+    layouts?: Array<{
+        [key: string]: unknown;
+    }>;
+    timing?: {
+        [key: string]: unknown;
+    };
 };
 
 export type Message = {
@@ -183,6 +475,115 @@ export type ProcessingTaskPublic = {
 
 export type ProcessingTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
+export type QuestionRecognitionItemPublic = {
+    id: string;
+    run_id: string;
+    source_item_key: string;
+    question_key: string;
+    label: string;
+    question_text: string;
+    student_answer_text?: (string | null);
+    question_type?: (string | null);
+    confidence?: (number | null);
+    notes?: (string | null);
+    region_ids: Array<(string)>;
+    region_snapshots: Array<{
+        [key: string]: unknown;
+    }>;
+    status: QuestionRecognitionItemStatus;
+    confirmed_question_id?: (string | null);
+    created_at: string;
+    updated_at: string;
+};
+
+export type QuestionRecognitionItemStatus = 'draft' | 'confirmed' | 'excluded';
+
+export type QuestionRecognitionItemUpdate = {
+    question_key?: (string | null);
+    label?: (string | null);
+    question_text?: (string | null);
+    student_answer_text?: (string | null);
+    question_type?: (string | null);
+    confidence?: (number | null);
+    notes?: (string | null);
+    region_ids?: (Array<(string)> | null);
+    status?: (QuestionRecognitionItemStatus | null);
+};
+
+export type QuestionRecognitionRunCreate = {
+    document_ids: Array<(string)>;
+};
+
+export type QuestionRecognitionRunPublic = {
+    id: string;
+    exam_id: string;
+    created_by_id: string;
+    provider: string;
+    model: string;
+    engine: string;
+    status: WorkflowRunStatus;
+    document_ids: Array<(string)>;
+    timing: {
+        [key: string]: unknown;
+    };
+    error_message?: (string | null);
+    item_count?: number;
+    created_at: string;
+    started_at?: (string | null);
+    completed_at?: (string | null);
+    confirmed_at?: (string | null);
+};
+
+export type QuestionRecognitionRunsPublic = {
+    data: Array<QuestionRecognitionRunPublic>;
+    count: number;
+};
+
+export type RecognitionItemPublic = {
+    item_id: string;
+    submission_id: string;
+    exam_region_id: string;
+    label: string;
+    status: GradingItemStatus;
+    question_text?: (string | null);
+    student_answer?: (string | null);
+    final_answer?: (string | null);
+    confidence?: (number | null);
+    notes?: Array<(string)>;
+    printed_question_marks?: Array<{
+        [key: string]: (string);
+    }>;
+    answer_entries?: Array<{
+        [key: string]: unknown;
+    }>;
+    unassigned_evidence?: Array<(string)>;
+    grading_answer?: (string | null);
+    grading_eligible?: boolean;
+    answer_verification?: {
+        [key: string]: unknown;
+    };
+    error_message?: (string | null);
+};
+
+export type RecognitionItemUpdate = {
+    question_text?: (string | null);
+    student_answer?: (string | null);
+    final_answer?: (string | null);
+    confidence?: (number | null);
+    notes?: (Array<(string)> | null);
+    approve_for_grading?: (boolean | null);
+    approval_source?: (string | null);
+};
+
+export type RecognitionRunCreate = {
+    exam_id: string;
+    submission_id: string;
+    provider?: string;
+    model?: string;
+    max_concurrency?: number;
+    verification_mode?: 'fast' | 'selective' | 'evidence';
+};
+
 export type StandardAnswerCreate = {
     answer_text: string;
     max_score: number;
@@ -205,9 +606,63 @@ export type StandardAnswerPublic = {
     id: string;
     exam_id: string;
     exam_region_id: string;
+    question_id?: (string | null);
+    current_revision_id?: (string | null);
+    version?: number;
+    source_provider?: (string | null);
+    source_model?: (string | null);
+    generation_confidence?: (number | null);
+    answer_hash?: (string | null);
+    published_at?: (string | null);
+    published_by_id?: (string | null);
+    question_text?: (string | null);
+    question_type?: (string | null);
+    rubric_config?: {
+        [key: string]: unknown;
+    };
+    validation_report?: {
+        [key: string]: unknown;
+    };
     created_at?: (string | null);
     updated_at?: (string | null);
 };
+
+export type StandardAnswerPublishRequest = {
+    revision_ids?: Array<(string)>;
+};
+
+export type StandardAnswerRevisionPublic = {
+    id: string;
+    standard_answer_id: string;
+    question_id: string;
+    revision_number: number;
+    question_key: string;
+    question_text: string;
+    question_type?: (string | null);
+    answer_text: string;
+    max_score: number;
+    rubric_text?: (string | null);
+    scoring_points: Array<{
+        [key: string]: unknown;
+    }>;
+    source_provider?: (string | null);
+    source_model?: (string | null);
+    generation_confidence?: (number | null);
+    content_hash: string;
+    status: StandardAnswerRevisionStatus;
+    created_by_id: string;
+    published_by_id?: (string | null);
+    preparation_item_id?: (string | null);
+    created_at: string;
+    published_at?: (string | null);
+};
+
+export type StandardAnswerRevisionsPublic = {
+    data: Array<StandardAnswerRevisionPublic>;
+    count: number;
+};
+
+export type StandardAnswerRevisionStatus = 'draft' | 'published';
 
 export type StandardAnswersPublic = {
     data: Array<StandardAnswerPublic>;
@@ -240,6 +695,7 @@ export type StoredFilePublic = {
 export type StudentSubmissionPublic = {
     student_name?: (string | null);
     student_identifier?: (string | null);
+    class_name?: (string | null);
     status?: StudentSubmissionStatus;
     registration_status?: SubmissionRegistrationStatus;
     registration_quality?: (number | null);
@@ -249,6 +705,7 @@ export type StudentSubmissionPublic = {
     stored_file_id: string;
     stored_file: StoredFilePublic;
     page_count?: number;
+    original_stored_file_id?: (string | null);
     registration_homography?: ({
     [key: string]: unknown;
 } | null);
@@ -317,6 +774,14 @@ export type SubmissionAnnotationPublic = {
     }>;
     grading_status?: AnnotationGradingStatus;
     answer_key_updated_at?: (string | null);
+    score_source?: (string | null);
+    model_score?: (number | null);
+    model_confidence?: (number | null);
+    grading_version?: (string | null);
+    grading_evidence?: Array<{
+        [key: string]: unknown;
+    }>;
+    auto_published_at?: (string | null);
     created_at?: (string | null);
     updated_at?: (string | null);
 };
@@ -339,9 +804,10 @@ export type SubmissionAnnotationUpdate = {
     score?: (number | null);
     max_score?: (number | null);
     comment?: (string | null);
+    audit_reason?: (string | null);
 };
 
-export type SubmissionRegistrationStatus = 'pending' | 'manual_confirmed' | 'failed';
+export type SubmissionRegistrationStatus = 'pending' | 'manual_confirmed' | 'auto_confirmed' | 'failed';
 
 export type Token = {
     access_token: string;
@@ -404,6 +870,8 @@ export type ValidationError = {
     };
 };
 
+export type WorkflowRunStatus = 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+
 export type ExamsReadExamsData = {
     limit?: number;
     skip?: number;
@@ -449,6 +917,42 @@ export type ExamsReadExamFilesData = {
 
 export type ExamsReadExamFilesResponse = (ExamDocumentsPublic);
 
+export type ExamsClearExamPaperFilesData = {
+    examId: string;
+};
+
+export type ExamsClearExamPaperFilesResponse = (ExamDocumentsPublic);
+
+export type ExamsUploadExamFilesData = {
+    examId: string;
+    formData: Body_exams_upload_exam_files;
+};
+
+export type ExamsUploadExamFilesResponse = (ExamDocumentsPublic);
+
+export type ExamsReorderExamFilesData = {
+    examId: string;
+    requestBody: ExamDocumentOrderUpdate;
+};
+
+export type ExamsReorderExamFilesResponse = (ExamDocumentsPublic);
+
+export type ExamsDeleteExamFileData = {
+    documentId: string;
+    examId: string;
+};
+
+export type ExamsDeleteExamFileResponse = (ExamDocumentsPublic);
+
+export type ExamsRecognizeExamFilesWithReferenceAlgorithmData = {
+    examId: string;
+    requestBody: ExamDocumentRecognitionRequest;
+};
+
+export type ExamsRecognizeExamFilesWithReferenceAlgorithmResponse = ({
+    [key: string]: unknown;
+});
+
 export type ExamsReadExamFileContentData = {
     authorization?: (string | null);
     documentId: string;
@@ -456,6 +960,13 @@ export type ExamsReadExamFileContentData = {
 };
 
 export type ExamsReadExamFileContentResponse = (unknown);
+
+export type ExamsReadExamFileSourceImageData = {
+    documentId: string;
+    examId: string;
+};
+
+export type ExamsReadExamFileSourceImageResponse = (unknown);
 
 export type ExamsReadExamFilePageImageData = {
     authorization?: (string | null);
@@ -466,14 +977,73 @@ export type ExamsReadExamFilePageImageData = {
 
 export type ExamsReadExamFilePageImageResponse = (unknown);
 
+export type ExamsReadExamFilePreprocessingPreviewData = {
+    authorization?: (string | null);
+    documentId: string;
+    examId: string;
+    kind: 'detected_overlay' | 'corrected_spread';
+};
+
+export type ExamsReadExamFilePreprocessingPreviewResponse = (unknown);
+
+export type ExamsPreviewExamFileWithQuadsData = {
+    documentId: string;
+    examId: string;
+    requestBody: ExamDocumentQuadPreprocessRequest;
+};
+
+export type ExamsPreviewExamFileWithQuadsResponse = ({
+    [key: string]: unknown;
+});
+
+export type ExamsPreprocessExamFileWithQuadsData = {
+    documentId: string;
+    examId: string;
+    requestBody: ExamDocumentQuadPreprocessRequest;
+};
+
+export type ExamsPreprocessExamFileWithQuadsResponse = (ExamDocumentPublic);
+
+export type ExamsAutoRectifyExamFileData = {
+    documentId: string;
+    examId: string;
+};
+
+export type ExamsAutoRectifyExamFileResponse = (ExamDocumentPublic);
+
+export type ExamsAutoRectifyExamFilesData = {
+    examId: string;
+};
+
+export type ExamsAutoRectifyExamFilesResponse = (ExamDocumentsPublic);
+
 export type ExamsReadExamRegionCandidatesData = {
     documentId: string;
-    engine?: 'layout_projection_v0' | 'layout_ocr_anchor_v1';
+    engine?: 'layout_projection_v0' | 'layout_ocr_anchor_v1' | 'gemini_layout_v1';
     examId: string;
     pageNumber?: number;
 };
 
 export type ExamsReadExamRegionCandidatesResponse = (ExamRegionCandidatesPublic);
+
+export type ExamsRecognizeExamDocumentWithReferenceAlgorithmData = {
+    documentId: string;
+    examId: string;
+};
+
+export type ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse = ({
+    [key: string]: unknown;
+});
+
+export type ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData = {
+    documentId: string;
+    examId: string;
+    pageNumber: number;
+};
+
+export type ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse = ({
+    [key: string]: unknown;
+});
 
 export type ExamsUploadStudentSubmissionData = {
     examId: string;
@@ -488,12 +1058,26 @@ export type ExamsReadStudentSubmissionsData = {
 
 export type ExamsReadStudentSubmissionsResponse = (StudentSubmissionsPublic);
 
+export type ExamsReadExamScoresSummaryData = {
+    examId: string;
+};
+
+export type ExamsReadExamScoresSummaryResponse = (ExamScoreSummaryPublic);
+
 export type ExamsPreprocessStudentSubmissionPhotoData = {
     examId: string;
     formData: Body_exams_preprocess_student_submission_photo;
 };
 
 export type ExamsPreprocessStudentSubmissionPhotoResponse = (StudentSubmissionPublic);
+
+export type ExamsAppendStudentSubmissionPagesData = {
+    examId: string;
+    formData: Body_exams_append_student_submission_pages;
+    submissionId: string;
+};
+
+export type ExamsAppendStudentSubmissionPagesResponse = (StudentSubmissionPublic);
 
 export type ExamsReadStudentSubmissionData = {
     examId: string;
@@ -653,6 +1237,85 @@ export type FilesUploadFileData = {
 
 export type FilesUploadFileResponse = (StoredFilePublic);
 
+export type GradingCreateRecognitionRunData = {
+    requestBody: RecognitionRunCreate;
+};
+
+export type GradingCreateRecognitionRunResponse = (GradingRunPublic);
+
+export type GradingReadRecognitionItemsData = {
+    runId: string;
+};
+
+export type GradingReadRecognitionItemsResponse = (Array<RecognitionItemPublic>);
+
+export type GradingUpdateRecognitionItemData = {
+    itemId: string;
+    requestBody: RecognitionItemUpdate;
+};
+
+export type GradingUpdateRecognitionItemResponse = (RecognitionItemPublic);
+
+export type GradingConfirmRecognitionData = {
+    runId: string;
+};
+
+export type GradingConfirmRecognitionResponse = (GradingRunPublic);
+
+export type GradingCreateRunData = {
+    requestBody: GradingRunCreate;
+};
+
+export type GradingCreateRunResponse = (GradingRunPublic);
+
+export type GradingListRunsData = {
+    examId: string;
+};
+
+export type GradingListRunsResponse = (GradingRunsPublic);
+
+export type GradingGetRunData = {
+    runId: string;
+};
+
+export type GradingGetRunResponse = (GradingRunPublic);
+
+export type GradingStartRunData = {
+    runId: string;
+};
+
+export type GradingStartRunResponse = (GradingRunPublic);
+
+export type GradingRetryRunData = {
+    runId: string;
+};
+
+export type GradingRetryRunResponse = (GradingRunPublic);
+
+export type GradingGenerateRubricsData = {
+    examId: string;
+};
+
+export type GradingGenerateRubricsResponse = (ProcessingTaskPublic);
+
+export type GradingPublishAnswersData = {
+    runId: string;
+};
+
+export type GradingPublishAnswersResponse = (GradingRunPublic);
+
+export type GradingReviewQueueData = {
+    runId: string;
+};
+
+export type GradingReviewQueueResponse = (Array<GradingReviewItem>);
+
+export type GradingAuditLogData = {
+    runId: string;
+};
+
+export type GradingAuditLogResponse = (Array<GradingAuditEventPublic>);
+
 export type LoginLoginAccessTokenData = {
     formData: Body_login_login_access_token;
 };
@@ -684,6 +1347,116 @@ export type PrivateCreateUserData = {
 };
 
 export type PrivateCreateUserResponse = (UserPublic);
+
+export type QuestionAnswerWorkflowListExamQuestionsData = {
+    examId: string;
+};
+
+export type QuestionAnswerWorkflowListExamQuestionsResponse = (ExamQuestionsPublic);
+
+export type QuestionAnswerWorkflowCreateQuestionRecognitionRunData = {
+    examId: string;
+    requestBody: QuestionRecognitionRunCreate;
+};
+
+export type QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse = (QuestionRecognitionRunPublic);
+
+export type QuestionAnswerWorkflowListQuestionRecognitionRunsData = {
+    examId: string;
+};
+
+export type QuestionAnswerWorkflowListQuestionRecognitionRunsResponse = (QuestionRecognitionRunsPublic);
+
+export type QuestionAnswerWorkflowImportMarkingRecognitionRunData = {
+    examId: string;
+    requestBody: MarkingRecognitionImport;
+};
+
+export type QuestionAnswerWorkflowImportMarkingRecognitionRunResponse = (QuestionRecognitionRunPublic);
+
+export type QuestionAnswerWorkflowGetQuestionRecognitionRunData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowGetQuestionRecognitionRunResponse = (QuestionRecognitionRunPublic);
+
+export type QuestionAnswerWorkflowListQuestionRecognitionItemsData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowListQuestionRecognitionItemsResponse = (Array<QuestionRecognitionItemPublic>);
+
+export type QuestionAnswerWorkflowUpdateQuestionRecognitionItemData = {
+    examId: string;
+    itemId: string;
+    requestBody: QuestionRecognitionItemUpdate;
+};
+
+export type QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse = (QuestionRecognitionItemPublic);
+
+export type QuestionAnswerWorkflowConfirmQuestionRecognitionRunData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse = (QuestionRecognitionRunPublic);
+
+export type QuestionAnswerWorkflowCreateAnswerPreparationRunData = {
+    examId: string;
+    requestBody: AnswerPreparationRunCreate;
+};
+
+export type QuestionAnswerWorkflowCreateAnswerPreparationRunResponse = (AnswerPreparationRunPublic);
+
+export type QuestionAnswerWorkflowListAnswerPreparationRunsData = {
+    examId: string;
+};
+
+export type QuestionAnswerWorkflowListAnswerPreparationRunsResponse = (AnswerPreparationRunsPublic);
+
+export type QuestionAnswerWorkflowGetAnswerPreparationRunData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowGetAnswerPreparationRunResponse = (AnswerPreparationRunPublic);
+
+export type QuestionAnswerWorkflowListAnswerPreparationItemsData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowListAnswerPreparationItemsResponse = (Array<AnswerPreparationItemPublic>);
+
+export type QuestionAnswerWorkflowUpdateAnswerPreparationItemData = {
+    examId: string;
+    itemId: string;
+    requestBody: AnswerPreparationItemUpdate;
+};
+
+export type QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse = (AnswerPreparationItemPublic);
+
+export type QuestionAnswerWorkflowConfirmAnswerPreparationRunData = {
+    examId: string;
+    runId: string;
+};
+
+export type QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse = (AnswerPreparationRunPublic);
+
+export type QuestionAnswerWorkflowListStandardAnswerRevisionsData = {
+    examId: string;
+};
+
+export type QuestionAnswerWorkflowListStandardAnswerRevisionsResponse = (StandardAnswerRevisionsPublic);
+
+export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsData = {
+    examId: string;
+    requestBody: StandardAnswerPublishRequest;
+};
+
+export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse = (StandardAnswerRevisionsPublic);
 
 export type TasksCreateTestTaskData = {
     requestBody: ProcessingTaskCreate;

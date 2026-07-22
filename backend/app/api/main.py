@@ -1,6 +1,16 @@
 from fastapi import APIRouter
 
-from app.api.routes import exams, files, login, private, tasks, users, utils
+from app.api.routes import (
+    exams,
+    files,
+    grading,
+    login,
+    private,
+    questions_answers,
+    tasks,
+    users,
+    utils,
+)
 from app.core.config import settings
 
 api_router = APIRouter()
@@ -8,8 +18,10 @@ api_router.include_router(login.router)
 api_router.include_router(users.router)
 api_router.include_router(utils.router)
 api_router.include_router(exams.router)
+api_router.include_router(questions_answers.router)
 api_router.include_router(files.router)
 api_router.include_router(tasks.router)
+api_router.include_router(grading.router)
 
 
 if settings.ENVIRONMENT == "local":

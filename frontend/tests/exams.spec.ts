@@ -321,16 +321,16 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await expect(page.getByText(/^pending$/i)).toBeVisible()
 
   await page.getByRole("button", { name: "Confirm" }).click()
-  await expect(page.getByText("Registration status updated")).toBeVisible()
+  await expect(page.getByText("配准状态已更新")).toBeVisible()
   await expect(page.getByText(/ready for review/i)).toBeVisible()
   await expect(page.getByText(/manual confirmed · 100%/i)).toBeVisible()
 
-  await page.getByRole("button", { name: "Preview" }).click()
+  await page.getByRole("button", { name: "预览" }).click()
   await expect(page.getByText("Page 1 of 1")).toBeVisible()
   await expect(page.getByAltText("student-a.png")).toBeVisible()
   await expect(page.getByTestId("submission-overlay-region-Q1")).toBeVisible()
 
-  await page.getByRole("link", { name: "Review" }).click()
+  await page.getByRole("link", { name: "复核" }).click()
   await expect(page.getByRole("heading", { name: title })).toBeVisible()
   await expect(page.getByTestId("submission-review-canvas")).toBeVisible()
   await expect(page.getByTestId("review-region-list-Q1")).toBeVisible()
@@ -420,10 +420,10 @@ test("PaddleOCR draft appears in the review workspace", async ({ page }) => {
   await expect(page.getByText("Student submission uploaded")).toBeVisible()
 
   await page.getByRole("button", { name: "Confirm" }).click()
-  await expect(page.getByText("Registration status updated")).toBeVisible()
+  await expect(page.getByText("配准状态已更新")).toBeVisible()
   await expect(page.getByText(/ready for review/i)).toBeVisible()
 
-  await page.getByRole("link", { name: "Review" }).click()
+  await page.getByRole("link", { name: "复核" }).click()
   await expect(page.getByRole("heading", { name: title })).toBeVisible()
   await expect(page.getByTestId("review-region-list-Header")).toBeVisible()
 

@@ -1,0 +1,5 @@
+
+> exam-analysis-workbench@0.1.0 start
+> node --use-env-proxy server.js
+
+Exam analysis workbench: http://localhost:3417

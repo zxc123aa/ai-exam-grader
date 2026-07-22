@@ -13,7 +13,10 @@ from app.models import ExamRegionCandidate, ExamRegionType
 
 ENGINE_NAME = "layout_projection_v0"
 OCR_ANCHOR_ENGINE_NAME = "layout_ocr_anchor_v1"
-QuestionSegmentationEngine = Literal["layout_projection_v0", "layout_ocr_anchor_v1"]
+GEMINI_LAYOUT_ENGINE_NAME = "gemini_layout_v1"
+QuestionSegmentationEngine = Literal[
+    "layout_projection_v0", "layout_ocr_anchor_v1", "gemini_layout_v1"
+]
 QUESTION_ANCHOR_RE = re.compile(
     r"^\s*(?:"
     r"第\s*\d{1,2}\s*题|"

@@ -3,6 +3,8 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   ArrowLeft,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   Loader2,
   MessageSquareText,
 } from "lucide-react"
@@ -43,7 +45,7 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [
       {
-        title: "Review Submission - AI Exam Grader",
+        title: "答卷复核 - 智阅卷",
       },
     ],
   }),
@@ -120,16 +122,71 @@ async function fetchSubmissionAnnotationCropBlob(
   return response.blob()
 }
 
+async function fetchSubmissionRegionCropBlob(
+  examId: string,
+  submissionId: string,
+  regionId: string,
+) {
+  const token = localStorage.getItem("access_token")
+  const base = OpenAPI.BASE || ""
+  const response = await fetch(
+    `${base}/api/v1/exams/${examId}/submissions/${submissionId}/regions/${regionId}/crop`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    },
+  )
+  if (!response.ok) {
+    throw new ApiError(
+      {
+        method: "GET",
+        url: "/api/v1/exams/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop",
+      },
+      {
+        url: response.url,
+        ok: response.ok,
+        status: response.status,
+        statusText: response.statusText,
+        body: await response.text(),
+      },
+      "Failed to load region crop",
+    )
+  }
+  return response.blob()
+}
+
 function formatStatus(status?: string | null) {
-  return (status || "needs_review").replace(/_/g, " ")
+  const value = status || "needs_review"
+  const labels: Record<string, string> = {
+    needs_review: "待复核",
+    accepted: "已通过",
+    rejected: "已驳回",
+    pending: "等待处理",
+    queued: "排队中",
+    running: "处理中",
+    completed: "已完成",
+    failed: "失败",
+    registration_pending: "等待配准",
+    manual_confirmed: "人工确认",
+    auto_registered: "自动配准",
+    auto_confirmed: "自动配准",
+  }
+  return labels[value] || value
 }
 
 function formatOcrStatus(status?: string | null) {
-  return (status || "not_started").replace(/_/g, " ")
+  const value = status || "not_started"
+  const labels: Record<string, string> = {
+    not_started: "未开始",
+    queued: "排队中",
+    running: "识别中",
+    completed: "已完成",
+    failed: "失败",
+  }
+  return labels[value] || value
 }
 
 function formatTaskProgress(task?: ProcessingTaskPublic | null) {
-  if (!task) return "No task yet"
+  if (!task) return "尚未开始处理"
   return `${formatStatus(task.status)} · ${task.progress ?? 0}%`
 }
 
@@ -156,6 +213,31 @@ function getRegionAnnotation(
   return annotations.find(
     (annotation) => annotation.exam_region_id === regionId,
   )
+}
+
+// 跨页续题：批注挂在正题（primary）区域上，续页区域共享同一题目的批注。
+function getPrimaryRegion(
+  regions: ExamRegionPublic[],
+  region: ExamRegionPublic,
+) {
+  if (region.region_role !== "continuation" || !region.question_key) {
+    return region
+  }
+  return (
+    regions.find(
+      (item) =>
+        item.question_key === region.question_key &&
+        item.region_role !== "continuation",
+    ) ?? region
+  )
+}
+
+function getEffectiveAnnotation(
+  annotations: SubmissionAnnotationPublic[],
+  regions: ExamRegionPublic[],
+  region: ExamRegionPublic,
+) {
+  return getRegionAnnotation(annotations, getPrimaryRegion(regions, region).id)
 }
 
 function getRegionPageNumber(region: ExamRegionPublic) {
@@ -209,10 +291,10 @@ function SubmissionPagePreview({
   )
 
   return (
-    <div className="grid gap-3">
+    <div className="grid content-start gap-3">
       <div className="flex items-center justify-between gap-3">
-        <div className="text-sm text-muted-foreground">
-          Page {pageNumber} of {pageCount}
+        <div className="text-sm text-muted-foreground tabular-nums">
+          第 {pageNumber} / {pageCount} 页
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -221,7 +303,8 @@ function SubmissionPagePreview({
             disabled={pageNumber <= 1}
             onClick={() => setPageNumber(Math.max(1, pageNumber - 1))}
           >
-            Previous
+            <ChevronLeft />
+            上一页
           </Button>
           <Button
             variant="outline"
@@ -229,18 +312,19 @@ function SubmissionPagePreview({
             disabled={pageNumber >= pageCount}
             onClick={() => setPageNumber(Math.min(pageCount, pageNumber + 1))}
           >
-            Next
+            下一页
+            <ChevronRight />
           </Button>
         </div>
       </div>
       {isError ? (
         <div className="rounded-md border p-8 text-sm text-destructive">
-          Failed to load submission preview.
+          无法加载答卷预览。
         </div>
       ) : isLoading || !contentUrl ? (
         <div className="flex items-center gap-2 rounded-md border p-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading review preview
+          正在加载复核预览
         </div>
       ) : (
         <div
@@ -290,7 +374,7 @@ function SubmissionPagePreview({
       )}
       {pageRegions.length === 0 && (
         <div className="text-xs text-muted-foreground">
-          No template regions on this page yet.
+          当前页面还没有模板题区。
         </div>
       )}
     </div>
@@ -336,14 +420,14 @@ function AnnotationCropPreview({
   if (!annotation) {
     return (
       <div className="rounded-md border p-3 text-xs text-muted-foreground">
-        Run processing to create a question crop for the selected region.
+        请先运行自动处理，生成所选区域的题目裁切图。
       </div>
     )
   }
   if (isError) {
     return (
       <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
-        Question crop is not available yet.
+        题目裁切图暂不可用。
       </div>
     )
   }
@@ -351,7 +435,7 @@ function AnnotationCropPreview({
     return (
       <div className="flex items-center gap-2 rounded-md border p-3 text-xs text-muted-foreground">
         <Loader2 className="size-3 animate-spin" />
-        Loading question crop
+        正在加载题目裁切图
       </div>
     )
   }
@@ -367,6 +451,65 @@ function AnnotationCropPreview({
   )
 }
 
+// 续页区域的裁切图：按区域坐标在学生答卷上裁切，用于查看跨页答案的续写部分。
+function RegionCropPreview({
+  examId,
+  submissionId,
+  region,
+}: {
+  examId: string
+  submissionId: string
+  region: ExamRegionPublic
+}) {
+  const [contentUrl, setContentUrl] = useState<string | null>(null)
+  const { data, isLoading, isError } = useQuery({
+    queryKey: ["submission-region-crop", examId, submissionId, region.id],
+    queryFn: () =>
+      fetchSubmissionRegionCropBlob(examId, submissionId, region.id),
+  })
+
+  useEffect(() => {
+    if (!data) {
+      setContentUrl(null)
+      return
+    }
+    const url = URL.createObjectURL(data)
+    setContentUrl(url)
+    return () => URL.revokeObjectURL(url)
+  }, [data])
+
+  if (isError) {
+    return (
+      <div className="rounded-md border border-dashed p-3 text-xs text-muted-foreground">
+        续页裁切图暂不可用。
+      </div>
+    )
+  }
+  if (isLoading || !contentUrl) {
+    return (
+      <div className="flex items-center gap-2 rounded-md border p-3 text-xs text-muted-foreground">
+        <Loader2 className="size-3 animate-spin" />
+        正在加载续页裁切图
+      </div>
+    )
+  }
+  return (
+    <div className="grid gap-1">
+      <div className="text-xs text-muted-foreground">
+        续页裁切（第 {getRegionPageNumber(region)} 页，与正题同一评分）
+      </div>
+      <div className="overflow-hidden rounded-md border bg-muted/20">
+        <img
+          alt={`${region.label} crop`}
+          className="block w-full"
+          data-testid="region-crop-preview"
+          src={contentUrl}
+        />
+      </div>
+    </div>
+  )
+}
+
 function AnnotationOcrDraft({
   annotation,
 }: {
@@ -375,7 +518,7 @@ function AnnotationOcrDraft({
   if (!annotation) {
     return (
       <div className="rounded-md border p-3 text-xs text-muted-foreground">
-        Run processing to create an OCR draft.
+        请先运行自动处理，生成 OCR 识别草稿。
       </div>
     )
   }
@@ -384,7 +527,7 @@ function AnnotationOcrDraft({
   return (
     <div className="grid gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">OCR draft</div>
+        <div className="text-xs font-medium">OCR 识别草稿</div>
         <Badge
           variant={hasText ? "secondary" : "outline"}
           className="capitalize"
@@ -395,7 +538,7 @@ function AnnotationOcrDraft({
       </div>
       {annotation.ocr_engine && (
         <div className="text-xs text-muted-foreground">
-          Engine: {annotation.ocr_engine}
+          识别引擎：{annotation.ocr_engine}
         </div>
       )}
       {hasText ? (
@@ -406,9 +549,7 @@ function AnnotationOcrDraft({
           {annotation.ocr_text}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground">
-          No OCR text is available yet.
-        </div>
+        <div className="text-xs text-muted-foreground">暂无 OCR 识别文本。</div>
       )}
     </div>
   )
@@ -430,7 +571,7 @@ function StandardAnswerReference({
         className="rounded-md border p-3 text-xs text-muted-foreground"
         data-testid="review-standard-answer"
       >
-        No standard answer is ready for this region.
+        该区域还没有可用的标准答案。
       </div>
     )
   }
@@ -441,7 +582,7 @@ function StandardAnswerReference({
       data-testid="review-standard-answer"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">Standard answer</div>
+        <div className="text-xs font-medium">标准答案</div>
         <Badge variant={answer.status === "ready" ? "secondary" : "outline"}>
           {formatStatus(answer.status)}
         </Badge>
@@ -450,8 +591,8 @@ function StandardAnswerReference({
         {answer.answer_text}
       </div>
       <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-        <span>Max {answer.max_score}</span>
-        <span>{answer.scoring_points?.length ?? 0} scoring points</span>
+        <span>满分 {answer.max_score}</span>
+        <span>{answer.scoring_points?.length ?? 0} 个评分点</span>
       </div>
       {answer.rubric_text && (
         <div className="whitespace-pre-wrap text-xs text-muted-foreground">
@@ -475,7 +616,7 @@ function GradingDraft({
         className="rounded-md border p-3 text-xs text-muted-foreground"
         data-testid="review-grading-draft"
       >
-        Run processing to create a grading draft.
+        请先运行自动处理，生成评分草稿。
       </div>
     )
   }
@@ -487,7 +628,7 @@ function GradingDraft({
       data-testid="review-grading-draft"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">Grading draft</div>
+        <div className="text-xs font-medium">AI 评分草稿</div>
         <Badge
           variant={
             annotation.grading_status === "succeeded" ? "secondary" : "outline"
@@ -500,7 +641,7 @@ function GradingDraft({
         <div className="grid gap-2">
           <div className="flex items-center justify-between gap-2 rounded-sm bg-muted/50 p-2 text-xs">
             <span>
-              Suggested {annotation.suggested_score}
+              建议得分 {annotation.suggested_score}
               {annotation.max_score != null ? ` / ${annotation.max_score}` : ""}
             </span>
             <span className="text-muted-foreground">
@@ -520,13 +661,11 @@ function GradingDraft({
             onClick={onApplySuggestion}
           >
             <CheckCircle2 />
-            Apply Suggestion
+            采纳建议
           </Button>
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground">
-          No suggested score is available.
-        </div>
+        <div className="text-xs text-muted-foreground">暂无建议得分。</div>
       )}
     </div>
   )
@@ -597,11 +736,15 @@ function SubmissionReview() {
   const selectedRegion = regions.find(
     (region) => region.id === selectedRegionId,
   )
-  const selectedAnnotation = selectedRegion
-    ? getRegionAnnotation(annotations, selectedRegion.id)
+  // 续页区域选中时，批注/标准答案/保存都落到正题（primary）区域上。
+  const selectedPrimaryRegion = selectedRegion
+    ? getPrimaryRegion(regions, selectedRegion)
     : undefined
-  const selectedStandardAnswer = selectedRegion
-    ? standardAnswersByRegionId.get(selectedRegion.id)
+  const selectedAnnotation = selectedRegion
+    ? getEffectiveAnnotation(annotations, regions, selectedRegion)
+    : undefined
+  const selectedStandardAnswer = selectedPrimaryRegion
+    ? standardAnswersByRegionId.get(selectedPrimaryRegion.id)
     : undefined
 
   useEffect(() => {
@@ -617,21 +760,21 @@ function SubmissionReview() {
 
   const saveMutation = useMutation({
     mutationFn: () => {
-      if (!selectedRegion) {
-        throw new Error("Select a template region before saving")
+      if (!selectedRegion || !selectedPrimaryRegion) {
+        throw new Error("请先选择一个题目区域再保存")
       }
       const requestBody = {
-        label: selectedRegion.label,
+        label: selectedPrimaryRegion.label,
         status: form.status,
-        page_number: getRegionPageNumber(selectedRegion),
-        x: selectedRegion.x,
-        y: selectedRegion.y,
-        width: selectedRegion.width,
-        height: selectedRegion.height,
+        page_number: getRegionPageNumber(selectedPrimaryRegion),
+        x: selectedPrimaryRegion.x,
+        y: selectedPrimaryRegion.y,
+        width: selectedPrimaryRegion.width,
+        height: selectedPrimaryRegion.height,
         score: toOptionalNumber(form.score),
         max_score: toOptionalNumber(form.maxScore),
         comment: form.comment.trim() || null,
-        exam_region_id: selectedRegion.id,
+        exam_region_id: selectedPrimaryRegion.id,
       }
       if (selectedAnnotation) {
         return ExamsService.updateSubmissionAnnotation({
@@ -648,7 +791,7 @@ function SubmissionReview() {
       })
     },
     onSuccess: () => {
-      showSuccessToast("Annotation saved")
+      showSuccessToast("批注已保存")
     },
     onError: handleError.bind(showErrorToast),
     onSettled: () => {
@@ -666,7 +809,7 @@ function SubmissionReview() {
       }),
     onSuccess: (task) => {
       setProcessingTaskId(task.id)
-      showSuccessToast("Submission processing task started")
+      showSuccessToast("自动处理任务已开始")
       queryClient.invalidateQueries({
         queryKey: ["submission-annotations", examId, submissionId],
       })
@@ -702,31 +845,25 @@ function SubmissionReview() {
         <Button variant="ghost" size="sm" asChild className="-ml-3 mb-2">
           <Link to="/exams">
             <ArrowLeft />
-            Exams
+            考试管理
           </Link>
         </Button>
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight">
-              {examQuery.data?.title ?? "Submission Review"}
+              {examQuery.data?.title ?? "答卷复核"}
             </h1>
             <p className="text-muted-foreground">
-              {submission?.student_name || "Unnamed student"} ·{" "}
-              {submission?.student_identifier || "No student ID"}
+              {submission?.student_name || "未命名学生"} ·{" "}
+              {submission?.student_identifier || "无学号"}
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline" className="capitalize">
-              {(submission?.status ?? "registration_pending").replace(
-                /_/g,
-                " ",
-              )}
+              {formatStatus(submission?.status ?? "registration_pending")}
             </Badge>
             <Badge variant="secondary" className="capitalize">
-              {(submission?.registration_status ?? "pending").replace(
-                /_/g,
-                " ",
-              )}
+              {formatStatus(submission?.registration_status ?? "pending")}
             </Badge>
           </div>
         </div>
@@ -735,7 +872,7 @@ function SubmissionReview() {
       {isLoading || !submission ? (
         <div className="flex items-center gap-2 rounded-md border p-8 text-sm text-muted-foreground">
           <Loader2 className="size-4 animate-spin" />
-          Loading review workspace
+          正在加载答卷复核工作区
         </div>
       ) : (
         <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
@@ -758,7 +895,7 @@ function SubmissionReview() {
             <div className="grid gap-3 rounded-md border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-medium">Processing pipeline</div>
+                  <div className="text-sm font-medium">自动处理流程</div>
                   <div className="text-xs text-muted-foreground">
                     {formatTaskProgress(
                       processingTaskQuery.data ?? processingMutation.data,
@@ -781,26 +918,35 @@ function SubmissionReview() {
                 loading={processingMutation.isPending}
                 onClick={() => processingMutation.mutate()}
               >
-                Run Processing
+                开始自动处理
               </LoadingButton>
             </div>
 
             <div className="rounded-md border">
               <div className="flex items-center justify-between border-b px-4 py-3">
-                <span className="text-sm font-medium">Template regions</span>
-                <Badge variant="secondary">{regions.length}</Badge>
+                <span className="text-sm font-medium">模板题目区域</span>
+                <Badge variant="secondary">
+                  {
+                    regions.filter(
+                      (region) => region.region_role !== "continuation",
+                    ).length
+                  }
+                </Badge>
               </div>
               {regions.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
-                  Mark template regions before reviewing submissions.
+                  请先标注模板题目区域，再复核学生答卷。
                 </div>
               ) : (
                 <div className="divide-y">
                   {regions.map((region) => {
-                    const annotation = getRegionAnnotation(
+                    // 续页区域共享正题的批注状态
+                    const annotation = getEffectiveAnnotation(
                       annotations,
-                      region.id,
+                      regions,
+                      region,
                     )
+                    const isContinuation = region.region_role === "continuation"
                     const isSelected = selectedRegionId === region.id
                     return (
                       <button
@@ -818,10 +964,13 @@ function SubmissionReview() {
                       >
                         <span className="min-w-0">
                           <span className="block truncate font-medium">
-                            {region.label}
+                            {isContinuation
+                              ? region.label.replace("（续）", "（续页）")
+                              : region.label}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            Page {region.page_number}
+                            第 {region.page_number} 页
+                            {isContinuation ? " · 与正题同一评分" : ""}
                           </span>
                         </span>
                         {annotation ? (
@@ -829,7 +978,7 @@ function SubmissionReview() {
                             {formatStatus(annotation.status)}
                           </Badge>
                         ) : (
-                          <Badge variant="outline">No note</Badge>
+                          <Badge variant="outline">未批注</Badge>
                         )}
                       </button>
                     )
@@ -842,12 +991,16 @@ function SubmissionReview() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">
-                    {selectedRegion?.label ?? "No region selected"}
+                    {selectedRegion
+                      ? selectedRegion.region_role === "continuation"
+                        ? selectedRegion.label.replace("（续）", "（续页）")
+                        : selectedRegion.label
+                      : "未选择题目区域"}
                   </div>
                   <div className="text-xs text-muted-foreground">
                     {selectedAnnotation
-                      ? "Editing saved annotation"
-                      : "Create review annotation"}
+                      ? "正在编辑已保存的批注"
+                      : "新建复核批注"}
                   </div>
                 </div>
                 {selectedAnnotation && (
@@ -860,6 +1013,14 @@ function SubmissionReview() {
                 submissionId={submissionId}
                 annotation={selectedAnnotation}
               />
+
+              {selectedRegion?.region_role === "continuation" && (
+                <RegionCropPreview
+                  examId={examId}
+                  submissionId={submissionId}
+                  region={selectedRegion}
+                />
+              )}
 
               <StandardAnswerReference answer={selectedStandardAnswer} />
 
@@ -884,7 +1045,7 @@ function SubmissionReview() {
               />
 
               <div className="grid gap-2">
-                <Label htmlFor="review-status">Status</Label>
+                <Label htmlFor="review-status">复核状态</Label>
                 <Select
                   value={form.status}
                   onValueChange={(value) =>
@@ -899,16 +1060,16 @@ function SubmissionReview() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="needs_review">Needs review</SelectItem>
-                    <SelectItem value="accepted">Accepted</SelectItem>
-                    <SelectItem value="rejected">Rejected</SelectItem>
+                    <SelectItem value="needs_review">待复核</SelectItem>
+                    <SelectItem value="accepted">已通过</SelectItem>
+                    <SelectItem value="rejected">已驳回</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="grid gap-2">
-                  <Label htmlFor="review-score">Score</Label>
+                  <Label htmlFor="review-score">得分</Label>
                   <Input
                     id="review-score"
                     data-testid="review-score-input"
@@ -925,7 +1086,7 @@ function SubmissionReview() {
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="review-max-score">Max</Label>
+                  <Label htmlFor="review-max-score">满分</Label>
                   <Input
                     id="review-max-score"
                     data-testid="review-max-score-input"
@@ -944,7 +1105,7 @@ function SubmissionReview() {
               </div>
 
               <div className="grid gap-2">
-                <Label htmlFor="review-comment">Comment</Label>
+                <Label htmlFor="review-comment">教师评语</Label>
                 <textarea
                   id="review-comment"
                   data-testid="review-comment-input"
@@ -957,7 +1118,7 @@ function SubmissionReview() {
                       comment: event.target.value,
                     }))
                   }
-                  placeholder="Teacher feedback"
+                  placeholder="请输入教师评语"
                 />
               </div>
 
@@ -968,7 +1129,7 @@ function SubmissionReview() {
                 onClick={() => saveMutation.mutate()}
               >
                 <MessageSquareText />
-                Save Annotation
+                保存批注
               </LoadingButton>
             </div>
           </aside>
