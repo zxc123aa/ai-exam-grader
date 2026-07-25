@@ -17,3 +17,11 @@ function getEnvVar(name: string): string {
 
 export const firstSuperuser = getEnvVar("FIRST_SUPERUSER")
 export const firstSuperuserPassword = getEnvVar("FIRST_SUPERUSER_PASSWORD")
+
+/** 外部 AI 提供者（Gemini 识别 / GPT 批改）是否配置了 API key。 */
+export const visionProviderConfigured = Boolean(
+  process.env.PROVIDER_FLUXNODE_GEMINI_API_KEY,
+)
+export const gradingProviderConfigured = Boolean(
+  process.env.PROVIDER_POMOAI_API_KEY,
+)

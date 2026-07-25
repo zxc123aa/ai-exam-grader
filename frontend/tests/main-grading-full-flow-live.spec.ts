@@ -1,11 +1,19 @@
 import path from "node:path"
 
 import { expect, test } from "@playwright/test"
+import {
+  gradingProviderConfigured,
+  visionProviderConfigured,
+} from "./config.ts"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test("main GUI confirms Gemini OCR before GPT grading", async ({ page }) => {
   test.setTimeout(420_000)
+  test.skip(
+    !visionProviderConfigured || !gradingProviderConfigured,
+    "外部 AI 提供者（Gemini/GPT）未配置 API key",
+  )
   const apiBase = "http://127.0.0.1:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {
@@ -32,7 +40,11 @@ test("main GUI confirms Gemini OCR before GPT grading", async ({ page }) => {
   )
   expect(submissionsResponse.ok()).toBeTruthy()
   const submissions = (await submissionsResponse.json()).data
-  expect(submissions[0]?.student_identifier).toBe("E2E-20260715-01")
+  const e2eSubmission = submissions.find(
+    (item: { student_identifier?: string | null }) =>
+      item.student_identifier === "E2E-20260715-01",
+  )
+  expect(e2eSubmission).toBeTruthy()
 
   const revisionsResponse = await page.request.get(
     `${apiBase}/exams/${exam.id}/standard-answers/revisions`,

@@ -3,7 +3,236 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, PrivateCreateUserData, PrivateCreateUserResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse } from './types.gen';
+import type { ClassesReadClassesResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesUpdateClassData, ClassesUpdateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesReadStudentsData, ClassesReadStudentsResponse, ClassesCreateStudentData, ClassesCreateStudentResponse, ClassesCreateStudentsBatchData, ClassesCreateStudentsBatchResponse, ClassesUpdateStudentData, ClassesUpdateStudentResponse, ClassesDeleteStudentData, ClassesDeleteStudentResponse, ClassesBindStudentAccountData, ClassesBindStudentAccountResponse, ClassesUnbindStudentAccountData, ClassesUnbindStudentAccountResponse, ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadQuestionBankData, ExamsReadQuestionBankResponse, ExamsComposeExamData, ExamsComposeExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsReadGradingAssignmentsData, ExamsReadGradingAssignmentsResponse, ExamsUpdateGradingAssignmentsData, ExamsUpdateGradingAssignmentsResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsCreateExamAnalysisReportData, ExamsCreateExamAnalysisReportResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, OrgReadOrgSettingsResponse, OrgUpdateOrgSettingsData, OrgUpdateOrgSettingsResponse, PlatformListOrgsResponse, PlatformCreateOrgData, PlatformCreateOrgResponse, PlatformReadOrgData, PlatformReadOrgResponse, PlatformUpdateOrgData, PlatformUpdateOrgResponse, PlatformAddOrgOwnerData, PlatformAddOrgOwnerResponse, PlatformReadSystemConfigResponse, PlatformUpdateSystemConfigData, PlatformUpdateSystemConfigResponse, PrivateCreateUserData, PrivateCreateUserResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, StudentsReadMyExamsResponse, StudentsReadMyExamReportData, StudentsReadMyExamReportResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersCreateTeachersBatchData, UsersCreateTeachersBatchResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersReadTeachingProfileData, UsersReadTeachingProfileResponse, UsersUpdateTeachingProfileData, UsersUpdateTeachingProfileResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse } from './types.gen';
+
+export class ClassesService {
+    /**
+     * Read Classes
+     * @returns ClassGroupsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readClasses(): CancelablePromise<ClassesReadClassesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/'
+        });
+    }
+
+    /**
+     * Create Class
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ClassGroupPublic Successful Response
+     * @throws ApiError
+     */
+    public static createClass(data: ClassesCreateClassData): CancelablePromise<ClassesCreateClassResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Class
+     * @param data The data for the request.
+     * @param data.classId
+     * @param data.requestBody
+     * @returns ClassGroupPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateClass(data: ClassesUpdateClassData): CancelablePromise<ClassesUpdateClassResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/classes/{class_id}',
+            path: {
+                class_id: data.classId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Delete Class
+     * @param data The data for the request.
+     * @param data.classId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteClass(data: ClassesDeleteClassData): CancelablePromise<ClassesDeleteClassResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/classes/{class_id}',
+            path: {
+                class_id: data.classId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Students
+     * @param data The data for the request.
+     * @param data.classId
+     * @returns StudentsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readStudents(data: ClassesReadStudentsData): CancelablePromise<ClassesReadStudentsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/classes/{class_id}/students',
+            path: {
+                class_id: data.classId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Student
+     * @param data The data for the request.
+     * @param data.classId
+     * @param data.requestBody
+     * @returns StudentPublic Successful Response
+     * @throws ApiError
+     */
+    public static createStudent(data: ClassesCreateStudentData): CancelablePromise<ClassesCreateStudentResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{class_id}/students',
+            path: {
+                class_id: data.classId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Students Batch
+     * 花名册批量导入。dry_run=true 只校验不落库，逐行返回处理结果。
+     * @param data The data for the request.
+     * @param data.classId
+     * @param data.requestBody
+     * @returns StudentBatchResult Successful Response
+     * @throws ApiError
+     */
+    public static createStudentsBatch(data: ClassesCreateStudentsBatchData): CancelablePromise<ClassesCreateStudentsBatchResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/{class_id}/students/batch',
+            path: {
+                class_id: data.classId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Student
+     * @param data The data for the request.
+     * @param data.studentId
+     * @param data.requestBody
+     * @returns StudentPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateStudent(data: ClassesUpdateStudentData): CancelablePromise<ClassesUpdateStudentResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/classes/students/{student_id}',
+            path: {
+                student_id: data.studentId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Delete Student
+     * @param data The data for the request.
+     * @param data.studentId
+     * @returns Message Successful Response
+     * @throws ApiError
+     */
+    public static deleteStudent(data: ClassesDeleteStudentData): CancelablePromise<ClassesDeleteStudentResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/classes/students/{student_id}',
+            path: {
+                student_id: data.studentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Bind Student Account
+     * @param data The data for the request.
+     * @param data.studentId
+     * @param data.requestBody
+     * @returns StudentPublic Successful Response
+     * @throws ApiError
+     */
+    public static bindStudentAccount(data: ClassesBindStudentAccountData): CancelablePromise<ClassesBindStudentAccountResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/classes/students/{student_id}/bind-account',
+            path: {
+                student_id: data.studentId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Unbind Student Account
+     * @param data The data for the request.
+     * @param data.studentId
+     * @returns StudentPublic Successful Response
+     * @throws ApiError
+     */
+    public static unbindStudentAccount(data: ClassesUnbindStudentAccountData): CancelablePromise<ClassesUnbindStudentAccountResponse> {
+        return __request(OpenAPI, {
+            method: 'DELETE',
+            url: '/api/v1/classes/students/{student_id}/bind-account',
+            path: {
+                student_id: data.studentId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
 
 export class ExamsService {
     /**
@@ -27,7 +256,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Create Exam
      * @param data The data for the request.
@@ -46,7 +275,50 @@ export class ExamsService {
             }
         });
     }
-    
+
+    /**
+     * Read Question Bank
+     * @param data The data for the request.
+     * @param data.knowledgePoint
+     * @param data.questionType
+     * @param data.difficulty
+     * @returns QuestionBankPublic Successful Response
+     * @throws ApiError
+     */
+    public static readQuestionBank(data: ExamsReadQuestionBankData = {}): CancelablePromise<ExamsReadQuestionBankResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/exams/question-bank',
+            query: {
+                knowledge_point: data.knowledgePoint,
+                question_type: data.questionType,
+                difficulty: data.difficulty
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Compose Exam
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ExamPublic Successful Response
+     * @throws ApiError
+     */
+    public static composeExam(data: ExamsComposeExamData): CancelablePromise<ExamsComposeExamResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/exams/compose',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Read Exam
      * @param data The data for the request.
@@ -66,7 +338,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Update Exam
      * @param data The data for the request.
@@ -89,7 +361,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Delete Exam
      * @param data The data for the request.
@@ -109,7 +381,54 @@ export class ExamsService {
             }
         });
     }
-    
+
+    /**
+     * Read Grading Assignments
+     * 共享批卷分配（只读）：本校非学生角色均可读；跨校 404。
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns GradingAssignmentsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readGradingAssignments(data: ExamsReadGradingAssignmentsData): CancelablePromise<ExamsReadGradingAssignmentsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/exams/{exam_id}/grading-assignments',
+            path: {
+                exam_id: data.examId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Grading Assignments
+     * 整体覆盖共享批卷分配：exam owner / school_owner / school_admin 可写。
+     *
+     * 校验：班级属于本考试学校；被分配用户是本校非 student 角色。
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.requestBody
+     * @returns GradingAssignmentsPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateGradingAssignments(data: ExamsUpdateGradingAssignmentsData): CancelablePromise<ExamsUpdateGradingAssignmentsResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/exams/{exam_id}/grading-assignments',
+            path: {
+                exam_id: data.examId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Upload Exam File
      * @param data The data for the request.
@@ -132,7 +451,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam Files
      * @param data The data for the request.
@@ -152,7 +471,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Clear Exam Paper Files
      * @param data The data for the request.
@@ -172,7 +491,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Upload Exam Files
      * @param data The data for the request.
@@ -195,7 +514,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Reorder Exam Files
      * @param data The data for the request.
@@ -218,7 +537,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Delete Exam File
      * @param data The data for the request.
@@ -240,7 +559,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Recognize Exam Files With Reference Algorithm
      * @param data The data for the request.
@@ -263,7 +582,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam File Content
      * @param data The data for the request.
@@ -289,7 +608,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam File Source Image
      * @param data The data for the request.
@@ -311,7 +630,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam File Page Image
      * @param data The data for the request.
@@ -339,7 +658,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam File Preprocessing Preview
      * @param data The data for the request.
@@ -367,7 +686,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Preview Exam File With Quads
      * @param data The data for the request.
@@ -392,7 +711,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Preprocess Exam File With Quads
      * @param data The data for the request.
@@ -417,7 +736,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Auto Rectify Exam File
      * @param data The data for the request.
@@ -439,7 +758,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Auto Rectify Exam Files
      * @param data The data for the request.
@@ -459,7 +778,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam Region Candidates
      * @param data The data for the request.
@@ -487,7 +806,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Recognize Exam Document With Reference Algorithm
      * @param data The data for the request.
@@ -509,7 +828,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Recognize Exam Document Page With Reference Algorithm
      * @param data The data for the request.
@@ -533,7 +852,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Upload Student Submission
      * @param data The data for the request.
@@ -556,7 +875,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Student Submissions
      * @param data The data for the request.
@@ -576,7 +895,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam Scores Summary
      * @param data The data for the request.
@@ -596,7 +915,31 @@ export class ExamsService {
             }
         });
     }
-    
+
+    /**
+     * Create Exam Analysis Report
+     * 基于最新批阅成绩调用 LLM 生成四段式班级学情报告。
+     *
+     * 暂不做持久化缓存——每次调用都重新统计并生成；后续如报告生成耗时或
+     * 成本成为问题，可增加缓存表（按 exam_id + 成绩摘要哈希）复用结果。
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns ExamAnalysisReportPublic Successful Response
+     * @throws ApiError
+     */
+    public static createExamAnalysisReport(data: ExamsCreateExamAnalysisReportData): CancelablePromise<ExamsCreateExamAnalysisReportResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/exams/{exam_id}/analysis-report',
+            path: {
+                exam_id: data.examId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Preprocess Student Submission Photo
      * @param data The data for the request.
@@ -619,7 +962,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Append Student Submission Pages
      * @param data The data for the request.
@@ -644,7 +987,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Student Submission
      * @param data The data for the request.
@@ -666,7 +1009,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Update Student Submission Registration
      * @param data The data for the request.
@@ -691,7 +1034,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Create Student Submission Processing Task
      * @param data The data for the request.
@@ -713,7 +1056,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Student Submission Page Image
      * @param data The data for the request.
@@ -741,7 +1084,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Student Submission Template Regions
      * @param data The data for the request.
@@ -767,7 +1110,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Student Submission Region Crop
      * @param data The data for the request.
@@ -795,7 +1138,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Submission Annotation Crop
      * @param data The data for the request.
@@ -823,7 +1166,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Submission Annotations
      * @param data The data for the request.
@@ -845,7 +1188,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Create Submission Annotation
      * @param data The data for the request.
@@ -870,7 +1213,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Update Submission Annotation
      * @param data The data for the request.
@@ -897,7 +1240,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Delete Submission Annotation
      * @param data The data for the request.
@@ -921,7 +1264,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Standard Answers
      * @param data The data for the request.
@@ -941,7 +1284,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Create Standard Answer
      * @param data The data for the request.
@@ -964,7 +1307,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Standard Answer
      * @param data The data for the request.
@@ -986,7 +1329,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Update Standard Answer
      * @param data The data for the request.
@@ -1011,7 +1354,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Delete Standard Answer
      * @param data The data for the request.
@@ -1033,7 +1376,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Read Exam Regions
      * @param data The data for the request.
@@ -1053,7 +1396,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Create Exam Region
      * @param data The data for the request.
@@ -1076,7 +1419,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Update Exam Region
      * @param data The data for the request.
@@ -1101,7 +1444,7 @@ export class ExamsService {
             }
         });
     }
-    
+
     /**
      * Delete Exam Region
      * @param data The data for the request.
@@ -1165,7 +1508,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Read Recognition Items
      * @param data The data for the request.
@@ -1185,7 +1528,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Update Recognition Item
      * @param data The data for the request.
@@ -1208,7 +1551,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Confirm Recognition
      * @param data The data for the request.
@@ -1228,7 +1571,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Create Run
      * @param data The data for the request.
@@ -1247,7 +1590,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * List Runs
      * @param data The data for the request.
@@ -1267,7 +1610,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Get Run
      * @param data The data for the request.
@@ -1287,7 +1630,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Start Run
      * @param data The data for the request.
@@ -1307,7 +1650,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Retry Run
      * @param data The data for the request.
@@ -1327,7 +1670,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Generate Rubrics
      * @param data The data for the request.
@@ -1347,7 +1690,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Publish Answers
      * @param data The data for the request.
@@ -1367,7 +1710,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Review Queue
      * @param data The data for the request.
@@ -1387,7 +1730,7 @@ export class GradingService {
             }
         });
     }
-    
+
     /**
      * Audit Log
      * @param data The data for the request.
@@ -1429,7 +1772,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Test Token
      * Test access token
@@ -1442,7 +1785,7 @@ export class LoginService {
             url: '/api/v1/login/test-token'
         });
     }
-    
+
     /**
      * Recover Password
      * Password Recovery
@@ -1463,7 +1806,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Reset Password
      * Reset password
@@ -1483,7 +1826,7 @@ export class LoginService {
             }
         });
     }
-    
+
     /**
      * Recover Password Html Content
      * HTML Content for Password Recovery
@@ -1499,6 +1842,178 @@ export class LoginService {
             path: {
                 email: data.email
             },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class OrgService {
+    /**
+     * Read Org Settings
+     * 本校信息（name / code / exam_sharing_enabled / contact_name）。
+     * @returns OrgSettingsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgSettings(): CancelablePromise<OrgReadOrgSettingsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/settings'
+        });
+    }
+
+    /**
+     * Update Org Settings
+     * 修改本校设置（仅 school_owner）。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns OrgSettingsPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateOrgSettings(data: OrgUpdateOrgSettingsData): CancelablePromise<OrgUpdateOrgSettingsResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/org/settings',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class PlatformService {
+    /**
+     * List Orgs
+     * 学校列表（含考试 / 学生 / 老师数）。运营角色只读可用。
+     * @returns PlatformOrgsPublic Successful Response
+     * @throws ApiError
+     */
+    public static listOrgs(): CancelablePromise<PlatformListOrgsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/orgs'
+        });
+    }
+
+    /**
+     * Create Org
+     * 新建学校，可同时创建首个 school_owner 账号（同一事务）。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PlatformOrgDetail Successful Response
+     * @throws ApiError
+     */
+    public static createOrg(data: PlatformCreateOrgData): CancelablePromise<PlatformCreateOrgResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/orgs',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Org
+     * 学校详情 + 账号列表 + 使用统计。
+     * @param data The data for the request.
+     * @param data.orgId
+     * @returns PlatformOrgDetail Successful Response
+     * @throws ApiError
+     */
+    public static readOrg(data: PlatformReadOrgData): CancelablePromise<PlatformReadOrgResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/orgs/{org_id}',
+            path: {
+                org_id: data.orgId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Org
+     * 修改学校信息 / 状态（active / suspended）。
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns PlatformOrgDetail Successful Response
+     * @throws ApiError
+     */
+    public static updateOrg(data: PlatformUpdateOrgData): CancelablePromise<PlatformUpdateOrgResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/platform/orgs/{org_id}',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Add Org Owner
+     * 给学校追加一个 school_owner 账号。
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns PlatformOrgUserItem Successful Response
+     * @throws ApiError
+     */
+    public static addOrgOwner(data: PlatformAddOrgOwnerData): CancelablePromise<PlatformAddOrgOwnerResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/orgs/{org_id}/owners',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read System Config
+     * 读取模型与批改默认值（DB 无值回落 env）+ 各 provider 配置状态。
+     * @returns SystemConfigPublic Successful Response
+     * @throws ApiError
+     */
+    public static readSystemConfig(): CancelablePromise<PlatformReadSystemConfigResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/system-config'
+        });
+    }
+
+    /**
+     * Update System Config
+     * 部分更新默认值；校验 provider/model 组合合法后生效于之后的新批次。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns SystemConfigPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateSystemConfig(data: PlatformUpdateSystemConfigData): CancelablePromise<PlatformUpdateSystemConfigResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/platform/system-config',
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }
@@ -1548,7 +2063,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Create Question Recognition Run
      * @param data The data for the request.
@@ -1571,7 +2086,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * List Question Recognition Runs
      * @param data The data for the request.
@@ -1591,7 +2106,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Import Marking Recognition Run
      * @param data The data for the request.
@@ -1614,7 +2129,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Get Question Recognition Run
      * @param data The data for the request.
@@ -1636,7 +2151,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * List Question Recognition Items
      * @param data The data for the request.
@@ -1658,7 +2173,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Update Question Recognition Item
      * @param data The data for the request.
@@ -1683,7 +2198,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Confirm Question Recognition Run
      * @param data The data for the request.
@@ -1705,7 +2220,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Create Answer Preparation Run
      * @param data The data for the request.
@@ -1728,7 +2243,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * List Answer Preparation Runs
      * @param data The data for the request.
@@ -1748,7 +2263,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Get Answer Preparation Run
      * @param data The data for the request.
@@ -1770,7 +2285,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * List Answer Preparation Items
      * @param data The data for the request.
@@ -1792,7 +2307,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Update Answer Preparation Item
      * @param data The data for the request.
@@ -1817,7 +2332,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Confirm Answer Preparation Run
      * @param data The data for the request.
@@ -1839,7 +2354,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * List Standard Answer Revisions
      * @param data The data for the request.
@@ -1859,7 +2374,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-    
+
     /**
      * Publish Standard Answer Revisions
      * @param data The data for the request.
@@ -1877,6 +2392,40 @@ export class QuestionAnswerWorkflowService {
             },
             body: data.requestBody,
             mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class StudentsService {
+    /**
+     * Read My Exams
+     * @returns StudentExamListPublic Successful Response
+     * @throws ApiError
+     */
+    public static readMyExams(): CancelablePromise<StudentsReadMyExamsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students/me/exams'
+        });
+    }
+
+    /**
+     * Read My Exam Report
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns StudentExamReportPublic Successful Response
+     * @throws ApiError
+     */
+    public static readMyExamReport(data: StudentsReadMyExamReportData): CancelablePromise<StudentsReadMyExamReportResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students/me/exams/{exam_id}/report',
+            path: {
+                exam_id: data.examId
+            },
             errors: {
                 422: 'Validation Error'
             }
@@ -1903,7 +2452,7 @@ export class TasksService {
             }
         });
     }
-    
+
     /**
      * Read Task
      * @param data The data for the request.
@@ -1928,7 +2477,7 @@ export class TasksService {
 export class UsersService {
     /**
      * Read Users
-     * Retrieve users.
+     * Retrieve users. 平台角色看全部，学校角色只看本校用户。
      * @param data The data for the request.
      * @param data.skip
      * @param data.limit
@@ -1948,10 +2497,10 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Create User
-     * Create new user.
+     * Create new user. 学校角色只能创建本校账号，且受角色上限约束。
      * @param data The data for the request.
      * @param data.requestBody
      * @returns UserPublic Successful Response
@@ -1968,7 +2517,27 @@ export class UsersService {
             }
         });
     }
-    
+
+    /**
+     * Create Teachers Batch
+     * 老师花名册批量导入。dry_run=true 只校验不落库，逐行返回处理结果。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns TeacherBatchResult Successful Response
+     * @throws ApiError
+     */
+    public static createTeachersBatch(data: UsersCreateTeachersBatchData): CancelablePromise<UsersCreateTeachersBatchResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/users/batch',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Read User Me
      * Get current user.
@@ -1981,10 +2550,13 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Delete User Me
      * Delete own user.
+     *
+     * 多租户模式下自删会级联删除其名下的考试与数据，过于危险：
+     * 所有角色一律禁止自删，由学校管理员或平台停用账号。
      * @returns Message Successful Response
      * @throws ApiError
      */
@@ -1994,7 +2566,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-    
+
     /**
      * Update User Me
      * Update own user.
@@ -2014,7 +2586,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update Password Me
      * Update own password.
@@ -2034,13 +2606,13 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Register User
-     * Create new user without the need to be logged in.
+     * 公开注册已关闭：账号一律由学校管理员或平台创建。
      * @param data The data for the request.
      * @param data.requestBody
-     * @returns UserPublic Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static registerUser(data: UsersRegisterUserData): CancelablePromise<UsersRegisterUserResponse> {
@@ -2054,7 +2626,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Read User By Id
      * Get a specific user by id.
@@ -2075,10 +2647,10 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Update User
-     * Update a user.
+     * Update a user. 学校角色只能修改本校用户，且受角色上限约束。
      * @param data The data for the request.
      * @param data.userId
      * @param data.requestBody
@@ -2099,7 +2671,7 @@ export class UsersService {
             }
         });
     }
-    
+
     /**
      * Delete User
      * Delete a user.
@@ -2115,6 +2687,52 @@ export class UsersService {
             path: {
                 user_id: data.userId
             },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Teaching Profile
+     * 任教档案（任教班级 + 学科标签）：本人或学校管理角色（owner/admin）可读。
+     * @param data The data for the request.
+     * @param data.userId
+     * @returns TeachingProfilePublic Successful Response
+     * @throws ApiError
+     */
+    public static readTeachingProfile(data: UsersReadTeachingProfileData): CancelablePromise<UsersReadTeachingProfileResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/users/{user_id}/teaching',
+            path: {
+                user_id: data.userId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Teaching Profile
+     * 整体覆盖任教档案：school_owner/school_admin（限本校）或平台超管；
+     * 目标用户角色必须是 teacher/school_admin；班级必须与目标用户同校（跨校 400）。
+     * @param data The data for the request.
+     * @param data.userId
+     * @param data.requestBody
+     * @returns TeachingProfilePublic Successful Response
+     * @throws ApiError
+     */
+    public static updateTeachingProfile(data: UsersUpdateTeachingProfileData): CancelablePromise<UsersUpdateTeachingProfileResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/users/{user_id}/teaching',
+            path: {
+                user_id: data.userId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
             errors: {
                 422: 'Validation Error'
             }
@@ -2143,7 +2761,7 @@ export class UtilsService {
             }
         });
     }
-    
+
     /**
      * Health Check
      * @returns boolean Successful Response
@@ -2155,7 +2773,7 @@ export class UtilsService {
             url: '/api/v1/utils/health-check/'
         });
     }
-    
+
     /**
      * Health
      * @returns string Successful Response

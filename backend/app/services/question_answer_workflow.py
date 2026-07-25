@@ -298,7 +298,11 @@ def execute_question_recognition(run_id: str) -> None:
             if len(documents) != len(requested_ids):
                 raise RuntimeError("部分试卷文件不存在或不属于当前考试")
 
-            payload = process_stored_files(documents=documents)
+            payload = process_stored_files(
+                documents=documents,
+                provider=run.provider,
+                model=run.model,
+            )
             persist_question_recognition_payload(
                 session=session,
                 run=run,
@@ -784,6 +788,9 @@ def _page_header_score_hints(
     page_number: int,
     first_y: float,
     first_question_key: str,
+    provider: str,
+    model: str,
+    fallback_models: list[str],
 ) -> dict[str, dict]:
     """Read printed question-score allocations from the page header, not from OCR text."""
     image = render_stored_file_page_image(
@@ -827,9 +834,9 @@ def _page_header_score_hints(
 }}。
 没有证据时对应数组为空、数值为 null。"""
     parsed, _model, _elapsed, _usage = call_json_model_with_metadata(
-        provider="fluxnode_gemini",
-        model="gemini-3.5-flash",
-        fallback_models=[],
+        provider=provider,
+        model=model,
+        fallback_models=fallback_models,
         messages=[
             {
                 "role": "user",
@@ -845,7 +852,12 @@ def _page_header_score_hints(
     )
 
 
-def _solve_question(question: dict, provider: str, model: str) -> dict:
+def _solve_question(
+    question: dict,
+    provider: str,
+    model: str,
+    fallback_models: list[str] | None = None,
+) -> dict:
     declared_score = question.get("declared_max_score")
     score_evidence = str(question.get("score_evidence_text") or "").strip()
     grading_rule = str(question.get("declared_grading_rule") or "").strip()
@@ -903,9 +915,10 @@ def _solve_question(question: dict, provider: str, model: str) -> dict:
     parsed, used_model, elapsed_ms, usage = call_json_model_with_metadata(
         provider=provider,
         model=model,
-        fallback_models=[],
+        fallback_models=fallback_models or [],
         messages=[{"role": "user", "content": content}],
     )
+    used_provider = str(usage.pop("_used_provider", provider))
     score_requires_review = declared_score is None and is_choice_question
     max_score = (
         _score_decimal(declared_score)
@@ -941,7 +954,12 @@ def _solve_question(question: dict, provider: str, model: str) -> dict:
             parsed.get("scoring_points"), max_score
         ),
         "confidence": confidence,
-        "raw_result": parsed,
+        "raw_result": {
+            **parsed,
+            "_used_provider": used_provider,
+            "_used_model": used_model,
+        },
+        "used_provider": used_provider,
         "used_model": used_model,
         "elapsed_ms": elapsed_ms,
         "usage": usage,
@@ -1020,6 +1038,7 @@ def _parse_answer_documents(
     documents: list[tuple[ExamDocument, StoredFile]],
     provider: str,
     model: str,
+    fallback_models: list[str] | None = None,
 ) -> tuple[dict, str, int, dict]:
     question_catalog = [
         {
@@ -1052,7 +1071,7 @@ def _parse_answer_documents(
     return call_json_model_with_metadata(
         provider=provider,
         model=model,
-        fallback_models=[],
+        fallback_models=fallback_models or [],
         messages=[{"role": "user", "content": content}],
     )
 
@@ -1070,6 +1089,10 @@ def execute_answer_preparation(run_id: str) -> None:
         session.add(run)
         session.commit()
         try:
+            from app.services.system_config import get_grading_defaults
+
+            defaults = get_grading_defaults(session)
+            fallback_models = [str(item) for item in defaults["fallback_models"]]
             questions = [
                 {
                     "id": question.id,
@@ -1156,6 +1179,9 @@ def execute_answer_preparation(run_id: str) -> None:
                             page_number=page_number,
                             first_y=first_y,
                             first_question_key=first_question_key,
+                            provider=str(defaults["recognition_provider"]),
+                            model=str(defaults["recognition_model"]),
+                            fallback_models=fallback_models,
                         )
                     except Exception:
                         page_allocations = {}
@@ -1178,6 +1204,7 @@ def execute_answer_preparation(run_id: str) -> None:
             failures = 0
             model_elapsed_ms = 0
             used_models: set[str] = set()
+            used_providers: set[str] = set()
             usage_totals: dict[str, int] = {}
             if run.source_type == AnswerPreparationSource.MODEL:
                 solved_items: list[tuple[dict, dict, AnswerPreparationItem]] = []
@@ -1186,7 +1213,11 @@ def execute_answer_preparation(run_id: str) -> None:
                 ) as pool:
                     futures = {
                         pool.submit(
-                            _solve_question, question, run.provider, run.model
+                            _solve_question,
+                            question,
+                            run.provider,
+                            run.model,
+                            fallback_models,
                         ): question
                         for question in questions
                     }
@@ -1195,6 +1226,7 @@ def execute_answer_preparation(run_id: str) -> None:
                         try:
                             result = future.result()
                             model_elapsed_ms += result["elapsed_ms"]
+                            used_providers.add(result["used_provider"])
                             used_models.add(result["used_model"])
                             for key, value in (result.get("usage") or {}).items():
                                 if isinstance(value, int | float):
@@ -1307,6 +1339,7 @@ def execute_answer_preparation(run_id: str) -> None:
                                     question,
                                     run.provider,
                                     run.model,
+                                    fallback_models,
                                 ): item
                                 for question, item in resolved
                             }
@@ -1318,6 +1351,7 @@ def execute_answer_preparation(run_id: str) -> None:
                                     # Keep the round-1 fallback item on failure.
                                     continue
                                 model_elapsed_ms += result["elapsed_ms"]
+                                used_providers.add(result["used_provider"])
                                 used_models.add(result["used_model"])
                                 for key, value in (
                                     result.get("usage") or {}
@@ -1355,8 +1389,10 @@ def execute_answer_preparation(run_id: str) -> None:
                     documents=documents,
                     provider=run.provider,
                     model=run.model,
+                    fallback_models=fallback_models,
                 )
                 used_models.add(used_model)
+                used_providers.add(str(usage.get("_used_provider", run.provider)))
                 for key, value in usage.items():
                     if isinstance(value, int | float):
                         usage_totals[key] = usage_totals.get(key, 0) + int(value)
@@ -1443,13 +1479,24 @@ def execute_answer_preparation(run_id: str) -> None:
             run.timing = {
                 "modelMs": model_elapsed_ms,
                 "totalElapsedMs": round((time.perf_counter() - started) * 1000),
+                "requestedProvider": run.provider,
+                "requestedModel": run.model,
+                "usedProviders": sorted(used_providers),
                 "usedModels": sorted(used_models),
+                "fallbackUsed": bool(
+                    used_providers - {run.provider} or used_models - {run.model}
+                ),
                 "tokenUsage": usage_totals,
             }
             run.status = (
                 WorkflowRunStatus.COMPLETED_WITH_ERRORS
                 if failures
                 else WorkflowRunStatus.COMPLETED
+            )
+            run.error_message = (
+                f"{failures} 道题未能生成答案，请重试失败项或人工补充"
+                if failures
+                else None
             )
             run.completed_at = get_datetime_utc()
             session.add(run)

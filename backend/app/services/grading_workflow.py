@@ -3,6 +3,7 @@ from __future__ import annotations
 import random
 import time
 import uuid
+from collections.abc import Iterable
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any
@@ -43,6 +44,8 @@ from app.services.submission_crops import (
     resolve_exam_region_paper_page,
 )
 from app.services.vision_grading import extract_answer_images, grade_answer_text
+
+MAX_TOTAL_CONCURRENCY = 32
 
 
 def publish_standard_answers(session: Session, run: GradingRun) -> list[StandardAnswer]:
@@ -156,7 +159,7 @@ class AdaptiveConcurrency:
     throttle_count: int = 0
 
     def __post_init__(self) -> None:
-        self.maximum = min(8, max(1, self.maximum))
+        self.maximum = min(MAX_TOTAL_CONCURRENCY, max(1, self.maximum))
         self.current = self.maximum
 
     def record(self, *, transient: bool, failed: bool) -> None:
@@ -169,6 +172,32 @@ class AdaptiveConcurrency:
             if self.success_streak >= 20 and self.current < self.maximum:
                 self.current += 1
                 self.success_streak = 0
+
+
+def next_schedulable_payload_index(
+    pending: list[WorkPayload],
+    active: Iterable[WorkPayload],
+    *,
+    max_parallel_submissions: int,
+    max_concurrency_per_submission: int,
+) -> int | None:
+    """Pick the next item without exceeding answer-level or per-answer limits."""
+    active_counts: dict[uuid.UUID, int] = {}
+    for payload in active:
+        submission_id = payload.submission.id
+        active_counts[submission_id] = active_counts.get(submission_id, 0) + 1
+    active_submissions = set(active_counts)
+    for index, payload in enumerate(pending):
+        submission_id = payload.submission.id
+        if active_counts.get(submission_id, 0) >= max_concurrency_per_submission:
+            continue
+        if (
+            submission_id not in active_submissions
+            and len(active_submissions) >= max_parallel_submissions
+        ):
+            continue
+        return index
+    return None
 
 
 def answer_text_for_grading(extraction_data: dict[str, Any]) -> str:
@@ -206,6 +235,7 @@ def _process_item(payload: WorkPayload) -> WorkResult:
                 provider=payload.vision_provider,
                 model=payload.vision_model,
                 question_label=payload.region.label,
+                fallback_models=payload.fallback_models,
             )
             extraction_data = {
                 "question_text": extraction.question_text,
@@ -238,9 +268,7 @@ def _process_item(payload: WorkPayload) -> WorkResult:
             grade = grade_objective(
                 student_answer=str(grading_answer),
                 answer=payload.answer,
-                extraction_confidence=float(
-                    extraction_data.get("confidence") or 0
-                ),
+                extraction_confidence=float(extraction_data.get("confidence") or 0),
             )
             grading_data = {
                 "score": grade.score,
@@ -292,6 +320,12 @@ def _process_item(payload: WorkPayload) -> WorkResult:
                 "503",
                 "504",
                 "暂不可用",
+                "额度已用完",
+                "请求较多",
+                "ssl",
+                "connection",
+                "disconnected",
+                "eof",
             )
         )
         return WorkResult(payload=payload, error=message, transient=transient)
@@ -476,7 +510,10 @@ def _save_result(
         )
     if answer_count_mismatch:
         annotation.grading_reasons.append(
-            {"type": "answer_count_mismatch", "message": "多空题识别答案项数少于评分点数"}
+            {
+                "type": "answer_count_mismatch",
+                "message": "多空题识别答案项数少于评分点数",
+            }
         )
     session.add_all([item, annotation])
     session.flush()
@@ -497,9 +534,7 @@ def _save_result(
                 "combined_confidence": combined,
                 "question_id": str(item.question_id) if item.question_id else None,
                 "answer_revision_id": (
-                    str(item.answer_revision_id)
-                    if item.answer_revision_id
-                    else None
+                    str(item.answer_revision_id) if item.answer_revision_id else None
                 ),
             },
         )
@@ -523,8 +558,7 @@ def execute_grading_run(run_id: str) -> None:
         try:
             questions = list(
                 session.exec(
-                    select(ExamQuestion)
-                    .where(
+                    select(ExamQuestion).where(
                         ExamQuestion.exam_id == run.exam_id,
                         ExamQuestion.status == ExamQuestionStatus.CONFIRMED,
                     )
@@ -559,7 +593,12 @@ def execute_grading_run(run_id: str) -> None:
             }
             targets: dict[
                 uuid.UUID,
-                tuple[ExamQuestion, tuple[ExamRegion, ...], StandardAnswer, StandardAnswerRevision],
+                tuple[
+                    ExamQuestion,
+                    tuple[ExamRegion, ...],
+                    StandardAnswer,
+                    StandardAnswerRevision,
+                ],
             ] = {}
             invalid: dict[str, list[str]] = {}
             for question in questions:
@@ -633,16 +672,24 @@ def execute_grading_run(run_id: str) -> None:
                 recognition_run = session.get(
                     GradingRun, uuid.UUID(str(recognition_run_id))
                 )
-                recognition_timing = dict(
-                    (recognition_run.config_snapshot or {}).get("timing", {})
-                ) if recognition_run else {}
+                recognition_timing = (
+                    dict((recognition_run.config_snapshot or {}).get("timing", {}))
+                    if recognition_run
+                    else {}
+                )
                 for recognition_item in session.exec(
                     select(GradingItem).where(
-                        GradingItem.grading_run_id == uuid.UUID(str(recognition_run_id)),
+                        GradingItem.grading_run_id
+                        == uuid.UUID(str(recognition_run_id)),
                         GradingItem.status == GradingItemStatus.COMPLETED,
                     )
                 ).all():
-                    recognition_items[(recognition_item.submission_id, recognition_item.exam_region_id)] = dict(recognition_item.extraction_result or {})
+                    recognition_items[
+                        (
+                            recognition_item.submission_id,
+                            recognition_item.exam_region_id,
+                        )
+                    ] = dict(recognition_item.extraction_result or {})
             existing = {
                 (item.submission_id, item.exam_region_id): item
                 for item in session.exec(
@@ -716,19 +763,46 @@ def execute_grading_run(run_id: str) -> None:
                         grading_model=run.model,
                         fallback_models=run.fallback_models,
                         attempt=item.attempts + 1,
-                        extraction_override=recognition_items.get((submission_id, region_id)),
+                        extraction_override=recognition_items.get(
+                            (submission_id, region_id)
+                        ),
                         page_numbers=region_page_numbers,
                     )
                 )
             max_concurrency = min(
-                8, max(1, int(run.config_snapshot.get("max_concurrency", 8)))
+                MAX_TOTAL_CONCURRENCY,
+                max(1, int(run.config_snapshot.get("max_concurrency", 8))),
+            )
+            max_parallel_submissions = min(
+                8,
+                max(
+                    1,
+                    int(run.config_snapshot.get("max_parallel_submissions", 8)),
+                ),
+            )
+            max_concurrency_per_submission = min(
+                8,
+                max(
+                    1,
+                    int(run.config_snapshot.get("max_concurrency_per_submission", 4)),
+                ),
             )
             adaptive = AdaptiveConcurrency(max_concurrency)
             futures: dict[Future[WorkResult], WorkPayload] = {}
             with ThreadPoolExecutor(max_workers=max_concurrency) as pool:
                 while pending or futures:
                     while pending and len(futures) < adaptive.current:
-                        payload = pending.pop(0)
+                        next_index = next_schedulable_payload_index(
+                            pending,
+                            futures.values(),
+                            max_parallel_submissions=max_parallel_submissions,
+                            max_concurrency_per_submission=(
+                                max_concurrency_per_submission
+                            ),
+                        )
+                        if next_index is None:
+                            break
+                        payload = pending.pop(next_index)
                         item = session.get(GradingItem, payload.item_id)
                         if item:
                             item.status, item.started_at = (
@@ -737,7 +811,7 @@ def execute_grading_run(run_id: str) -> None:
                             )
                             session.add(item)
                         futures[pool.submit(_process_item, payload)] = payload
-                    run.current_concurrency = adaptive.current
+                    run.current_concurrency = len(futures)
                     session.add(run)
                     session.commit()
                     done, _ = wait(futures, return_when=FIRST_COMPLETED)
@@ -850,6 +924,14 @@ def execute_grading_run(run_id: str) -> None:
             int((item.grading_result or {}).get("elapsed_ms") or 0)
             for item in timing_items
         )
+        used_routes = sorted(
+            {
+                f"{result.get('provider')}:{result.get('model')}"
+                for item in timing_items
+                for result in (item.extraction_result or {}, item.grading_result or {})
+                if result.get("provider") and result.get("model")
+            }
+        )
         recognition_total_ms = int(
             recognition_timing.get("total_elapsed_ms")
             or recognition_timing.get("totalElapsedMs")
@@ -883,6 +965,17 @@ def execute_grading_run(run_id: str) -> None:
                 "extraction_item_ms": extraction_item_ms,
                 "grading_item_ms": grading_item_ms,
                 "item_elapsed_ms": extraction_item_ms + grading_item_ms,
+                "used_routes": used_routes,
+                "fallback_used": any(
+                    route
+                    not in {
+                        f"{run.config_snapshot.get('vision_provider')}:{run.config_snapshot.get('vision_model')}",
+                        f"{run.provider}:{run.model}",
+                        "rules:objective-rules-v1",
+                        "safety-gate:answer-evidence-gate-v1",
+                    }
+                    for route in used_routes
+                ),
                 "total_elapsed_ms": (
                     recognition_total_ms + grading_wall_ms
                     if recognition_total_ms

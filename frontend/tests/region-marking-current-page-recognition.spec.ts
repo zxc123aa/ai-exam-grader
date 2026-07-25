@@ -355,9 +355,12 @@ test("marking page exposes current-page recognition and clear controls", async (
   await expect(
     currentPagePanel.getByRole("button", { name: "清除本页", exact: true }),
   ).toBeDisabled()
+  // 「清除全部识别」收进了「清除」下拉菜单
+  await page.getByRole("button", { name: "清除", exact: true }).click()
   await expect(
-    page.getByRole("button", { name: "清除全部识别", exact: true }),
+    page.getByRole("menuitem", { name: "清除全部识别" }),
   ).toBeDisabled()
+  await page.keyboard.press("Escape")
 
   const detectRegionsButton = page.getByRole("button", {
     name: /检测题目区域|检测中/,
@@ -395,7 +398,7 @@ test("marking page exposes current-page recognition and clear controls", async (
   ).toBeEnabled()
 
   await page.getByRole("button", { name: "下一页" }).click()
-  await expect(page.getByText(/当前第 2 页/)).toBeVisible()
+  await expect(page.getByText("第 2 / 8 页")).toBeVisible()
   await expect(currentPagePanel).toContainText("本页还没有识别结果")
   await expect(currentPagePanel).not.toContainText("第3题前半部分")
   await page.getByRole("button", { name: "识别当前页" }).click()

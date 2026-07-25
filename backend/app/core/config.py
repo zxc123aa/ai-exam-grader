@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     # overrides this with http://ocr-service:8010/preprocess.
     SCAN_HTTP_URL: str = "http://localhost:8010/preprocess"
     SCAN_HTTP_TIMEOUT_SECONDS: int = 120
-    VISION_DEFAULT_PROVIDER: str = "fluxnode_gemini"
+    VISION_DEFAULT_PROVIDER: str = "pomoai"
     VISION_DEFAULT_MODEL: str = "gemini-3.5-flash"
     GRADING_DEFAULT_PROVIDER: str = "pomoai"
     GRADING_DEFAULT_MODEL: str = "gpt-5.6-sol"

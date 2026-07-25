@@ -650,6 +650,153 @@ export const Body_login_login_access_tokenSchema = {
     title: 'Body_login-login_access_token'
 } as const;
 
+export const ClassGroupCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Name'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        },
+        org_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Id'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'ClassGroupCreate'
+} as const;
+
+export const ClassGroupPublicSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Name'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        owner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Owner Id'
+        },
+        org_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Org Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        student_count: {
+            type: 'integer',
+            title: 'Student Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['name', 'id', 'owner_id', 'org_id'],
+    title: 'ClassGroupPublic'
+} as const;
+
+export const ClassGroupUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        }
+    },
+    type: 'object',
+    title: 'ClassGroupUpdate'
+} as const;
+
+export const ClassGroupsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/ClassGroupPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'ClassGroupsPublic'
+} as const;
+
 export const DocumentPageQuadSchema = {
     properties: {
         label: {
@@ -699,6 +846,58 @@ export const DocumentQuadPointSchema = {
     title: 'DocumentQuadPoint'
 } as const;
 
+export const ExamAnalysisReportPublicSchema = {
+    properties: {
+        overall: {
+            type: 'string',
+            title: 'Overall'
+        },
+        weak: {
+            type: 'string',
+            title: 'Weak'
+        },
+        polar: {
+            type: 'string',
+            title: 'Polar'
+        },
+        advice: {
+            type: 'string',
+            title: 'Advice'
+        },
+        generated_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Generated At'
+        }
+    },
+    type: 'object',
+    required: ['overall', 'weak', 'polar', 'advice', 'generated_at'],
+    title: 'ExamAnalysisReportPublic'
+} as const;
+
+export const ExamComposeRequestSchema = {
+    properties: {
+        title: {
+            type: 'string',
+            maxLength: 255,
+            minLength: 1,
+            title: 'Title'
+        },
+        question_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Question Ids'
+        }
+    },
+    type: 'object',
+    required: ['title', 'question_ids'],
+    title: 'ExamComposeRequest'
+} as const;
+
 export const ExamCreateSchema = {
     properties: {
         title: {
@@ -730,6 +929,57 @@ export const ExamCreateSchema = {
                 }
             ],
             title: 'Grade Level'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
+        class_ids: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string',
+                        format: 'uuid'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Ids'
+        },
+        org_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Id'
         }
     },
     type: 'object',
@@ -955,9 +1205,38 @@ export const ExamPublicSchema = {
             ],
             title: 'Grade Level'
         },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
         status: {
             '$ref': '#/components/schemas/ExamStatus',
             default: 'draft'
+        },
+        shared_grading_enabled: {
+            type: 'boolean',
+            title: 'Shared Grading Enabled',
+            default: false
         },
         id: {
             type: 'string',
@@ -968,6 +1247,11 @@ export const ExamPublicSchema = {
             type: 'string',
             format: 'uuid',
             title: 'Owner Id'
+        },
+        org_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Org Id'
         },
         created_at: {
             anyOf: [
@@ -980,10 +1264,30 @@ export const ExamPublicSchema = {
                 }
             ],
             title: 'Created At'
+        },
+        class_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Class Ids'
+        },
+        class_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Class Names'
+        },
+        is_assigned: {
+            type: 'boolean',
+            title: 'Is Assigned',
+            default: false
         }
     },
     type: 'object',
-    required: ['title', 'id', 'owner_id'],
+    required: ['title', 'id', 'owner_id', 'org_id'],
     title: 'ExamPublic'
 } as const;
 
@@ -1021,6 +1325,28 @@ export const ExamQuestionPublicSchema = {
                 }
             ],
             title: 'Question Type'
+        },
+        knowledge_point: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Point'
+        },
+        difficulty: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Difficulty'
         },
         recognition_confidence: {
             anyOf: [
@@ -1833,6 +2159,30 @@ export const ExamUpdateSchema = {
             ],
             title: 'Grade Level'
         },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        description: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 500
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Description'
+        },
         status: {
             anyOf: [
                 {
@@ -1842,6 +2192,21 @@ export const ExamUpdateSchema = {
                     type: 'null'
                 }
             ]
+        },
+        class_ids: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string',
+                        format: 'uuid'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Ids'
         }
     },
     type: 'object',
@@ -1865,6 +2230,119 @@ export const ExamsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'ExamsPublic'
+} as const;
+
+export const GradingAssignmentClassPublicSchema = {
+    properties: {
+        class_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Class Id'
+        },
+        class_name: {
+            type: 'string',
+            title: 'Class Name'
+        }
+    },
+    type: 'object',
+    required: ['class_id', 'class_name'],
+    title: 'GradingAssignmentClassPublic'
+} as const;
+
+export const GradingAssignmentEntrySchema = {
+    properties: {
+        class_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Class Id'
+        },
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        }
+    },
+    type: 'object',
+    required: ['class_id', 'user_id'],
+    title: 'GradingAssignmentEntry'
+} as const;
+
+export const GradingAssignmentItemPublicSchema = {
+    properties: {
+        class_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Class Id'
+        },
+        class_name: {
+            type: 'string',
+            title: 'Class Name'
+        },
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        },
+        user_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'User Name'
+        }
+    },
+    type: 'object',
+    required: ['class_id', 'class_name', 'user_id'],
+    title: 'GradingAssignmentItemPublic'
+} as const;
+
+export const GradingAssignmentsPublicSchema = {
+    properties: {
+        enabled: {
+            type: 'boolean',
+            title: 'Enabled'
+        },
+        assignments: {
+            items: {
+                '$ref': '#/components/schemas/GradingAssignmentItemPublic'
+            },
+            type: 'array',
+            title: 'Assignments'
+        },
+        unassigned: {
+            items: {
+                '$ref': '#/components/schemas/GradingAssignmentClassPublic'
+            },
+            type: 'array',
+            title: 'Unassigned'
+        }
+    },
+    type: 'object',
+    required: ['enabled'],
+    title: 'GradingAssignmentsPublic'
+} as const;
+
+export const GradingAssignmentsUpdateSchema = {
+    properties: {
+        enabled: {
+            type: 'boolean',
+            title: 'Enabled'
+        },
+        assignments: {
+            items: {
+                '$ref': '#/components/schemas/GradingAssignmentEntry'
+            },
+            type: 'array',
+            title: 'Assignments'
+        }
+    },
+    type: 'object',
+    required: ['enabled'],
+    title: 'GradingAssignmentsUpdate'
 } as const;
 
 export const GradingAuditEventPublicSchema = {
@@ -2159,18 +2637,56 @@ export const GradingRunCreateSchema = {
             title: 'Submission Ids'
         },
         review_threshold: {
-            type: 'number',
-            maximum: 1,
-            minimum: 0,
-            title: 'Review Threshold',
-            default: 0.8
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Review Threshold'
         },
         max_concurrency: {
-            type: 'integer',
-            maximum: 8,
-            minimum: 1,
-            title: 'Max Concurrency',
-            default: 8
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 8,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Concurrency'
+        },
+        max_parallel_submissions: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 8,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Parallel Submissions'
+        },
+        max_concurrency_per_submission: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 8,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Concurrency Per Submission'
         },
         recognition_run_id: {
             anyOf: [
@@ -2472,6 +2988,379 @@ export const NewPasswordSchema = {
     title: 'NewPassword'
 } as const;
 
+export const OrgSettingsPublicSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        code: {
+            type: 'string',
+            title: 'Code'
+        },
+        exam_sharing_enabled: {
+            type: 'boolean',
+            title: 'Exam Sharing Enabled'
+        },
+        contact_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Contact Name'
+        }
+    },
+    type: 'object',
+    required: ['name', 'code', 'exam_sharing_enabled'],
+    title: 'OrgSettingsPublic'
+} as const;
+
+export const OrgSettingsUpdateSchema = {
+    properties: {
+        contact_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Contact Name'
+        },
+        exam_sharing_enabled: {
+            anyOf: [
+                {
+                    type: 'boolean'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Sharing Enabled'
+        }
+    },
+    type: 'object',
+    title: 'OrgSettingsUpdate'
+} as const;
+
+export const PlatformOrgCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 200,
+            minLength: 1,
+            title: 'Name'
+        },
+        code: {
+            type: 'string',
+            maxLength: 50,
+            minLength: 1,
+            title: 'Code'
+        },
+        contact_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Contact Name'
+        },
+        owner: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/PlatformOrgOwnerCreate'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    required: ['name', 'code'],
+    title: 'PlatformOrgCreate'
+} as const;
+
+export const PlatformOrgDetailSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        code: {
+            type: 'string',
+            title: 'Code'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        exam_sharing_enabled: {
+            type: 'boolean',
+            title: 'Exam Sharing Enabled'
+        },
+        contact_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Contact Name'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        },
+        exam_count: {
+            type: 'integer',
+            title: 'Exam Count',
+            default: 0
+        },
+        student_count: {
+            type: 'integer',
+            title: 'Student Count',
+            default: 0
+        },
+        teacher_count: {
+            type: 'integer',
+            title: 'Teacher Count',
+            default: 0
+        },
+        users: {
+            items: {
+                '$ref': '#/components/schemas/PlatformOrgUserItem'
+            },
+            type: 'array',
+            title: 'Users'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'code', 'status', 'exam_sharing_enabled'],
+    title: 'PlatformOrgDetail'
+} as const;
+
+export const PlatformOrgListItemSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        code: {
+            type: 'string',
+            title: 'Code'
+        },
+        status: {
+            type: 'string',
+            title: 'Status'
+        },
+        exam_count: {
+            type: 'integer',
+            title: 'Exam Count',
+            default: 0
+        },
+        student_count: {
+            type: 'integer',
+            title: 'Student Count',
+            default: 0
+        },
+        teacher_count: {
+            type: 'integer',
+            title: 'Teacher Count',
+            default: 0
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: ['id', 'name', 'code', 'status'],
+    title: 'PlatformOrgListItem'
+} as const;
+
+export const PlatformOrgOwnerCreateSchema = {
+    properties: {
+        email: {
+            type: 'string',
+            maxLength: 255,
+            format: 'email',
+            title: 'Email'
+        },
+        full_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Full Name'
+        },
+        password: {
+            type: 'string',
+            maxLength: 128,
+            minLength: 8,
+            title: 'Password'
+        }
+    },
+    type: 'object',
+    required: ['email', 'password'],
+    title: 'PlatformOrgOwnerCreate',
+    description: '新建学校时附带的首个 school_owner 账号。'
+} as const;
+
+export const PlatformOrgUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        code: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Code'
+        },
+        status: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 20
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Status'
+        },
+        contact_name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Contact Name'
+        }
+    },
+    type: 'object',
+    title: 'PlatformOrgUpdate'
+} as const;
+
+export const PlatformOrgUserItemSchema = {
+    properties: {
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        email: {
+            type: 'string',
+            title: 'Email'
+        },
+        full_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Full Name'
+        },
+        role: {
+            '$ref': '#/components/schemas/UserRole'
+        },
+        is_active: {
+            type: 'boolean',
+            title: 'Is Active'
+        }
+    },
+    type: 'object',
+    required: ['id', 'email', 'role', 'is_active'],
+    title: 'PlatformOrgUserItem'
+} as const;
+
+export const PlatformOrgsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/PlatformOrgListItem'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'PlatformOrgsPublic'
+} as const;
+
 export const PrivateUserCreateSchema = {
     properties: {
         email: {
@@ -2612,6 +3501,119 @@ export const ProcessingTaskStatusSchema = {
     title: 'ProcessingTaskStatus'
 } as const;
 
+export const ProviderStatusSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        configured: {
+            type: 'boolean',
+            title: 'Configured'
+        }
+    },
+    type: 'object',
+    required: ['name', 'configured'],
+    title: 'ProviderStatus'
+} as const;
+
+export const QuestionBankEntryPublicSchema = {
+    properties: {
+        question_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Question Id'
+        },
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        exam_title: {
+            type: 'string',
+            title: 'Exam Title'
+        },
+        question_key: {
+            type: 'string',
+            title: 'Question Key'
+        },
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        knowledge_point: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Point'
+        },
+        difficulty: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Difficulty'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        }
+    },
+    type: 'object',
+    required: ['question_id', 'exam_id', 'exam_title', 'question_key', 'label', 'question_text'],
+    title: 'QuestionBankEntryPublic'
+} as const;
+
+export const QuestionBankPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/QuestionBankEntryPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'QuestionBankPublic'
+} as const;
+
 export const QuestionRecognitionItemPublicSchema = {
     properties: {
         id: {
@@ -2661,6 +3663,28 @@ export const QuestionRecognitionItemPublicSchema = {
                 }
             ],
             title: 'Question Type'
+        },
+        knowledge_point: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Point'
+        },
+        difficulty: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Difficulty'
         },
         confidence: {
             anyOf: [
@@ -2799,6 +3823,31 @@ export const QuestionRecognitionItemUpdateSchema = {
                 }
             ],
             title: 'Question Type'
+        },
+        knowledge_point: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Knowledge Point'
+        },
+        difficulty: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 5,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Difficulty'
         },
         confidence: {
             anyOf: [
@@ -3368,8 +4417,15 @@ export const StandardAnswerPublicSchema = {
             title: 'Exam Id'
         },
         exam_region_id: {
-            type: 'string',
-            format: 'uuid',
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
             title: 'Exam Region Id'
         },
         question_id: {
@@ -3527,7 +4583,7 @@ export const StandardAnswerPublicSchema = {
         }
     },
     type: 'object',
-    required: ['answer_text', 'max_score', 'id', 'exam_id', 'exam_region_id'],
+    required: ['answer_text', 'max_score', 'id', 'exam_id'],
     title: 'StandardAnswerPublic'
 } as const;
 
@@ -3889,6 +4945,545 @@ export const StoredFilePublicSchema = {
     title: 'StoredFilePublic'
 } as const;
 
+export const StudentBatchCreateSchema = {
+    properties: {
+        rows: {
+            items: {
+                '$ref': '#/components/schemas/StudentBatchRow'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Rows'
+        },
+        create_accounts: {
+            type: 'boolean',
+            title: 'Create Accounts',
+            default: false
+        },
+        dry_run: {
+            type: 'boolean',
+            title: 'Dry Run',
+            default: false
+        }
+    },
+    type: 'object',
+    required: ['rows'],
+    title: 'StudentBatchCreate'
+} as const;
+
+export const StudentBatchResultSchema = {
+    properties: {
+        created: {
+            type: 'integer',
+            title: 'Created',
+            default: 0
+        },
+        skipped: {
+            type: 'integer',
+            title: 'Skipped',
+            default: 0
+        },
+        accounts_created: {
+            type: 'integer',
+            title: 'Accounts Created',
+            default: 0
+        },
+        rows: {
+            items: {
+                '$ref': '#/components/schemas/StudentBatchRowResult'
+            },
+            type: 'array',
+            title: 'Rows'
+        },
+        errors: {
+            items: {
+                '$ref': '#/components/schemas/StudentBatchRowResult'
+            },
+            type: 'array',
+            title: 'Errors'
+        }
+    },
+    type: 'object',
+    title: 'StudentBatchResult'
+} as const;
+
+export const StudentBatchRowSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Name'
+        },
+        student_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student No'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'StudentBatchRow',
+    description: '花名册批量导入的单行（前端把 CSV/粘贴文本解析成 rows 传入）。'
+} as const;
+
+export const StudentBatchRowResultSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            title: 'Name'
+        },
+        student_no: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student No'
+        },
+        action: {
+            type: 'string',
+            title: 'Action'
+        },
+        message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['name', 'action'],
+    title: 'StudentBatchRowResult'
+} as const;
+
+export const StudentBindAccountSchema = {
+    properties: {
+        user_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'User Id'
+        }
+    },
+    type: 'object',
+    required: ['user_id'],
+    title: 'StudentBindAccount'
+} as const;
+
+export const StudentCreateSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Name'
+        },
+        student_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student No'
+        }
+    },
+    type: 'object',
+    required: ['name'],
+    title: 'StudentCreate'
+} as const;
+
+export const StudentExamListItemPublicSchema = {
+    properties: {
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        title: {
+            type: 'string',
+            title: 'Title'
+        },
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        total_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Score'
+        },
+        total_max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Max Score'
+        },
+        class_rank: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Rank'
+        },
+        class_size: {
+            type: 'integer',
+            title: 'Class Size',
+            default: 0
+        },
+        question_count: {
+            type: 'integer',
+            title: 'Question Count',
+            default: 0
+        },
+        pending_review_count: {
+            type: 'integer',
+            title: 'Pending Review Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['exam_id', 'title'],
+    title: 'StudentExamListItemPublic'
+} as const;
+
+export const StudentExamListPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/StudentExamListItemPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'StudentExamListPublic'
+} as const;
+
+export const StudentExamReportPublicSchema = {
+    properties: {
+        exam_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Exam Id'
+        },
+        title: {
+            type: 'string',
+            title: 'Title'
+        },
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        total_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Score'
+        },
+        total_max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Max Score'
+        },
+        class_rank: {
+            anyOf: [
+                {
+                    type: 'integer'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Rank'
+        },
+        class_size: {
+            type: 'integer',
+            title: 'Class Size',
+            default: 0
+        },
+        questions: {
+            items: {
+                '$ref': '#/components/schemas/StudentExamReportQuestion'
+            },
+            type: 'array',
+            title: 'Questions'
+        }
+    },
+    type: 'object',
+    required: ['exam_id', 'title'],
+    title: 'StudentExamReportPublic'
+} as const;
+
+export const StudentExamReportQuestionSchema = {
+    properties: {
+        label: {
+            type: 'string',
+            title: 'Label'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        score_source: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score Source'
+        },
+        comment: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Comment'
+        },
+        suggested_comment: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Suggested Comment'
+        }
+    },
+    type: 'object',
+    required: ['label'],
+    title: 'StudentExamReportQuestion'
+} as const;
+
+export const StudentPublicSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 100,
+            minLength: 1,
+            title: 'Name'
+        },
+        student_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student No'
+        },
+        id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Id'
+        },
+        class_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Class Id'
+        },
+        user_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'User Id'
+        },
+        created_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Created At'
+        }
+    },
+    type: 'object',
+    required: ['name', 'id', 'class_id'],
+    title: 'StudentPublic'
+} as const;
+
 export const StudentSubmissionPublicSchema = {
     properties: {
         student_name: {
@@ -3994,6 +5589,18 @@ export const StudentSubmissionPublicSchema = {
                 }
             ],
             title: 'Original Stored File Id'
+        },
+        student_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Id'
         },
         registration_homography: {
             anyOf: [
@@ -4120,6 +5727,57 @@ export const StudentSubmissionsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'StudentSubmissionsPublic'
+} as const;
+
+export const StudentUpdateSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100,
+                    minLength: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        student_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student No'
+        }
+    },
+    type: 'object',
+    title: 'StudentUpdate'
+} as const;
+
+export const StudentsPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/StudentPublic'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'StudentsPublic'
 } as const;
 
 export const SubmissionAnnotationCreateSchema = {
@@ -4728,6 +6386,425 @@ export const SubmissionRegistrationStatusSchema = {
     title: 'SubmissionRegistrationStatus'
 } as const;
 
+export const SystemConfigPublicSchema = {
+    properties: {
+        vision_provider: {
+            type: 'string',
+            title: 'Vision Provider'
+        },
+        vision_model: {
+            type: 'string',
+            title: 'Vision Model'
+        },
+        grading_provider: {
+            type: 'string',
+            title: 'Grading Provider'
+        },
+        grading_model: {
+            type: 'string',
+            title: 'Grading Model'
+        },
+        region_provider: {
+            type: 'string',
+            title: 'Region Provider'
+        },
+        region_model: {
+            type: 'string',
+            title: 'Region Model'
+        },
+        recognition_provider: {
+            type: 'string',
+            title: 'Recognition Provider'
+        },
+        recognition_model: {
+            type: 'string',
+            title: 'Recognition Model'
+        },
+        fallback_models: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Fallback Models'
+        },
+        review_threshold: {
+            type: 'number',
+            title: 'Review Threshold'
+        },
+        max_concurrency: {
+            type: 'integer',
+            title: 'Max Concurrency'
+        },
+        providers: {
+            items: {
+                '$ref': '#/components/schemas/ProviderStatus'
+            },
+            type: 'array',
+            title: 'Providers'
+        }
+    },
+    type: 'object',
+    required: ['vision_provider', 'vision_model', 'grading_provider', 'grading_model', 'region_provider', 'region_model', 'recognition_provider', 'recognition_model', 'fallback_models', 'review_threshold', 'max_concurrency', 'providers'],
+    title: 'SystemConfigPublic'
+} as const;
+
+export const SystemConfigUpdateSchema = {
+    properties: {
+        vision_provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Vision Provider'
+        },
+        vision_model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Vision Model'
+        },
+        grading_provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grading Provider'
+        },
+        grading_model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grading Model'
+        },
+        region_provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Region Provider'
+        },
+        region_model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Region Model'
+        },
+        recognition_provider: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 100
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Recognition Provider'
+        },
+        recognition_model: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 200
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Recognition Model'
+        },
+        fallback_models: {
+            anyOf: [
+                {
+                    items: {
+                        type: 'string'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Fallback Models'
+        },
+        review_threshold: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Review Threshold'
+        },
+        max_concurrency: {
+            anyOf: [
+                {
+                    type: 'integer',
+                    maximum: 8,
+                    minimum: 1
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Concurrency'
+        }
+    },
+    type: 'object',
+    title: 'SystemConfigUpdate'
+} as const;
+
+export const TeacherBatchCreateSchema = {
+    properties: {
+        rows: {
+            items: {
+                '$ref': '#/components/schemas/TeacherBatchRow'
+            },
+            type: 'array',
+            minItems: 1,
+            title: 'Rows'
+        },
+        dry_run: {
+            type: 'boolean',
+            title: 'Dry Run',
+            default: false
+        }
+    },
+    type: 'object',
+    required: ['rows'],
+    title: 'TeacherBatchCreate'
+} as const;
+
+export const TeacherBatchResultSchema = {
+    properties: {
+        created: {
+            type: 'integer',
+            title: 'Created',
+            default: 0
+        },
+        skipped: {
+            type: 'integer',
+            title: 'Skipped',
+            default: 0
+        },
+        rows: {
+            items: {
+                '$ref': '#/components/schemas/TeacherBatchRowResult'
+            },
+            type: 'array',
+            title: 'Rows'
+        },
+        errors: {
+            items: {
+                '$ref': '#/components/schemas/TeacherBatchRowResult'
+            },
+            type: 'array',
+            title: 'Errors'
+        }
+    },
+    type: 'object',
+    title: 'TeacherBatchResult'
+} as const;
+
+export const TeacherBatchRowSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        employee_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Employee No'
+        },
+        email: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 255
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Email'
+        },
+        subjects: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subjects'
+        },
+        class_names: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Names'
+        }
+    },
+    type: 'object',
+    title: 'TeacherBatchRow'
+} as const;
+
+export const TeacherBatchRowResultSchema = {
+    properties: {
+        name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Name'
+        },
+        email: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Email'
+        },
+        action: {
+            type: 'string',
+            title: 'Action'
+        },
+        message: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Message'
+        }
+    },
+    type: 'object',
+    required: ['action'],
+    title: 'TeacherBatchRowResult'
+} as const;
+
+export const TeachingProfilePublicSchema = {
+    properties: {
+        class_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Class Ids'
+        },
+        class_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Class Names'
+        },
+        subjects: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Subjects'
+        }
+    },
+    type: 'object',
+    title: 'TeachingProfilePublic'
+} as const;
+
+export const TeachingProfileUpdateSchema = {
+    properties: {
+        class_ids: {
+            items: {
+                type: 'string',
+                format: 'uuid'
+            },
+            type: 'array',
+            title: 'Class Ids'
+        },
+        subjects: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            maxItems: 20,
+            title: 'Subjects'
+        }
+    },
+    type: 'object',
+    title: 'TeachingProfileUpdate'
+} as const;
+
 export const TokenSchema = {
     properties: {
         access_token: {
@@ -4795,11 +6872,39 @@ export const UserCreateSchema = {
             ],
             title: 'Full Name'
         },
+        role: {
+            '$ref': '#/components/schemas/UserRole',
+            default: 'teacher'
+        },
+        employee_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Employee No'
+        },
         password: {
             type: 'string',
             maxLength: 128,
             minLength: 8,
             title: 'Password'
+        },
+        org_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Id'
         }
     },
     type: 'object',
@@ -4812,7 +6917,6 @@ export const UserPublicSchema = {
         email: {
             type: 'string',
             maxLength: 255,
-            format: 'email',
             title: 'Email'
         },
         is_active: {
@@ -4837,6 +6941,22 @@ export const UserPublicSchema = {
             ],
             title: 'Full Name'
         },
+        role: {
+            '$ref': '#/components/schemas/UserRole',
+            default: 'teacher'
+        },
+        employee_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Employee No'
+        },
         id: {
             type: 'string',
             format: 'uuid',
@@ -4853,6 +6973,29 @@ export const UserPublicSchema = {
                 }
             ],
             title: 'Created At'
+        },
+        org_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Id'
+        },
+        org_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Name'
         }
     },
     type: 'object',
@@ -4890,6 +7033,12 @@ export const UserRegisterSchema = {
     type: 'object',
     required: ['email', 'password'],
     title: 'UserRegister'
+} as const;
+
+export const UserRoleSchema = {
+    type: 'string',
+    enum: ['platform_superuser', 'platform_support', 'school_owner', 'school_admin', 'teacher', 'student'],
+    title: 'UserRole'
 } as const;
 
 export const UserUpdateSchema = {
@@ -4953,6 +7102,40 @@ export const UserUpdateSchema = {
                 }
             ],
             title: 'Password'
+        },
+        role: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/UserRole'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
+        org_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Id'
+        },
+        employee_no: {
+            anyOf: [
+                {
+                    type: 'string',
+                    maxLength: 50
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Employee No'
         }
     },
     type: 'object',

@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate } from "@tanstack/react-router"
 import {
   Check,
   CheckCircle2,
+  ChevronDown,
   Clock3,
   FileSearch,
   Loader2,
@@ -14,8 +15,10 @@ import { useEffect, useMemo, useState } from "react"
 import { z } from "zod"
 
 import { ExamsService } from "@/client"
+import { ConfBadge } from "@/components/Common/ConfBadge"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { Tag } from "@/components/Common/Tag"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -28,12 +31,13 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
+import { cn } from "@/lib/utils"
 import { workflowApi } from "@/lib/workflow-api"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/questions")({
   component: QuestionWorkspace,
   validateSearch: z.object({ runId: z.string().optional() }),
-  head: () => ({ meta: [{ title: "识别内容 - 智阅卷" }] }),
+  head: () => ({ meta: [{ title: "确认题目 - 点凡阅卷" }] }),
 })
 
 type WorkflowStatus =
@@ -63,6 +67,8 @@ type RecognitionItem = {
   question_text: string
   student_answer_text: string | null
   question_type: string | null
+  knowledge_point: string | null
+  difficulty: number | null
   confidence: number | null
   notes: string | null
   region_ids: string[]
@@ -83,13 +89,13 @@ const questionTypes = [
 ]
 
 function statusBadge(status: WorkflowStatus, confirmed: boolean) {
-  if (confirmed) return <Badge className="bg-emerald-600">已确认</Badge>
+  if (confirmed) return <Tag variant="mint">已确认</Tag>
   if (status === "running" || status === "queued")
-    return <Badge variant="secondary">识别中</Badge>
-  if (status === "failed") return <Badge variant="destructive">失败</Badge>
+    return <Tag variant="sky">识别中</Tag>
+  if (status === "failed") return <Tag variant="red">失败</Tag>
   if (status === "completed_with_errors")
-    return <Badge variant="outline">待处理异常</Badge>
-  return <Badge variant="secondary">待确认</Badge>
+    return <Tag variant="amber">待处理异常</Tag>
+  return <Tag variant="indigo">待确认</Tag>
 }
 
 function formatMs(value?: number) {
@@ -97,7 +103,11 @@ function formatMs(value?: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} 秒` : `${value} 毫秒`
 }
 
-function QuestionItemEditor({
+function questionTypeLabel(value: string | null) {
+  return questionTypes.find(([key]) => key === value)?.[1] ?? "未知"
+}
+
+function QuestionItemRow({
   item,
   locked,
   error,
@@ -108,115 +118,184 @@ function QuestionItemEditor({
   error?: string
   onChange: (next: RecognitionItem) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
+  const excluded = item.status === "excluded"
   const regionCount = item.region_ids.length || item.region_snapshots.length
 
   return (
-    <article
-      className={`grid gap-4 border-b px-4 py-5 last:border-b-0${
-        error ? " border-l-2 border-l-destructive" : ""
-      }`}
+    <div
+      className={error ? "border-l-2 border-l-destructive" : ""}
       data-testid={`recognition-item-${item.id}`}
     >
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Checkbox
-            checked={item.status !== "excluded"}
-            disabled={locked}
-            aria-label={`保留${item.label}`}
-            onCheckedChange={(checked) =>
-              onChange({
-                ...item,
-                status: checked ? "draft" : "excluded",
-              })
-            }
-          />
-          <span className="font-medium">{item.label}</span>
-          <Badge variant="outline">{regionCount} 个区域</Badge>
-          <Badge
-            variant={
-              item.confidence !== null && item.confidence < 0.7
-                ? "destructive"
-                : "secondary"
-            }
-          >
-            {item.confidence === null
-              ? "无置信度"
-              : `${Math.round(item.confidence * 100)}%`}
-          </Badge>
-        </div>
-        {error && <span className="text-xs text-destructive">{error}</span>}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-[140px_180px_minmax(0,1fr)]">
-        <div className="grid gap-2">
-          <Label>题目标识</Label>
-          <Input
-            value={item.question_key}
-            disabled={locked || item.status === "excluded"}
-            onChange={(event) =>
-              onChange({ ...item, question_key: event.target.value })
-            }
-          />
-        </div>
-        <div className="grid gap-2">
-          <Label>题型</Label>
-          <Select
-            value={item.question_type ?? "未知"}
-            disabled={locked || item.status === "excluded"}
-            onValueChange={(value) =>
-              onChange({ ...item, question_type: value })
-            }
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {questionTypes.map(([value, label]) => (
-                <SelectItem key={value} value={value}>
-                  {label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label>显示名称</Label>
-          <Input
-            value={item.label}
-            disabled={locked || item.status === "excluded"}
-            onChange={(event) =>
-              onChange({ ...item, label: event.target.value })
-            }
-          />
-        </div>
-      </div>
-
-      <div className="grid gap-2">
-        <Label>印刷题目与选项</Label>
-        <textarea
-          className="border-input min-h-36 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={item.question_text}
-          disabled={locked || item.status === "excluded"}
-          onChange={(event) =>
-            onChange({ ...item, question_text: event.target.value })
+      <div className="flex items-center gap-3 px-4 py-3 text-sm hover:bg-muted/50">
+        <Checkbox
+          checked={!excluded}
+          disabled={locked}
+          aria-label={`保留${item.label}`}
+          onCheckedChange={(checked) =>
+            onChange({
+              ...item,
+              status: checked ? "draft" : "excluded",
+            })
           }
         />
+        <button
+          type="button"
+          aria-expanded={expanded}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left"
+          onClick={() => setExpanded((current) => !current)}
+        >
+          <span className="max-w-56 shrink-0 truncate whitespace-nowrap font-medium">
+            {item.label}
+          </span>
+          <span
+            className="min-w-0 flex-1 truncate text-muted-foreground"
+            title={item.question_text}
+          >
+            {item.question_text}
+          </span>
+          <Tag variant="indigo" className="shrink-0">
+            {questionTypeLabel(item.question_type)}
+          </Tag>
+          {excluded && <Tag variant="red">已排除</Tag>}
+          {item.confidence !== null && item.confidence < 0.8 && (
+            <ConfBadge value={item.confidence * 100} className="shrink-0" />
+          )}
+          {error && (
+            <span className="shrink-0 text-xs text-destructive">{error}</span>
+          )}
+          <ChevronDown
+            className={cn(
+              "size-4 shrink-0 text-muted-foreground transition-transform",
+              expanded && "rotate-180",
+            )}
+          />
+        </button>
       </div>
 
-      {item.student_answer_text && (
-        <div className="grid gap-2 border-l-2 border-amber-500 bg-amber-50/50 px-4 py-3 dark:bg-amber-950/15">
-          <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
-            卷面中的考生作答
+      {expanded && (
+        <div className="grid gap-4 border-t bg-muted/20 px-4 py-5">
+          <div className="grid gap-3 md:grid-cols-[140px_180px_minmax(0,1fr)]">
+            <div className="grid gap-2">
+              <Label>题目标识</Label>
+              <Input
+                value={item.question_key}
+                disabled={locked || excluded}
+                onChange={(event) =>
+                  onChange({ ...item, question_key: event.target.value })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>题型</Label>
+              <Select
+                value={item.question_type ?? "未知"}
+                disabled={locked || excluded}
+                onValueChange={(value) =>
+                  onChange({ ...item, question_type: value })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {questionTypes.map(([value, label]) => (
+                    <SelectItem key={value} value={value}>
+                      {label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>显示名称</Label>
+              <Input
+                value={item.label}
+                disabled={locked || excluded}
+                onChange={(event) =>
+                  onChange({ ...item, label: event.target.value })
+                }
+              />
+            </div>
           </div>
-          <div className="whitespace-pre-wrap text-sm">
-            {item.student_answer_text}
+
+          <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="grid gap-2">
+              <Label>知识点</Label>
+              <Input
+                value={item.knowledge_point ?? ""}
+                placeholder="如：电场、光学、力学"
+                disabled={locked || excluded}
+                onChange={(event) =>
+                  onChange({
+                    ...item,
+                    knowledge_point: event.target.value || null,
+                  })
+                }
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label>难度</Label>
+              <Select
+                value={item.difficulty ? String(item.difficulty) : "none"}
+                disabled={locked || excluded}
+                onValueChange={(value) =>
+                  onChange({
+                    ...item,
+                    difficulty: value === "none" ? null : Number(value),
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">未标注</SelectItem>
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <SelectItem key={value} value={String(value)}>
+                      {"★".repeat(value)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid gap-2">
+            <Label>印刷题目与选项</Label>
+            <textarea
+              className="border-input min-h-36 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={item.question_text}
+              disabled={locked || excluded}
+              onChange={(event) =>
+                onChange({ ...item, question_text: event.target.value })
+              }
+            />
+          </div>
+
+          {item.student_answer_text && (
+            <div className="grid gap-2 border-l-2 border-amber-500 bg-amber-50/50 px-4 py-3 dark:bg-amber-950/15">
+              <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                卷面中的考生作答
+              </div>
+              <div className="whitespace-pre-wrap text-sm">
+                {item.student_answer_text}
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span>{regionCount} 个识别区域</span>
+            {item.confidence !== null && (
+              <span className="inline-flex items-center gap-1">
+                置信度
+                <ConfBadge value={item.confidence * 100} />
+              </span>
+            )}
+            {item.notes && <span>{item.notes}</span>}
           </div>
         </div>
       )}
-      {item.notes && (
-        <div className="text-xs text-muted-foreground">{item.notes}</div>
-      )}
-    </article>
+    </div>
   )
 }
 
@@ -355,6 +434,8 @@ function QuestionWorkspace() {
                   question_text: draft.question_text,
                   student_answer_text: draft.student_answer_text,
                   question_type: draft.question_type,
+                  knowledge_point: draft.knowledge_point,
+                  difficulty: draft.difficulty,
                   confidence: draft.confidence,
                   status: draft.status,
                 }),
@@ -400,15 +481,15 @@ function QuestionWorkspace() {
   return (
     <div className="grid gap-6">
       <p className="max-w-3xl text-sm text-muted-foreground">
-        新卷子只需要做一次：先用 Gemini
-        从上传的卷子图片/PDF中提取印刷题目和题块；如果源图是学生卷，卷面作答只作为旁证展示，不会写入正式题干。确认识别结果后再进入标准答案页面生成或导入答案。
+        新卷子只需要做一次：系统自动从上传的卷子图片/PDF
+        中提取印刷题目和题块；如果源图是学生卷，卷面作答只作为旁证展示，不会写入正式题干。确认识别结果后再进入标准答案页面生成或导入答案。
       </p>
 
-      <section className="grid gap-4 border-y py-5">
+      <section className="grid gap-4 rounded-2xl border bg-card p-5 shadow-card">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <h2 className="font-semibold">已导入的卷子</h2>
-            <div className="text-sm text-muted-foreground">
+            <h2 className="font-semibold text-sm">已导入的卷子</h2>
+            <div className="text-muted-foreground text-sm">
               已选 {selectedDocuments.length} / {blankDocuments.length}{" "}
               个文件。优先选择空白卷；没有空白卷时，可选择一份代表学生卷识别题目内容。
             </div>
@@ -416,18 +497,19 @@ function QuestionWorkspace() {
           <Button
             disabled={!selectedDocuments.length || createRun.isPending}
             onClick={() => createRun.mutate()}
+            className="bg-gradient-primary text-white hover:opacity-90"
           >
             {createRun.isPending ? (
               <Loader2 className="animate-spin" />
             ) : (
               <ScanSearch />
             )}
-            识别内容
+            开始识别
           </Button>
         </div>
         {blankDocuments.length === 0 ? (
-          <div className="rounded-md border border-dashed px-4 py-6">
-            <div className="text-sm text-muted-foreground">
+          <div className="rounded-xl border border-dashed px-4 py-6">
+            <div className="text-muted-foreground text-sm">
               还没有可识别的卷子。请先导入空白卷或一份代表学生卷。
             </div>
             {exam.data && (
@@ -448,7 +530,7 @@ function QuestionWorkspace() {
           {blankDocuments.map((document) => (
             <div
               key={document.id}
-              className="flex min-w-0 items-center gap-3 rounded-md border px-3 py-3 text-sm"
+              className="flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-colors hover:bg-secondary/50"
             >
               <Checkbox
                 checked={selectedDocuments.includes(document.id)}
@@ -464,19 +546,19 @@ function QuestionWorkspace() {
               <span className="truncate">
                 {document.stored_file.original_filename}
               </span>
-              <Badge variant="outline" className="ml-auto shrink-0">
+              <Tag variant="indigo" className="ml-auto shrink-0">
                 {document.page_count} 页
-              </Badge>
+              </Tag>
             </div>
           ))}
         </div>
       </section>
 
       {current && (
-        <section className="grid gap-4">
+        <section className="grid gap-4 rounded-2xl border bg-card p-5 shadow-card">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <h2 className="font-semibold">识别批次</h2>
+              <h2 className="font-semibold text-sm">识别批次</h2>
               {statusBadge(current.status, Boolean(current.confirmed_at))}
             </div>
             <select
@@ -491,30 +573,29 @@ function QuestionWorkspace() {
               ))}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border md:max-w-md">
+          <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:max-w-md">
             <div className="bg-background px-4 py-3">
-              <div className="text-xs text-muted-foreground">题目数</div>
-              <div className="mt-1 text-sm font-medium">
+              <div className="text-muted-foreground text-xs">题目数</div>
+              <div className="mt-1 font-medium text-sm">
                 {items.data?.length ?? current.item_count}
               </div>
             </div>
             <div className="bg-background px-4 py-3">
-              <div className="text-xs text-muted-foreground">平均置信度</div>
-              <div
-                className="mt-1 text-sm font-medium"
-                data-testid="average-confidence"
-              >
-                {averageConfidence === null
-                  ? "—"
-                  : `${Math.round(averageConfidence * 100)}%`}
+              <div className="text-muted-foreground text-xs">平均置信度</div>
+              <div className="mt-1" data-testid="average-confidence">
+                {averageConfidence === null ? (
+                  <span className="font-medium text-sm">—</span>
+                ) : (
+                  <ConfBadge value={averageConfidence * 100} />
+                )}
               </div>
             </div>
           </div>
-          <details className="rounded-md border px-4 py-3">
-            <summary className="cursor-pointer text-sm text-muted-foreground">
+          <details className="rounded-xl border px-4 py-3">
+            <summary className="cursor-pointer text-muted-foreground text-sm">
               批次详情（调试）
             </summary>
-            <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border md:grid-cols-5">
+            <div className="mt-3 grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-5">
               {[
                 ["方向检测", timing.orientationMs],
                 ["版面分割", timing.layoutMs],
@@ -523,8 +604,8 @@ function QuestionWorkspace() {
                 ["总耗时", timing.totalElapsedMs],
               ].map(([label, value]) => (
                 <div key={String(label)} className="bg-background px-4 py-3">
-                  <div className="text-xs text-muted-foreground">{label}</div>
-                  <div className="mt-1 text-sm font-medium tabular-nums">
+                  <div className="text-muted-foreground text-xs">{label}</div>
+                  <div className="mt-1 font-medium text-sm tabular-nums">
                     {formatMs(value as number | undefined)}
                   </div>
                 </div>
@@ -532,7 +613,7 @@ function QuestionWorkspace() {
             </div>
           </details>
           {current.error_message && (
-            <div className="rounded-md border border-destructive px-4 py-3 text-sm text-destructive">
+            <div className="rounded-xl border border-destructive px-4 py-3 text-destructive text-sm">
               {current.error_message}
             </div>
           )}
@@ -540,30 +621,32 @@ function QuestionWorkspace() {
       )}
 
       {current && ["queued", "running"].includes(current.status) ? (
-        <div className="flex min-h-48 items-center justify-center gap-2 border-y text-sm text-muted-foreground">
+        <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border bg-card text-muted-foreground text-sm shadow-card">
           <Loader2 className="animate-spin" />
           参考算法正在执行旋转、分割、裁切和并发 OCR
         </div>
       ) : items.data?.length ? (
         <>
-          <section className="overflow-hidden rounded-md border">
-            <div className="border-b px-4 py-3">
-              <h2 className="font-semibold">题目与卷面作答</h2>
-              <div className="text-xs text-muted-foreground">
-                保留项将在确认后写入正式题库；卷面作答只用于人工核对，不会进入标准题干
+          <section className="overflow-hidden rounded-2xl border bg-card shadow-card">
+            <div className="border-b px-5 py-4">
+              <h2 className="font-semibold text-sm">题目与卷面作答</h2>
+              <div className="text-muted-foreground text-xs">
+                保留项将在确认后写入正式题库；卷面作答只用于人工核对，不会进入标准题干。点击题目行展开编辑
               </div>
             </div>
-            {(items.data ?? []).map((item) => (
-              <QuestionItemEditor
-                key={item.id}
-                item={drafts[item.id] ?? item}
-                locked={Boolean(current?.confirmed_at)}
-                error={saveErrors[item.id]}
-                onChange={(next) => updateDraft(item.id, next)}
-              />
-            ))}
+            <div className="divide-y">
+              {(items.data ?? []).map((item) => (
+                <QuestionItemRow
+                  key={item.id}
+                  item={drafts[item.id] ?? item}
+                  locked={Boolean(current?.confirmed_at)}
+                  error={saveErrors[item.id]}
+                  onChange={(next) => updateDraft(item.id, next)}
+                />
+              ))}
+            </div>
           </section>
-          <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-4 py-3 shadow-md">
+          <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 shadow-card-lg">
             <div className="flex items-center gap-2">
               <Button
                 variant="outline"
@@ -582,12 +665,12 @@ function QuestionWorkspace() {
                 保存全部修改
               </Button>
               {dirtyIds.size > 0 && (
-                <Badge variant="secondary">{dirtyIds.size} 条未保存</Badge>
+                <Tag variant="amber">{dirtyIds.size} 条未保存</Tag>
               )}
               {Object.keys(saveErrors).length > 0 && (
-                <Badge variant="destructive">
+                <Tag variant="red">
                   {Object.keys(saveErrors).length} 条保存失败
-                </Badge>
+                </Tag>
               )}
             </div>
             <Button
@@ -598,6 +681,7 @@ function QuestionWorkspace() {
                 dirtyIds.size > 0
               }
               onClick={() => confirmRun.mutate()}
+              className="bg-gradient-primary text-white hover:opacity-90"
             >
               {confirmRun.isPending ? (
                 <Loader2 className="animate-spin" />
@@ -611,10 +695,12 @@ function QuestionWorkspace() {
           </div>
         </>
       ) : (
-        <div className="flex min-h-48 flex-col items-center justify-center gap-2 border-y text-sm text-muted-foreground">
-          <Clock3 className="size-5" />
-          尚无题目识别结果
-        </div>
+        <EmptyState
+          icon={Clock3}
+          title="尚无题目识别结果"
+          description="选择上方已导入的卷子并启动识别后，题目会显示在这里"
+          className="bg-card shadow-card"
+        />
       )}
     </div>
   )

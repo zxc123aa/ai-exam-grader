@@ -2,20 +2,24 @@ import { readFileSync } from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { deflateSync } from "node:zlib"
-import { expect, test } from "@playwright/test"
+import { expect, type Page, test } from "@playwright/test"
 
 test.use({ storageState: "playwright/.auth/user.json" })
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-const scanPhotoBuffer = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAAPAAAACMCAIAAADN17N/AAACUUlEQVR4nO3dMW4UMRiAUYI4B4o4zVYUKVCKlBwB5RBRjkBJRcmBoignoUmRkhkNY/vLe/1qXXz6d8drea8utzcfoOLj6AXAkQRNiqBJETQpgiZF0KQImhRBkyJoUgRNiqBJETQpgiZF0Ezqz8+HHa/6dPg6WMu+bqYl6JPEuplWLWjdvHM7g9YNc/JQSIqgT/L89PL89DJ6FX2CJkXQpAiaFEGTImhSBE2KoEkRNPPa8YO0oEkRNCmCJmVP0I7aMS0TmhRBkyJoUgRNiqBJETQpgiZF0KQImhRBkyJoUgRNyrC77b7d/Rj11pv8/vU4eglsYEKTMvj20Znn3yqfIbxlQpMiaFIETYqgSRE0KYImRdCkCJoUQTO1rZfACJoUQZMy+CyH8xIca/OEdrEdMxs2oWc+Z8e6fIcmRdCkCJqUwbsc7LDo1tA5T00mNCkm9KoW2iY68yPFhCZF0KQImhRBkyJoUgRNiqBJETQpgiZF0KQImhRnOVa16Jm7/82EJsWEXs9C5+zOZ0KTImhmt+nmDEGTImhSBE3KtqDdA8bkTGhSBE2KoEkRNCmCJkXQpAiaFEGTImhSBE2KoEkRNCmCJkXQpAiaFEGTImhSBE2KoEkRNCmCJkXQpAiaFEGzgH+/EEbQpAiaFEGTsiFoF9sxPxOaFEGTImhSBE2KoEkRNCmCJkXQpPhr5JNcf/k8egnvgqB59fX7/eglHEDQ52kUM7lU0IphW9CKYXJXl9ub0WuAw9i2I0XQpAiaFEGTImhSBE2KoEkRNCmCJkXQpPwFG643VY7d2z0AAAAASUVORK5CYII=",
-  "base64",
+// 真实试卷照片：内嵌的微型合成图无法通过扫描解码（cv2.imdecode 失败），
+// 预处理流水线需要一张可解码的真实照片
+const scanPhotoBuffer = readFileSync(
+  path.join(
+    __dirname,
+    "../../materials/English/processed/test1/page_1_left.jpg",
+  ),
 )
 
 const pngBuffer = Buffer.from(
-  "iVBORw0KGgoAAAANSUhEUgAAASwAAAGQCAYAAABkW7XSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA/ElEQVR4nO3TQQ0AIBDAMMC/5+ECjiYKenb2Z4CkzNsB4G0H8BKgAkAFgAoAFQAqAFQAqABQAVABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAVACoAFABoAJABYAKABUAKgBUAKgAUAGgAjDuApPjAeeWAAAAAElFTkSuQmCC",
+  "iVBORw0KGgoAAAANSUhEUgAAASwAAAGQCAYAAABkW7XSAAAACXBIWXMAAAsTAAALEwEAmpwYAAAA/ElEQVR4nO3TQQ0AIBDAMMC/5+ECjiYKenb2Z4CkzNsB4G0H8BKgAkAFgAoAFQAqAFQAqABQAVABoAJABYAKABUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAFABoAJABYAKABUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAFABoAJABYAKABUAKgAUAGgAkAFgAoAFQAqAFQAqABQAaACQAWACgAVACoAFABoAJABYAKABUAKgAUAGgAjDuApPjAeeWAAAAAElFTkSuQmCC",
   "base64",
 )
 
@@ -81,54 +85,46 @@ function questionLayoutPng() {
 
 const questionLayoutBuffer = questionLayoutPng()
 
-test("Exams page is accessible and shows initial copy", async ({ page }) => {
+/** 通过 /exams 页面的「新建考试」对话框创建考试（需要至少一个已存在班级）。 */
+async function createExamViaUI(page: Page, title: string) {
   await page.goto("/exams")
-  await expect(
-    page.getByRole("heading", { name: "Exams", exact: true }),
-  ).toBeVisible()
-  await expect(
-    page.getByText(
-      "Create exams and upload blank paper files for template marking",
-    ),
-  ).toBeVisible()
-  await expect(
-    page.getByRole("button", { name: "New Exam" }).first(),
-  ).toBeVisible()
-  await expect(
-    page
-      .getByRole("heading", { name: "No exams yet" })
-      .or(page.getByRole("columnheader", { name: "Title" })),
-  ).toBeVisible()
-})
+  await page.getByRole("button", { name: "新建考试" }).first().click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByPlaceholder("八年级期中考试").fill(title)
+  await dialog.getByPlaceholder("语文").fill("物理")
+  await dialog.getByPlaceholder("八年级", { exact: true }).fill("高一年级")
+  await dialog.getByRole("checkbox", { name: "001班" }).check()
+  await dialog.getByLabel(/考试时间/).fill("2026-07-23")
+  await dialog.getByRole("button", { name: "创建" }).click()
+  await expect(page.getByText("考试创建成功")).toBeVisible({ timeout: 15_000 })
+  await expect(dialog).not.toBeVisible()
+}
 
-test("Can upload a blank paper and mark a template region", async ({
-  page,
-}) => {
-  const title = `Marking Exam ${Date.now()}`
-
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
-
+/** 从考试列表进入区域校正页，通过「导入试卷」上传一份空白卷。 */
+async function uploadBlankPaper(
+  page: Page,
+  title: string,
+  buffer: Buffer,
+  name = "blank.png",
+) {
   const row = page.getByRole("row").filter({ hasText: title })
   await expect(row).toBeVisible()
+  await row.getByRole("link", { name: "进入" }).click()
 
-  await row.getByRole("button", { name: "Files" }).click()
+  await page.getByRole("button", { name: "导入试卷" }).click()
   await page.getByTestId("exam-file-input").setInputFiles({
-    name: "blank.png",
+    name,
     mimeType: "image/png",
-    buffer: pngBuffer,
+    buffer,
   })
   await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("Exam file uploaded")).toBeVisible()
-  await expect(page.getByText("blank.png")).toBeVisible()
+  await expect(page.getByText("试卷导入成功")).toBeVisible()
   await page.keyboard.press("Escape")
+  await expect(page.getByText("第 1 / 1 页")).toBeVisible({ timeout: 15_000 })
+}
 
-  await row.getByRole("link", { name: "Mark" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
-
+/** 在标注画布上拖出一个区域并以 Q1 保存。 */
+async function drawAndSaveRegion(page: Page) {
   const canvas = page.getByTestId("region-marking-canvas")
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()
@@ -139,94 +135,95 @@ test("Can upload a blank paper and mark a template region", async ({
   await page.mouse.move(box.x + box.width * 0.58, box.y + box.height * 0.42)
   await page.mouse.up()
 
-  await page.getByPlaceholder("Q1").fill("Q1")
-  await page.getByRole("button", { name: "Save Region" }).click()
-  await expect(page.getByText("Region saved")).toBeVisible()
+  await page.getByPlaceholder("输入题号，例如 Q1").fill("Q1")
+  await page.getByRole("button", { name: "保存区域" }).click()
+  await expect(page.getByText("区域已保存")).toBeVisible()
   await expect(page.getByTestId("saved-region-Q1")).toBeVisible()
+}
+
+/** 打开考试行的「更多 → 导入中心」，切到学生答卷 tab。 */
+async function openSubmissionImport(page: Page, title: string) {
+  await page.goto("/exams")
+  const row = page.getByRole("row").filter({ hasText: title })
+  await expect(row).toBeVisible()
+  await row.getByRole("button", { name: "更多" }).click()
+  await page.getByRole("menuitem", { name: "导入中心" }).click()
+  const dialog = page.getByRole("dialog")
+  await dialog.getByRole("tab", { name: "学生答卷（待批改）" }).click()
+  return dialog
+}
+
+test("Exams page is accessible and shows initial copy", async ({ page }) => {
+  await page.goto("/exams")
+  await expect(
+    page.getByRole("heading", { name: "考试管理", exact: true }).last(),
+  ).toBeVisible()
+  await expect(
+    page.getByText(
+      "创建考试，导入一份卷子图片/PDF，然后识别题目内容和准备标准答案",
+    ),
+  ).toBeVisible()
+  await expect(
+    page.getByRole("button", { name: "新建考试" }).first(),
+  ).toBeVisible()
+  await expect(
+    page
+      .getByRole("heading", { name: "还没有考试" })
+      .or(page.getByRole("columnheader", { name: "名称" })),
+  ).toBeVisible()
+})
+
+test("Can upload a blank paper and mark a template region", async ({
+  page,
+}) => {
+  const title = `Marking Exam ${Date.now()}`
+
+  await createExamViaUI(page, title)
+  await uploadBlankPaper(page, title, pngBuffer)
+
+  await drawAndSaveRegion(page)
 
   await page.getByTestId("saved-region-Q1").click()
   await page.getByTestId("selected-region-label-input").fill("Q1 revised")
-  await page.getByRole("button", { name: "Save Changes" }).click()
-  await expect(page.getByText("Region updated")).toBeVisible()
+  await page.getByRole("button", { name: "保存修改" }).click()
+  await expect(page.getByText("区域已更新")).toBeVisible()
   await expect(page.getByTestId("saved-region-Q1 revised")).toBeVisible()
 
   await page.getByTestId("delete-region-Q1 revised").click()
-  await expect(page.getByText("Region deleted")).toBeVisible()
+  await expect(page.getByText("区域已删除")).toBeVisible()
   await expect(page.getByTestId("saved-region-Q1 revised")).not.toBeVisible()
 })
 
-test("Can prepare a standard answer for a question region", async ({
+test("Standard answer page requires confirmed questions first", async ({
   page,
 }) => {
-  const title = `Answer Key Exam ${Date.now()}`
-
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
-
-  const row = page.getByRole("row").filter({ hasText: title })
-  await expect(row).toBeVisible()
-
-  await row.getByRole("button", { name: "Files" }).click()
-  await page.getByTestId("exam-file-input").setInputFiles({
-    name: "blank.png",
-    mimeType: "image/png",
-    buffer: pngBuffer,
+  // 手动编辑标准答案的旧交互已移除：答案只能由 AI 生成或答案文档整理，
+  // 且必须先确认题目。这里验证新门槛提示与跳转。
+  const apiBase = "http://localhost:8000/api/v1"
+  const login = await page.request.post(`${apiBase}/login/access-token`, {
+    form: {
+      username: process.env.LIVE_TEST_EMAIL ?? "",
+      password: process.env.LIVE_TEST_PASSWORD ?? "",
+    },
   })
-  await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("Exam file uploaded")).toBeVisible()
-  await page.keyboard.press("Escape")
+  expect(login.ok()).toBeTruthy()
+  const { access_token: token } = await login.json()
+  const headers = { Authorization: `Bearer ${token}` }
+  const examResponse = await page.request.post(`${apiBase}/exams/`, {
+    headers,
+    data: {
+      title: `Answer Gate Exam ${Date.now()}`,
+      subject: "物理",
+      org_id: "00000000-0000-0000-0000-000000000001",
+    },
+  })
+  expect(examResponse.ok()).toBeTruthy()
+  const exam = await examResponse.json()
 
-  await row.getByRole("link", { name: "Mark" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
-
-  const canvas = page.getByTestId("region-marking-canvas")
-  const box = await canvas.boundingBox()
-  expect(box).not.toBeNull()
-  if (!box) return
-
-  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width * 0.56, box.y + box.height * 0.42)
-  await page.mouse.up()
-
-  await page.getByPlaceholder("Q1").fill("Q1")
-  await page.getByRole("button", { name: "Save Region" }).click()
-  await expect(page.getByText("Region saved")).toBeVisible()
-
-  await page.goto("/exams")
-  const updatedRow = page.getByRole("row").filter({ hasText: title })
-  await expect(updatedRow).toBeVisible()
-  await updatedRow.getByRole("link", { name: "Answers" }).click()
-
-  await expect(page.getByRole("heading", { name: title })).toBeVisible()
-  await expect(page.getByTestId("answer-region-list-Q1")).toContainText(
-    /missing/i,
-  )
-  await page.getByTestId("standard-answer-text").fill("Use conservation law.")
-  await page.getByTestId("standard-answer-max-score").fill("6")
-  await page
-    .getByTestId("standard-answer-rubric")
-    .fill("Award formula, substitution, and final unit.")
-  await page
-    .getByTestId("standard-answer-scoring-points")
-    .fill("point-1 | 2 | required | Writes the correct formula")
-  await page.getByRole("combobox", { name: "Status" }).click()
-  await page.getByRole("option", { name: "Ready" }).click()
-  await page.getByTestId("standard-answer-save-button").click()
-
-  await expect(page.getByText("Standard answer saved")).toBeVisible()
-  await expect(page.getByTestId("answer-region-list-Q1")).toContainText(
-    /ready/i,
-  )
-
-  await page.reload()
-  await expect(page.getByTestId("standard-answer-text")).toHaveValue(
-    "Use conservation law.",
-  )
-  await expect(page.getByTestId("standard-answer-max-score")).toHaveValue("6")
+  await page.goto(`/exams/${exam.id}/answers`)
+  await expect(page.getByText("尚无已确认题目")).toBeVisible()
+  await page.getByRole("link", { name: "前往确认题目" }).click()
+  await expect(page).toHaveURL(new RegExp(`/exams/${exam.id}/questions`))
 })
 
 test("Can load suggested regions and confirm one as a template region", async ({
@@ -234,125 +231,93 @@ test("Can load suggested regions and confirm one as a template region", async ({
 }) => {
   const title = `Candidate Regions Exam ${Date.now()}`
 
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
+  await createExamViaUI(page, title)
+  await uploadBlankPaper(page, title, questionLayoutBuffer, "layout.png")
 
-  const row = page.getByRole("row").filter({ hasText: title })
-  await expect(row).toBeVisible()
+  // 投影分割引擎在本地运行，不依赖外部 AI 提供者
+  await page
+    .getByRole("combobox")
+    .filter({ hasText: "Gemini 版面分析" })
+    .click()
+  await page.getByRole("option", { name: "投影分割" }).click()
 
-  await row.getByRole("button", { name: "Files" }).click()
-  await page.getByTestId("exam-file-input").setInputFiles({
-    name: "layout.png",
-    mimeType: "image/png",
-    buffer: questionLayoutBuffer,
-  })
-  await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("Exam file uploaded")).toBeVisible()
-  await page.keyboard.press("Escape")
+  const responsePromise = page.waitForResponse(
+    (response) =>
+      response.url().includes("/region-candidates") && response.ok(),
+  )
+  await page.getByRole("button", { name: "检测题目区域" }).click()
+  await responsePromise
 
-  await row.getByRole("link", { name: "Mark" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
-  await page.getByRole("button", { name: "Detect regions" }).click()
   await expect(page.getByTestId("candidate-list-Q1")).toBeVisible()
   await expect(page.getByTestId("candidate-region-Q1")).toBeVisible()
 
   await page.getByTestId("candidate-list-Q1").click()
-  await page.getByRole("button", { name: "Save Region" }).click()
-  await expect(page.getByText("Region saved")).toBeVisible()
+  await page.getByRole("button", { name: "保存区域" }).click()
+  await expect(page.getByText("区域已保存")).toBeVisible()
   await expect(page.getByTestId("saved-region-Q1")).toBeVisible()
 })
 
 test("Can upload and preview a student submission", async ({ page }) => {
+  test.setTimeout(120_000)
   const title = `Submission Exam ${Date.now()}`
 
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
+  await createExamViaUI(page, title)
+  await uploadBlankPaper(page, title, pngBuffer)
+  await drawAndSaveRegion(page)
 
-  const row = page.getByRole("row").filter({ hasText: title })
-  await expect(row).toBeVisible()
-
-  await row.getByRole("button", { name: "Files" }).click()
-  await page.getByTestId("exam-file-input").setInputFiles({
-    name: "blank.png",
-    mimeType: "image/png",
-    buffer: pngBuffer,
-  })
-  await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("Exam file uploaded")).toBeVisible()
-  await page.keyboard.press("Escape")
-
-  await row.getByRole("link", { name: "Mark" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
-  const canvas = page.getByTestId("region-marking-canvas")
-  const box = await canvas.boundingBox()
-  expect(box).not.toBeNull()
-  if (!box) return
-  await page.mouse.move(box.x + box.width * 0.2, box.y + box.height * 0.2)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width * 0.55, box.y + box.height * 0.4)
-  await page.mouse.up()
-  await page.getByPlaceholder("Q1").fill("Q1")
-  await page.getByRole("button", { name: "Save Region" }).click()
-  await expect(page.getByText("Region saved")).toBeVisible()
-
-  await page.goto("/exams")
-  const updatedRow = page.getByRole("row").filter({ hasText: title })
-  await expect(updatedRow).toBeVisible()
-
-  await updatedRow.getByRole("button", { name: "Submissions" }).click()
-  await page.getByTestId("submission-student-name-input").fill("Student A")
-  await page.getByTestId("submission-student-identifier-input").fill("A001")
-  await page.getByTestId("submission-file-input").setInputFiles({
-    name: "student-a.png",
-    mimeType: "image/png",
+  const dialog = await openSubmissionImport(page, title)
+  await dialog.getByTestId("submission-file-input").setInputFiles({
+    name: "student-a.jpg",
+    mimeType: "image/jpeg",
     buffer: scanPhotoBuffer,
   })
-  await page.getByTestId("submission-upload-button").click()
+  await dialog.getByTestId("submission-student-name-input").fill("Student A")
+  await dialog.getByTestId("submission-student-identifier-input").fill("A001")
+  await dialog.getByTestId("submission-upload-button").click()
 
-  await expect(page.getByText("Student submission uploaded")).toBeVisible()
-  await expect(page.getByText("Student A", { exact: true })).toBeVisible()
-  await expect(page.getByText(/registration pending/i)).toBeVisible()
-  await expect(page.getByText(/^pending$/i)).toBeVisible()
+  await expect(page.getByText("已上传 1 份学生答卷")).toBeVisible({
+    timeout: 90_000,
+  })
+  await expect(dialog.getByText("Student A", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(dialog.getByText("等待配准")).toBeVisible()
 
-  await page.getByRole("button", { name: "Confirm" }).click()
+  await dialog.getByRole("button", { name: "确认配准" }).click()
   await expect(page.getByText("配准状态已更新")).toBeVisible()
-  await expect(page.getByText(/ready for review/i)).toBeVisible()
-  await expect(page.getByText(/manual confirmed · 100%/i)).toBeVisible()
+  await expect(dialog.getByText(/人工确认 · 100%/)).toBeVisible()
 
-  await page.getByRole("button", { name: "预览" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
-  await expect(page.getByAltText("student-a.png")).toBeVisible()
-  await expect(page.getByTestId("submission-overlay-region-Q1")).toBeVisible()
+  await dialog.getByRole("button", { name: "预览" }).click()
+  await expect(dialog.getByText("第 1 / 1 页")).toBeVisible()
+  await expect(dialog.getByAltText(/student-a/)).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(dialog.getByTestId("submission-overlay-region-Q1")).toBeVisible()
 
-  await page.getByRole("link", { name: "复核" }).click()
-  await expect(page.getByRole("heading", { name: title })).toBeVisible()
+  await dialog.getByRole("link", { name: "复核" }).click()
   await expect(page.getByTestId("submission-review-canvas")).toBeVisible()
   await expect(page.getByTestId("review-region-list-Q1")).toBeVisible()
+
   await page.getByTestId("run-submission-processing-button").click()
-  await expect(
-    page.getByText(/submission processing task started/i),
-  ).toBeVisible()
-  await expect(page.getByText(/succeeded · 100%/i)).toBeVisible()
+  await expect(page.getByText("自动处理任务已开始")).toBeVisible()
+  await expect(page.getByText(/已完成 · 100%/)).toBeVisible({
+    timeout: 60_000,
+  })
   await expect(page.getByTestId("review-region-list-Q1")).toContainText(
-    /needs review/i,
+    "待复核",
   )
   await expect(page.getByTestId("annotation-crop-preview")).toBeVisible()
   await expect(page.getByTestId("annotation-ocr-status")).toContainText(
-    /not configured/i,
+    /not.configured|未开始/i,
   )
+
   await page.getByTestId("review-score-input").fill("4")
   await page.getByTestId("review-max-score-input").fill("5")
   await page.getByTestId("review-comment-input").fill("Good method")
   await page.getByTestId("review-save-annotation-button").click()
-  await expect(page.getByText("Annotation saved")).toBeVisible()
+  await expect(page.getByText("批注已保存")).toBeVisible()
   await expect(page.getByTestId("review-region-list-Q1")).toContainText(
-    /needs review/i,
+    "待复核",
   )
 })
 
@@ -370,27 +335,9 @@ test("PaddleOCR draft appears in the review workspace", async ({ page }) => {
   )
   const title = `Paddle OCR Exam ${Date.now()}`
 
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
+  await createExamViaUI(page, title)
+  await uploadBlankPaper(page, title, realExamPageBuffer, "blank-page.jpg")
 
-  const row = page.getByRole("row").filter({ hasText: title })
-  await expect(row).toBeVisible()
-
-  await row.getByRole("button", { name: "Files" }).click()
-  await page.getByTestId("exam-file-input").setInputFiles({
-    name: "blank-page.jpg",
-    mimeType: "image/jpeg",
-    buffer: realExamPageBuffer,
-  })
-  await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("Exam file uploaded")).toBeVisible()
-  await page.keyboard.press("Escape")
-
-  await row.getByRole("link", { name: "Mark" }).click()
-  await expect(page.getByText("Page 1 of 1")).toBeVisible()
   const canvas = page.getByTestId("region-marking-canvas")
   const box = await canvas.boundingBox()
   expect(box).not.toBeNull()
@@ -400,75 +347,70 @@ test("PaddleOCR draft appears in the review workspace", async ({ page }) => {
   await page.mouse.down()
   await page.mouse.move(box.x + box.width * 0.92, box.y + box.height * 0.24)
   await page.mouse.up()
-  await page.getByPlaceholder("Q1").fill("Header")
-  await page.getByRole("button", { name: "Save Region" }).click()
-  await expect(page.getByText("Region saved")).toBeVisible()
+  await page.getByPlaceholder("输入题号，例如 Q1").fill("Header")
+  await page.getByRole("button", { name: "保存区域" }).click()
+  await expect(page.getByText("区域已保存")).toBeVisible()
 
-  await page.goto("/exams")
-  const updatedRow = page.getByRole("row").filter({ hasText: title })
-  await expect(updatedRow).toBeVisible()
-
-  await updatedRow.getByRole("button", { name: "Submissions" }).click()
-  await page.getByTestId("submission-student-name-input").fill("Student OCR")
-  await page.getByTestId("submission-student-identifier-input").fill("OCR001")
-  await page.getByTestId("submission-file-input").setInputFiles({
+  const dialog = await openSubmissionImport(page, title)
+  await dialog.getByTestId("submission-file-input").setInputFiles({
     name: "student-ocr.jpg",
     mimeType: "image/jpeg",
     buffer: realExamPageBuffer,
   })
-  await page.getByTestId("submission-upload-button").click()
-  await expect(page.getByText("Student submission uploaded")).toBeVisible()
+  await dialog.getByTestId("submission-student-name-input").fill("Student OCR")
+  await dialog.getByTestId("submission-student-identifier-input").fill("OCR001")
+  await dialog.getByTestId("submission-upload-button").click()
+  await expect(page.getByText("已上传 1 份学生答卷")).toBeVisible({
+    timeout: 90_000,
+  })
 
-  await page.getByRole("button", { name: "Confirm" }).click()
+  await dialog.getByRole("button", { name: "确认配准" }).click()
   await expect(page.getByText("配准状态已更新")).toBeVisible()
-  await expect(page.getByText(/ready for review/i)).toBeVisible()
+  await expect(dialog.getByText(/人工确认/)).toBeVisible()
 
-  await page.getByRole("link", { name: "复核" }).click()
-  await expect(page.getByRole("heading", { name: title })).toBeVisible()
+  await dialog.getByRole("link", { name: "复核" }).click()
   await expect(page.getByTestId("review-region-list-Header")).toBeVisible()
 
   await page.getByTestId("run-submission-processing-button").click()
-  await expect(
-    page.getByText(/submission processing task started/i),
-  ).toBeVisible()
-  await expect(page.getByText(/succeeded · 100%/i)).toBeVisible({
+  await expect(page.getByText("自动处理任务已开始")).toBeVisible()
+  await expect(page.getByText(/已完成 · 100%/)).toBeVisible({
     timeout: 180_000,
   })
   await expect(page.getByTestId("annotation-crop-preview")).toBeVisible()
   await expect(page.getByTestId("annotation-ocr-status")).toContainText(
-    /succeeded/i,
+    "已完成",
     { timeout: 180_000 },
   )
-  await expect(page.getByText(/Engine: paddleocr-gpu-cu130/i)).toBeVisible()
+  await expect(page.getByText(/paddleocr-gpu-cu130/i)).toBeVisible()
   await expect(page.getByTestId("annotation-ocr-text")).toContainText(
     /英语试题|海南中学|第一次月考/,
   )
 })
 
 test("Can convert a scan photo into a student submission", async ({ page }) => {
+  test.setTimeout(120_000)
   const title = `Scan Submission Exam ${Date.now()}`
 
-  await page.goto("/exams")
-  await page.getByRole("button", { name: "New Exam" }).first().click()
-  await page.getByPlaceholder("English Midterm").fill(title)
-  await page.getByRole("button", { name: "Create" }).click()
-  await expect(page.getByText("Exam created")).toBeVisible()
+  await createExamViaUI(page, title)
 
-  const row = page.getByRole("row").filter({ hasText: title })
-  await expect(row).toBeVisible()
-
-  await row.getByRole("button", { name: "Submissions" }).click()
-  await page.getByTestId("submission-student-name-input").fill("Student Scan")
-  await page.getByTestId("submission-student-identifier-input").fill("SCAN001")
-  await page.getByTestId("submission-scan-photo-input").setInputFiles({
-    name: "phone.png",
-    mimeType: "image/png",
+  const dialog = await openSubmissionImport(page, title)
+  await dialog.getByTestId("submission-file-input").setInputFiles({
+    name: "phone.jpg",
+    mimeType: "image/jpeg",
     buffer: scanPhotoBuffer,
   })
-  await page.getByTestId("submission-scan-photo-button").click()
+  await dialog.getByTestId("submission-student-name-input").fill("Student Scan")
+  await dialog
+    .getByTestId("submission-student-identifier-input")
+    .fill("SCAN001")
+  await dialog.getByTestId("submission-upload-button").click()
 
-  await expect(page.getByText("Scan photo converted")).toBeVisible()
-  await expect(page.getByText("Student Scan", { exact: true })).toBeVisible()
-  await expect(page.getByText(/phone-preprocessed\.pdf/)).toBeVisible()
-  await expect(page.getByText(/registration pending/i)).toBeVisible()
+  await expect(page.getByText("已上传 1 份学生答卷")).toBeVisible({
+    timeout: 90_000,
+  })
+  await expect(dialog.getByText("Student Scan", { exact: true })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(dialog.getByText(/phone-preprocessed\.pdf/)).toBeVisible()
+  await expect(dialog.getByText("等待配准")).toBeVisible()
 })

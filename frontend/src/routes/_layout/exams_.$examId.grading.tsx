@@ -1,24 +1,57 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { CheckCircle2, Clock3, Play, RefreshCw } from "lucide-react"
-import { useMemo, useState } from "react"
+import {
+  CheckCircle2,
+  Clock3,
+  PenLine,
+  Play,
+  RefreshCw,
+  Settings2,
+} from "lucide-react"
+import { useMemo } from "react"
 
 import { ExamsService } from "@/client"
-import { Badge } from "@/components/ui/badge"
+import { resolveRole } from "@/components/Admin/roleMeta"
+import { ConfBadge } from "@/components/Common/ConfBadge"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { PageHead } from "@/components/Common/PageHead"
+import { ProgressBar } from "@/components/Common/ProgressBar"
+import { RunSettingsForm } from "@/components/Common/RunSettingsForm"
+import { Tag, type TagVariant } from "@/components/Common/Tag"
+import {
+  GradingAssignmentsCard,
+  useGradingAssignments,
+} from "@/components/Exams/GradingAssignmentsCard"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import useAuth from "@/hooks/useAuth"
+import { useRunSettings } from "@/hooks/useRunSettings"
 import { workflowApi } from "@/lib/workflow-api"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/grading")({
   component: GradingWorkspace,
-  head: () => ({ meta: [{ title: "批量批改 - 智阅卷" }] }),
+  head: () => ({ meta: [{ title: "批量批改 - 点凡阅卷" }] }),
 })
 
 type Run = {
@@ -49,6 +82,7 @@ type Run = {
     cropMs?: number
     ocrMs?: number
     totalElapsedMs?: number
+    fallback_used?: boolean
   }
 }
 type ReviewItem = {
@@ -62,41 +96,77 @@ type ReviewItem = {
   risk: string
   priority: number
 }
-const gradingRunStatusLabels: Record<string, string> = {
-  queued: "排队中",
-  running: "批改中",
-  completed: "已完成",
-  completed_with_errors: "已完成（部分失败）",
-  failed: "失败",
+const gradingRunStatusTags: Record<
+  string,
+  { label: string; variant: TagVariant }
+> = {
+  queued: { label: "排队中", variant: "indigo" },
+  running: { label: "批改中", variant: "sky" },
+  completed: { label: "已完成", variant: "mint" },
+  completed_with_errors: { label: "已完成（部分失败）", variant: "amber" },
+  failed: { label: "失败", variant: "red" },
 }
-const providerModels: Record<string, string[]> = {
-  pomoai: [
-    "gpt-5.6-sol",
-    "claude-fable-5",
-    "claude-opus-4-8",
-    "claude-opus-4-6",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "grok-4.5",
-    "gemini-3.5-flash",
-  ],
-  fluxnode_gemini: ["gemini-3.5-flash"],
-  fluxnode_grok: ["grok-4.5"],
-  kimi: [
-    "kimi-k2.7-code",
-    "kimi-k2.7-code-highspeed",
-    "kimi-k2.6",
-    "kimi-k2.5",
-  ],
+
+/**
+ * 复核原因 → 老师看得懂的文案（唯一的映射处）。
+ * 后端只给风险类别与综合置信度：镜像/配准异常归为「答案字迹不清」，
+ * 得分压在 0 分或满分边界的归为「分数接近边界」，
+ * 其余低置信度/模型失败归为「评分依据不足」。
+ * 置信度百分比只在条目最右侧以 muted 小字展示，不进主文案。
+ */
+function reviewReasonText(item: ReviewItem): string {
+  if (item.risk === "镜像/配准异常") return "答案字迹不清"
+  if (
+    item.score != null &&
+    item.max_score != null &&
+    (item.score === 0 || item.score === item.max_score)
+  ) {
+    return "分数接近边界，建议复核"
+  }
+  return "评分依据不足"
+}
+const registrationTags: Record<string, { label: string; variant: TagVariant }> =
+  {
+    failed: { label: "配准失败", variant: "red" },
+    manual_confirmed: { label: "人工配准", variant: "pink" },
+    auto_confirmed: { label: "自动配准", variant: "mint" },
+  }
+const pendingRegistrationTag = {
+  label: "待配准",
+  variant: "amber" as TagVariant,
 }
 function GradingWorkspace() {
   const { examId } = Route.useParams()
   const client = useQueryClient()
-  const [provider, setProvider] = useState("pomoai")
-  const [model, setModel] = useState("gpt-5.6-sol")
-  const [threshold, setThreshold] = useState("0.8")
-  const [maxConcurrency, setMaxConcurrency] = useState("8")
+  const { user } = useAuth()
+  // 分配管理仅管理角色；模型/阈值/并发的单次覆盖对所有可批改角色（含普通老师）开放
+  const role = user ? resolveRole(user) : "teacher"
+  const isManager = [
+    "school_owner",
+    "school_admin",
+    "platform_superuser",
+  ].includes(role)
+  const canCustomizeRun = role !== "student"
+  const examQuery = useQuery({
+    queryKey: ["exam", examId],
+    queryFn: () => ExamsService.readExam({ examId }),
+  })
+  const canManageAssignments =
+    isManager || (user != null && examQuery.data?.owner_id === user.id)
+  const assignmentsQuery = useGradingAssignments(examId, canManageAssignments)
+  // 共享批卷开启但未分完时后端会 400，前端在按钮旁先提示
+  const unassignedCount =
+    (assignmentsQuery.data?.enabled &&
+      assignmentsQuery.data?.unassigned?.length) ||
+    0
+  const { runSettings } = useRunSettings()
+  const {
+    provider,
+    model,
+    threshold,
+    parallelSubmissions,
+    concurrencyPerSubmission,
+  } = runSettings
   const runs = useQuery({
     queryKey: ["grading-runs", examId],
     queryFn: () =>
@@ -190,12 +260,11 @@ function GradingWorkspace() {
         method: "POST",
         body: JSON.stringify({
           exam_id: examId,
-          vision_provider: "fluxnode_gemini",
-          vision_model: "gemini-3.5-flash",
           provider,
           model,
           review_threshold: Number(threshold),
-          max_concurrency: Number(maxConcurrency),
+          max_parallel_submissions: Number(parallelSubmissions),
+          max_concurrency_per_submission: Number(concurrencyPerSubmission),
         }),
       }),
     onSuccess: (run) => {
@@ -217,75 +286,62 @@ function GradingWorkspace() {
     enabled: Boolean(latest?.id),
     refetchInterval: latest?.status === "running" ? 3000 : false,
   })
+  const reviewCount = reviewQueue.data?.length ?? 0
   return (
     <div className="flex flex-col gap-6">
-      <p className="text-muted-foreground">视觉识别、自动评分与分层复核</p>
-      <Card>
+      <PageHead
+        title="批量批改"
+        subtitle="视觉识别、自动评分与分层复核"
+        actions={
+          <>
+            <Button variant="outline" asChild>
+              <Link to="/exams/$examId/workbench" params={{ examId }}>
+                <PenLine />
+                批卷工作台
+              </Link>
+            </Button>
+            <Button variant="ghost" onClick={() => runs.refetch()}>
+              <RefreshCw />
+              刷新状态
+            </Button>
+          </>
+        }
+      />
+      <GradingAssignmentsCard examId={examId} />
+      <Card className="rounded-2xl shadow-card">
         <CardHeader>
-          <CardTitle>新建批改批次</CardTitle>
+          <CardTitle className="font-medium text-sm">新建批改批次</CardTitle>
         </CardHeader>
-        <CardContent className="grid gap-4 md:grid-cols-6">
-          <div className="grid gap-2">
-            <Label>视觉提取</Label>
-            <div className="flex h-9 items-center rounded-md border bg-muted/40 px-3 text-sm">
-              FluxNode · Gemini 3.5 Flash
-            </div>
-          </div>
-          <div className="grid gap-2">
-            <Label>判题提供者</Label>
-            <select
-              className="h-9 rounded-md border bg-background px-3"
-              value={provider}
-              onChange={(event) => {
-                const nextProvider = event.target.value
-                setProvider(nextProvider)
-                setModel(providerModels[nextProvider][0])
-              }}
-            >
-              <option value="pomoai">PomoAI</option>
-              <option value="fluxnode_gemini">FluxNode · Gemini</option>
-              <option value="fluxnode_grok">FluxNode · Grok</option>
-              <option value="kimi">Kimi Coding</option>
-            </select>
-          </div>
-          <div className="grid gap-2">
-            <Label>判题模型</Label>
-            <select
-              className="h-9 rounded-md border bg-background px-3"
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-            >
-              {providerModels[provider].map((item) => (
-                <option key={item} value={item}>
-                  {item}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="grid gap-2">
-            <Label>复核阈值</Label>
-            <Input
-              type="number"
-              min="0"
-              max="1"
-              step="0.05"
-              value={threshold}
-              onChange={(event) => setThreshold(event.target.value)}
-            />
-          </div>
-          <div className="grid gap-2">
-            <Label>最大并发</Label>
-            <Input
-              type="number"
-              min="1"
-              max="8"
-              value={maxConcurrency}
-              onChange={(event) => setMaxConcurrency(event.target.value)}
-            />
-          </div>
-          <div className="flex items-end">
+        <CardContent className="grid gap-4">
+          <div className="flex items-center justify-end gap-3">
+            {unassignedCount > 0 && (
+              <span className="text-amber-600 text-sm dark:text-amber-400">
+                还有 {unassignedCount} 个班未分配老师，分配后才能开始批改
+              </span>
+            )}
+            {canCustomizeRun && (
+              <Sheet>
+                <SheetTrigger asChild>
+                  <Button variant="ghost" size="sm">
+                    <Settings2 />
+                    批改设置
+                  </Button>
+                </SheetTrigger>
+                <SheetContent side="right" className="w-[360px]">
+                  <SheetHeader>
+                    <SheetTitle>批改设置</SheetTitle>
+                    <SheetDescription>
+                      只对之后发起的批改批次生效，不想折腾就用默认配置，直接点开始批改即可。
+                    </SheetDescription>
+                  </SheetHeader>
+                  <div className="grid gap-4 px-4 py-2">
+                    <RunSettingsForm />
+                  </div>
+                </SheetContent>
+              </Sheet>
+            )}
             <Button
-              className="w-full"
+              className="bg-gradient-primary text-white hover:opacity-90 md:w-56"
               onClick={() => create.mutate()}
               disabled={create.isPending}
             >
@@ -295,9 +351,9 @@ function GradingWorkspace() {
           </div>
         </CardContent>
       </Card>
-      <Card>
+      <Card className="rounded-2xl shadow-card">
         <CardHeader>
-          <CardTitle>
+          <CardTitle className="font-medium text-sm">
             学生答卷（{mergedStudents.length} 人
             {(scoreSummary.data?.data?.length ?? 0) > mergedStudents.length
               ? ` · ${scoreSummary.data?.data?.length} 份`
@@ -307,55 +363,48 @@ function GradingWorkspace() {
         </CardHeader>
         <CardContent>
           {!scoreSummary.data?.data?.length ? (
-            <p className="text-muted-foreground text-sm">
-              还没有学生答卷，请先在导入中心上传。
-            </p>
+            <EmptyState
+              className="border-0 py-10"
+              title="还没有学生答卷"
+              description="请先在导入中心上传学生答卷照片，再发起批量批改"
+            />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b text-left text-muted-foreground text-xs">
-                    <th className="py-2 pr-4 font-medium">学生</th>
-                    <th className="py-2 pr-4 font-medium">班级</th>
-                    <th className="py-2 pr-4 font-medium">配准</th>
-                    <th className="py-2 pr-4 font-medium">得分</th>
-                    <th className="py-2 pr-4 font-medium">待复核</th>
-                    <th className="py-2 font-medium" />
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {mergedStudents.map((student) => (
-                    <tr key={`${student.className}-${student.name}`}>
-                      <td className="py-2 pr-4 font-medium">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>学生</TableHead>
+                  <TableHead>班级</TableHead>
+                  <TableHead>配准</TableHead>
+                  <TableHead>得分</TableHead>
+                  <TableHead>待复核</TableHead>
+                  <TableHead />
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {mergedStudents.map((student) => {
+                  const registration =
+                    registrationTags[student.registration] ??
+                    pendingRegistrationTag
+                  return (
+                    <TableRow key={`${student.className}-${student.name}`}>
+                      <TableCell className="font-medium">
                         {student.name}
                         {student.count > 1 && (
                           <span className="ml-2 text-muted-foreground text-xs font-normal">
                             {student.count} 份
                           </span>
                         )}
-                      </td>
-                      <td className="py-2 pr-4 text-muted-foreground">
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
                         {student.className || "未分班"}
-                      </td>
-                      <td className="py-2 pr-4">
+                      </TableCell>
+                      <TableCell>
                         <Tooltip>
                           <TooltipTrigger asChild>
                             <span className="inline-flex items-center gap-1.5">
-                              <Badge
-                                variant={
-                                  student.registration === "failed"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                              >
-                                {student.registration === "failed"
-                                  ? "配准失败"
-                                  : student.registration === "manual_confirmed"
-                                    ? "人工配准"
-                                    : student.registration === "auto_confirmed"
-                                      ? "自动配准"
-                                      : "待配准"}
-                              </Badge>
+                              <Tag variant={registration.variant}>
+                                {registration.label}
+                              </Tag>
                               {student.registrationQuality != null && (
                                 <span className="text-muted-foreground text-xs tabular-nums">
                                   {Math.round(
@@ -376,71 +425,76 @@ function GradingWorkspace() {
                             </TooltipContent>
                           )}
                         </Tooltip>
-                      </td>
-                      <td className="py-2 pr-4 tabular-nums">
+                      </TableCell>
+                      <TableCell className="tabular-nums">
                         {student.totalScore != null
                           ? `${student.totalScore} / ${student.totalMax ?? "--"}`
                           : "未批改"}
-                      </td>
-                      <td className="py-2 pr-4">
+                      </TableCell>
+                      <TableCell>
                         {student.pendingReview > 0 ? (
-                          <Badge variant="outline">
-                            {student.pendingReview} 题
-                          </Badge>
+                          <Tag variant="amber">{student.pendingReview} 题</Tag>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}
-                      </td>
-                      <td className="py-2 text-right">
+                      </TableCell>
+                      <TableCell className="text-right">
                         <Button variant="ghost" size="sm" asChild>
                           <Link
-                            to="/exams/$examId/submissions/$submissionId/review"
-                            params={{
-                              examId,
-                              submissionId: student.firstSubmissionId,
-                            }}
+                            to="/exams/$examId/workbench"
+                            params={{ examId }}
+                            search={{ student: student.name }}
                           >
                             复核
                           </Link>
                         </Button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })}
+              </TableBody>
+            </Table>
           )}
         </CardContent>
       </Card>
       {latest && (
-        <Card>
+        <Card className="rounded-2xl shadow-card">
           <CardHeader className="flex flex-row items-center justify-between">
-            <CardTitle>最近批次</CardTitle>
-            <Badge
+            <CardTitle className="font-medium text-sm">最近批次</CardTitle>
+            <Tag
               variant={
-                latest.status === "failed"
-                  ? "destructive"
-                  : latest.status === "completed_with_errors"
-                    ? "outline"
-                    : "secondary"
+                (gradingRunStatusTags[latest.status] ?? { variant: "indigo" })
+                  .variant
               }
             >
-              {gradingRunStatusLabels[latest.status] ?? latest.status}
-            </Badge>
+              {gradingRunStatusTags[latest.status]?.label ?? latest.status}
+            </Tag>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-8">
-              <div>
-                <span className="text-muted-foreground">模型</span>
-                <p>
-                  {latest.provider} / {latest.model}
-                </p>
-              </div>
+              {canCustomizeRun && (
+                <div>
+                  <span className="text-muted-foreground">模型</span>
+                  <p>
+                    {latest.provider} / {latest.model}
+                  </p>
+                </div>
+              )}
               <div>
                 <span className="text-muted-foreground">进度</span>
                 <p>
                   {latest.completed_items} / {latest.total_items} 题块
                 </p>
+                <ProgressBar
+                  slim
+                  striped={latest.status === "running"}
+                  value={
+                    latest.total_items > 0
+                      ? (latest.completed_items / latest.total_items) * 100
+                      : 0
+                  }
+                  className="mt-1.5"
+                />
               </div>
               <div>
                 <span className="text-muted-foreground">已提取</span>
@@ -455,9 +509,11 @@ function GradingWorkspace() {
               <div>
                 <span className="text-muted-foreground">平均置信度</span>
                 <p>
-                  {latest.average_confidence == null
-                    ? "--"
-                    : `${(latest.average_confidence * 100).toFixed(1)}%`}
+                  {latest.average_confidence == null ? (
+                    "--"
+                  ) : (
+                    <ConfBadge value={latest.average_confidence * 100} />
+                  )}
                 </p>
               </div>
               <div>
@@ -488,86 +544,118 @@ function GradingWorkspace() {
                 </p>
               </div>
             </div>
-            <div className="mt-4 flex gap-2">
+            <div className="mt-4 flex items-center gap-2 text-muted-foreground text-sm">
               {latest.status === "running" && (
-                <Clock3 className="size-4 animate-pulse" />
+                <Clock3 className="size-4 animate-pulse text-sky-500" />
               )}{" "}
               {latest.status.startsWith("completed") && (
-                <CheckCircle2 className="size-4 text-green-600" />
+                <CheckCircle2 className="size-4 text-emerald-500" />
               )}
               <span>
                 {latest.status === "running"
                   ? "正在识别和评分，页面会自动刷新"
                   : "批次处理完成后可进入答卷复核"}
               </span>
-              <Button variant="ghost" size="sm" onClick={() => runs.refetch()}>
-                <RefreshCw className="mr-1 size-4" />
-                刷新
-              </Button>
             </div>
+            {latest.timing?.fallback_used && (
+              <div className="mt-3 border-amber-200 border-t pt-3 text-amber-700 text-sm">
+                主通道暂时不可用，本批次已自动切换备用通道继续处理
+              </div>
+            )}
           </CardContent>
         </Card>
       )}
-      {latest && (reviewQueue.data?.length ?? 0) > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle>分层复核队列</CardTitle>
-          </CardHeader>
-          <CardContent className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="py-2">优先级</th>
-                  <th>学生</th>
-                  <th>题目</th>
-                  <th>风险</th>
-                  <th>模型得分</th>
-                  <th>置信度</th>
-                  <th />
-                </tr>
-              </thead>
-              <tbody>
-                {reviewQueue.data?.map((item) => (
-                  <tr
-                    className="border-b last:border-0"
-                    key={`${item.submission_id}-${item.label}`}
+      {latest && (
+        <Card className="rounded-2xl shadow-card">
+          <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-2">
+            <CardTitle className="font-medium text-sm">分层复核队列</CardTitle>
+            <div className="flex items-center gap-2">
+              {reviewCount > 0 && (
+                <Button
+                  size="sm"
+                  className="bg-gradient-primary text-white hover:opacity-90"
+                  asChild
+                >
+                  <Link
+                    to="/exams/$examId/workbench"
+                    params={{ examId }}
+                    search={{ filter: "needs_review" }}
                   >
-                    <td className="py-3">
-                      <Badge
-                        variant={
-                          item.priority >= 100 ? "destructive" : "secondary"
-                        }
-                      >
-                        {item.priority >= 100 ? "高" : "普通"}
-                      </Badge>
-                    </td>
-                    <td>
-                      {item.student_name || item.student_identifier || "未识别"}
-                    </td>
-                    <td>{item.label || "整卷"}</td>
-                    <td>{item.risk}</td>
-                    <td>
-                      {item.score ?? "--"} / {item.max_score ?? "--"}
-                    </td>
-                    <td>
-                      {item.confidence == null
-                        ? "--"
-                        : `${(item.confidence * 100).toFixed(1)}%`}
-                    </td>
-                    <td className="text-right">
-                      <Button variant="outline" size="sm" asChild>
-                        <Link
-                          to="/exams/$examId/submissions/$submissionId/review"
-                          params={{ examId, submissionId: item.submission_id }}
-                        >
-                          进入复核
-                        </Link>
-                      </Button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    继续复核 {reviewCount} 题
+                  </Link>
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/exams/$examId/workbench" params={{ examId }}>
+                  查看全部答卷
+                </Link>
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {reviewCount === 0 ? (
+              <EmptyState
+                className="border-0 py-10"
+                title="没有需要复核的题目"
+              />
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>优先级</TableHead>
+                    <TableHead>学生</TableHead>
+                    <TableHead>题目</TableHead>
+                    <TableHead>原因</TableHead>
+                    <TableHead>建议得分</TableHead>
+                    <TableHead />
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {reviewQueue.data?.map((item) => (
+                    <TableRow key={`${item.submission_id}-${item.label}`}>
+                      <TableCell>
+                        <Tag variant={item.priority >= 100 ? "red" : "indigo"}>
+                          {item.priority >= 100 ? "高" : "普通"}
+                        </Tag>
+                      </TableCell>
+                      <TableCell>
+                        {item.student_name ||
+                          item.student_identifier ||
+                          "未识别"}
+                      </TableCell>
+                      <TableCell>{item.label || "整卷"}</TableCell>
+                      <TableCell className="text-amber-600 dark:text-amber-400">
+                        {reviewReasonText(item)}
+                      </TableCell>
+                      <TableCell className="tabular-nums">
+                        {item.score ?? "--"} / {item.max_score ?? "--"}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center justify-end gap-3">
+                          {item.confidence != null && (
+                            <span className="text-muted-foreground text-xs tabular-nums">
+                              置信 {Math.round(item.confidence * 100)}%
+                            </span>
+                          )}
+                          <Button variant="outline" size="sm" asChild>
+                            <Link
+                              to="/exams/$examId/workbench"
+                              params={{ examId }}
+                              search={{
+                                student: item.student_name ?? "",
+                                filter: "needs_review",
+                              }}
+                            >
+                              进入复核
+                            </Link>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       )}

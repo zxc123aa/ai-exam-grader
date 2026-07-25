@@ -55,6 +55,7 @@ export function ScoringPointsEditor({
             type="button"
             size="icon"
             variant="ghost"
+            className="text-muted-foreground hover:text-destructive"
             disabled={disabled}
             aria-label={`删除评分点 ${index + 1}`}
             onClick={() =>

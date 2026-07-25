@@ -11,12 +11,27 @@ RUBRIC_SCHEMA_VERSION = "professional-rubric-v1"
 
 
 def generate_and_validate_rubric(
-    *, image_bytes: bytes, answer: StandardAnswer, question_label: str
+    *,
+    image_bytes: bytes,
+    answer: StandardAnswer,
+    question_label: str,
+    vision_provider: str | None = None,
+    vision_model: str | None = None,
+    fallback_models: list[str] | None = None,
 ) -> StandardAnswer:
+    from app.core.config import settings
+
+    vision_provider = vision_provider or settings.VISION_DEFAULT_PROVIDER
+    vision_model = vision_model or settings.VISION_DEFAULT_MODEL
     image = base64.b64encode(image_bytes).decode("ascii")
+    image_part = {
+        "type": "image_url",
+        "image_url": {"url": f"data:image/png;base64,{image}"},
+    }
     extracted, vision_model, vision_ms = call_json_model(
-        provider="fluxnode_gemini",
-        model="gemini-3.5-flash",
+        provider=vision_provider,
+        model=vision_model,
+        fallback_models=fallback_models,
         messages=[
             {
                 "role": "user",
@@ -25,16 +40,14 @@ def generate_and_validate_rubric(
                         "type": "text",
                         "text": f"""只读取图片中“{question_label}”对应题块的印刷题干、选项、图表文字，不读取学生答案。识别题型，只返回 JSON：{{"question_text":"完整题干","question_type":"single_choice|multiple_choice|true_false|fill_blank|calculation|proof|short_answer|essay","confidence":0.0}}。""",
                     },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:image/png;base64,{image}"},
-                    },
+                    image_part,
                 ],
             }
         ],
     )
     question_text = str(extracted.get("question_text", "")).strip()
     question_type = str(extracted.get("question_type", "")).strip()
+    # 解题与审稿同时给题面文本和题区原图：图题可做，转录漏字可由原图纠正
     prompt = f"""你是资深学科命题与阅卷专家。独立解答题目并生成可执行的专业评分准则。
 题目：{question_text}
 现有参考答案：{answer.answer_text}
@@ -43,8 +56,13 @@ def generate_and_validate_rubric(
     rubric, generator_model, generator_ms = call_json_model(
         provider="pomoai",
         model="gpt-5.6-sol",
-        fallback_models=["gpt-5.5"],
-        messages=[{"role": "user", "content": prompt}],
+        fallback_models=fallback_models or ["gpt-5.5"],
+        messages=[
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": prompt}, image_part],
+            }
+        ],
     )
     review_prompt = f"""你是独立评分标准审稿人。重新解答题目，检查候选答案与评分准则是否正确、完整、可执行，特别检查评分点合计、等价答案、单位/容差、步骤分和边界情况。发现问题时必须直接修订，不得只提出建议。只返回 JSON：{{"valid":true,"issues":["发现并已修复的问题"],"corrected_rubric":{{"canonical_answer":"修订答案","accepted_answers":[],"rubric_summary":"修订规则","scoring_points":[],"deduction_rules":[],"tolerance":{{}},"global_rules":{{}}}}}}。valid 表示 corrected_rubric 已达到可自动发布标准；corrected_rubric 必须始终返回完整结构，评分点分值之和等于满分。
 题目：{question_text}
@@ -53,8 +71,13 @@ def generate_and_validate_rubric(
     review, validator_model, validator_ms = call_json_model(
         provider="pomoai",
         model="gpt-5.6-sol",
-        fallback_models=["gpt-5.5"],
-        messages=[{"role": "user", "content": review_prompt}],
+        fallback_models=fallback_models or ["gpt-5.5"],
+        messages=[
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": review_prompt}, image_part],
+            }
+        ],
     )
     corrected = review.get("corrected_rubric")
     if isinstance(corrected, dict):

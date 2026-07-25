@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import uuid
+import zipfile
 from io import BytesIO
 
 import pytest
@@ -24,6 +25,14 @@ from tests.utils.utils import random_email, random_lower_string
 def build_test_png() -> bytes:
     buffer = BytesIO()
     Image.new("RGB", (4, 4), color=(255, 255, 255)).save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
+def build_test_zip(entries: dict[str, bytes]) -> bytes:
+    buffer = BytesIO()
+    with zipfile.ZipFile(buffer, "w") as archive:
+        for name, data in entries.items():
+            archive.writestr(name, data)
     return buffer.getvalue()
 
 
@@ -54,6 +63,8 @@ def build_question_layout_page() -> bytes:
     image.save(buffer, format="PNG")
     return buffer.getvalue()
 
+
+DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
 PNG_BYTES = b"\x89PNG\r\n\x1a\nexam image bytes"
 VALID_PNG_BYTES = build_test_png()
@@ -97,7 +108,12 @@ startxref
 def test_create_exam(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    data = {"title": "Midterm Exam", "subject": "Math", "grade_level": "Grade 8"}
+    data = {
+        "org_id": DEFAULT_ORG_ID,
+        "title": "Midterm Exam",
+        "subject": "Math",
+        "grade_level": "Grade 8",
+    }
     response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
@@ -119,7 +135,7 @@ def test_read_exam(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Read Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Read Exam"},
     )
     exam_id = create_response.json()["id"]
     response = client.get(
@@ -147,7 +163,7 @@ def test_read_exams(
     client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "List Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "List Exam"},
     )
     response = client.get(
         f"{settings.API_V1_STR}/exams/",
@@ -163,7 +179,7 @@ def test_upload_exam_file(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -189,7 +205,7 @@ def test_read_exam_files(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "File List Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "File List Exam"},
     )
     exam_id = create_response.json()["id"]
     client.post(
@@ -216,7 +232,7 @@ def test_upload_multiple_exam_files_and_reorder_pages(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Multi-page Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Multi-page Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -266,7 +282,7 @@ def test_read_exam_file_content(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -292,7 +308,7 @@ def test_read_exam_file_content_requires_authorization_header(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Protected Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Protected Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -315,7 +331,7 @@ def test_read_exam_file_content_rejects_query_token_only(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Query Token Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Query Token Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -340,7 +356,7 @@ def test_read_pdf_exam_file_page_image(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "PDF Page Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "PDF Page Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -366,7 +382,7 @@ def test_read_exam_region_candidates(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Candidate Regions Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Candidate Regions Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -441,7 +457,7 @@ def test_read_exam_region_candidates_with_ocr_anchor_engine(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "OCR Anchor Candidate Regions Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "OCR Anchor Candidate Regions Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -473,7 +489,7 @@ def test_gemini_region_candidates_expose_projection_refinement(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Gemini refined layout exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Gemini refined layout exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -536,7 +552,7 @@ def test_read_pdf_exam_file_page_image_not_found(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "PDF Page Missing Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "PDF Page Missing Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -560,7 +576,7 @@ def test_upload_exam_file_rejects_unsupported_type(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Reject Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Reject Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -579,7 +595,7 @@ def test_upload_exam_file_rejects_invalid_pdf(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Invalid PDF Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Invalid PDF Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -629,7 +645,7 @@ def test_normal_user_cannot_upload_to_other_users_exam(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Private Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Private Exam"},
     )
     exam_id = create_response.json()["id"]
     password = random_lower_string()
@@ -647,7 +663,7 @@ def test_normal_user_cannot_upload_to_other_users_exam(
         files={"file": ("blank.png", PNG_BYTES, "image/png")},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_superuser_exam_upload_is_owned_by_exam_owner(
@@ -658,7 +674,9 @@ def test_superuser_exam_upload_is_owned_by_exam_owner(
     password = random_lower_string()
     user = crud.create_user(
         session=db,
-        user_create=UserCreate(email=random_email(), password=password),
+        user_create=UserCreate(
+            email=random_email(), password=password, org_id=DEFAULT_ORG_ID
+        ),
     )
     headers = user_authentication_headers(
         client=client, email=user.email, password=password
@@ -666,7 +684,7 @@ def test_superuser_exam_upload_is_owned_by_exam_owner(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=headers,
-        json={"title": "Owned Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Owned Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -686,7 +704,7 @@ def test_create_read_update_delete_exam_region(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Region Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Region Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -737,7 +755,7 @@ def test_create_exam_region_rejects_out_of_bounds(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Bounds Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Bounds Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -764,7 +782,7 @@ def test_create_read_update_delete_standard_answer(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Standard Answer Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Standard Answer Exam"},
     )
     exam_id = create_response.json()["id"]
     region_response = client.post(
@@ -850,7 +868,7 @@ def test_create_standard_answer_rejects_duplicate_region(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Duplicate Answer Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Duplicate Answer Exam"},
     )
     exam_id = create_response.json()["id"]
     region_response = client.post(
@@ -896,7 +914,7 @@ def test_create_standard_answer_rejects_non_question_region(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Non Question Answer Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Non Question Answer Exam"},
     )
     exam_id = create_response.json()["id"]
     region_response = client.post(
@@ -937,7 +955,7 @@ def test_normal_user_cannot_read_other_users_standard_answers(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Private Answer Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Private Answer Exam"},
     )
     exam_id = create_response.json()["id"]
     password = random_lower_string()
@@ -954,7 +972,7 @@ def test_normal_user_cannot_read_other_users_standard_answers(
         headers=headers,
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_update_exam_region_rejects_out_of_bounds(
@@ -963,7 +981,7 @@ def test_update_exam_region_rejects_out_of_bounds(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Update Bounds Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Update Bounds Exam"},
     )
     exam_id = create_response.json()["id"]
     region_response = client.post(
@@ -996,7 +1014,7 @@ def test_upload_student_submission(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -1025,7 +1043,7 @@ def test_read_student_submissions(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission List Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission List Exam"},
     )
     exam_id = create_response.json()["id"]
     client.post(
@@ -1057,7 +1075,7 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Scan Photo Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Scan Photo Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -1113,7 +1131,7 @@ def test_preprocess_student_submission_photo_uses_scan_http_engine(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Scan HTTP Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Scan HTTP Exam"},
     )
     exam_id = create_response.json()["id"]
     page_b64 = base64.b64encode(build_test_png()).decode()
@@ -1188,7 +1206,7 @@ def test_append_student_submission_pages_pdf(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Append PDF Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Append PDF Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1232,7 +1250,7 @@ def test_append_student_submission_pages_photo_runs_split(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Append Photo Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Append Photo Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1266,13 +1284,143 @@ def test_append_student_submission_pages_photo_runs_split(
     assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
 
 
+def test_upload_student_submission_zip(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "opencv_v1")
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Zip Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    zip_bytes = build_test_zip(
+        {
+            "10.jpg": SCAN_PHOTO_BYTES,
+            "2.jpg": SCAN_PHOTO_BYTES,
+        }
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.zip", zip_bytes, "application/zip")},
+        data={"student_name": "Student Zip", "class_name": "001班"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["student_name"] == "Student Zip"
+    assert content["class_name"] == "001班"
+    assert content["status"] == "registration_pending"
+    # 原始 zip 留存在 original，答卷文件为解包合并后的 PDF
+    assert content["original_stored_file_id"] is not None
+    assert content["stored_file"]["original_filename"] == "student-a-scanned.pdf"
+    assert content["stored_file"]["content_type"] == "application/pdf"
+    assert "ZIP 解包" in content["registration_notes"]
+    # 两张双页照片各拆 2 页
+    assert content["page_count"] == 4
+
+
+def test_append_student_submission_pages_zip(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "opencv_v1")
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Append Zip Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.pdf", PDF_BYTES, "application/pdf")},
+        data={"student_name": "Student Zip Append"},
+    )
+    submission_id = upload_response.json()["id"]
+    assert upload_response.json()["page_count"] == 1
+
+    zip_bytes = build_test_zip({"0_0.jpg": SCAN_PHOTO_BYTES})
+    append_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/pages",
+        headers=superuser_token_headers,
+        files={"file": ("student-a-pages.zip", zip_bytes, "application/zip")},
+    )
+
+    assert append_response.status_code == 200
+    content = append_response.json()
+    assert content["id"] == submission_id
+    assert content["stored_file"]["content_type"] == "application/pdf"
+    # 1 页原 PDF + zip 内双页照片拆出的 2 页
+    assert content["page_count"] == 3
+
+
+def test_upload_student_submission_zip_empty_rejected(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Empty Zip Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("empty.zip", build_test_zip({}), "application/zip")},
+        data={"student_name": "Student Empty Zip"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_upload_student_submission_zip_skips_non_images(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(settings, "SCAN_ENGINE", "opencv_v1")
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Mixed Zip Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    zip_bytes = build_test_zip(
+        {
+            "说明.txt": b"not an image",
+            "readme.pdf": PDF_BYTES,
+            "1.jpg": SCAN_PHOTO_BYTES,
+        }
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("mixed.zip", zip_bytes, "application/zip")},
+        data={"student_name": "Student Mixed Zip"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    # 非图片文件被跳过，仅 1 张双页照片拆 2 页
+    assert content["page_count"] == 2
+    assert "1 张照片" in content["registration_notes"]
+
+
 def test_append_student_submission_pages_confirmed_registration_conflict(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Append Conflict Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Append Conflict Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1309,7 +1457,7 @@ def test_read_student_submission_page_image(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1335,7 +1483,7 @@ def test_update_student_submission_registration_manual_confirmed(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Registration Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Registration Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1373,7 +1521,7 @@ def test_update_student_submission_registration_failed(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Registration Failed Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Registration Failed Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1407,7 +1555,7 @@ def test_student_submission_page_image_requires_authorization_header(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Protected Preview Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Protected Preview Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1430,7 +1578,7 @@ def test_read_student_submission_template_regions(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Regions Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Regions Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1473,7 +1621,7 @@ def test_read_student_submission_region_crop(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Crop Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Crop Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1519,7 +1667,7 @@ def test_read_student_submission_template_regions_global_page_number(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Global Page Regions Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Global Page Regions Exam"},
     )
     exam_id = create_response.json()["id"]
     two_page_pdf = merge_pdf_bytes(
@@ -1592,7 +1740,7 @@ def test_read_student_submission_region_crop_uses_global_page_number(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Global Page Crop Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Global Page Crop Exam"},
     )
     exam_id = create_response.json()["id"]
     two_page_pdf = merge_pdf_bytes(
@@ -1660,7 +1808,7 @@ def test_create_update_and_delete_submission_annotation(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Annotation Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Annotation Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1749,7 +1897,7 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Submission Processing Task Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Submission Processing Task Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1853,7 +2001,7 @@ def test_student_submission_processing_task_writes_paddle_http_ocr_result(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Paddle OCR Processing Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Paddle OCR Processing Exam"},
     )
     exam_id = create_response.json()["id"]
     upload_response = client.post(
@@ -1951,13 +2099,13 @@ def test_submission_annotation_rejects_region_from_other_exam(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Annotation Exam A"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Annotation Exam A"},
     )
     exam_id = create_response.json()["id"]
     other_create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Annotation Exam B"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Annotation Exam B"},
     )
     other_exam_id = other_create_response.json()["id"]
     upload_response = client.post(
@@ -2005,7 +2153,7 @@ def test_upload_student_submission_rejects_invalid_pdf(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Invalid Submission PDF Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Invalid Submission PDF Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -2026,7 +2174,7 @@ def test_normal_user_cannot_upload_submission_to_other_users_exam(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Private Submission Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Private Submission Exam"},
     )
     exam_id = create_response.json()["id"]
     password = random_lower_string()
@@ -2044,7 +2192,7 @@ def test_normal_user_cannot_upload_submission_to_other_users_exam(
         files={"file": ("student-a.png", PNG_BYTES, "image/png")},
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 404
 
 
 def test_superuser_submission_upload_is_owned_by_exam_owner(
@@ -2055,7 +2203,9 @@ def test_superuser_submission_upload_is_owned_by_exam_owner(
     password = random_lower_string()
     user = crud.create_user(
         session=db,
-        user_create=UserCreate(email=random_email(), password=password),
+        user_create=UserCreate(
+            email=random_email(), password=password, org_id=DEFAULT_ORG_ID
+        ),
     )
     headers = user_authentication_headers(
         client=client, email=user.email, password=password
@@ -2063,7 +2213,7 @@ def test_superuser_submission_upload_is_owned_by_exam_owner(
     create_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=headers,
-        json={"title": "Owned Submission Upload Exam"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Owned Submission Upload Exam"},
     )
     exam_id = create_response.json()["id"]
 
@@ -2075,3 +2225,84 @@ def test_superuser_submission_upload_is_owned_by_exam_owner(
 
     assert response.status_code == 200
     assert response.json()["stored_file"]["uploaded_by_id"] == str(user.id)
+
+
+def test_create_exam_analysis_report(
+    client: TestClient,
+    superuser_token_headers: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Analysis Report Exam"},
+    )
+    exam_id = create_response.json()["id"]
+    upload_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=superuser_token_headers,
+        files={"file": ("student-a.png", VALID_PNG_BYTES, "image/png")},
+        data={"student_name": "Student A", "class_name": "Class 1"},
+    )
+    submission_id = upload_response.json()["id"]
+    client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions/{submission_id}/annotations",
+        headers=superuser_token_headers,
+        json={
+            "label": "Q1",
+            "status": "accepted",
+            "page_number": 1,
+            "x": 0.1,
+            "y": 0.2,
+            "width": 0.3,
+            "height": 0.2,
+            "score": 4,
+            "max_score": 5,
+        },
+    )
+
+    def fake_call_json_model(**kwargs: object) -> tuple[dict, str, int]:
+        return (
+            {
+                "overall": "班级整体表现良好，平均分处于中上水平。",
+                "weak": "第 Q1 题得分率偏低，是主要薄弱点。",
+                "polar": "前后 25% 学生均分差距较小，分化不明显。",
+                "advice": "建议针对薄弱题目安排专题讲评并布置分层练习。",
+            },
+            "mock-model",
+            1,
+        )
+
+    monkeypatch.setattr(exams_route, "call_json_model", fake_call_json_model)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/analysis-report",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["overall"] == "班级整体表现良好，平均分处于中上水平。"
+    assert content["weak"]
+    assert content["polar"]
+    assert content["advice"]
+    assert content["generated_at"]
+
+
+def test_create_exam_analysis_report_requires_scores(
+    client: TestClient, superuser_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Analysis Report Empty Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/analysis-report",
+        headers=superuser_token_headers,
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "该考试还没有批改成绩，无法生成学情报告"

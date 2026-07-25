@@ -5,6 +5,8 @@ import { Suspense } from "react"
 
 import { ExamsService } from "@/client"
 import { DataTable } from "@/components/Common/DataTable"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { PageHead } from "@/components/Common/PageHead"
 import AddExam from "@/components/Exams/AddExam"
 import { columns } from "@/components/Exams/columns"
 import PendingExams from "@/components/Pending/PendingExams"
@@ -21,7 +23,7 @@ export const Route = createFileRoute("/_layout/exams")({
   head: () => ({
     meta: [
       {
-        title: "考试管理 - 智阅卷",
+        title: "考试管理 - 点凡阅卷",
       },
     ],
   }),
@@ -32,15 +34,14 @@ function ExamsTableContent() {
 
   if (exams.data.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center rounded-xl border border-dashed bg-card/50 py-16 text-center">
-        <div className="rounded-full bg-muted p-4 mb-4">
-          <Search className="h-8 w-8 text-muted-foreground" />
-        </div>
-        <h3 className="text-lg font-semibold">还没有考试</h3>
-        <p className="text-muted-foreground">
-          创建第一场考试，然后导入卷子图片或 PDF
-        </p>
-        <div className="mt-4">
+      <div className="grid gap-4">
+        <EmptyState
+          icon={Search}
+          title="还没有考试"
+          description="创建第一场考试，然后导入卷子图片或 PDF"
+          className="bg-card shadow-card"
+        />
+        <div className="flex justify-center">
           <AddExam />
         </div>
       </div>
@@ -61,15 +62,11 @@ function ExamsTable() {
 function Exams() {
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">考试管理</h1>
-          <p className="text-muted-foreground">
-            创建考试，导入一份卷子图片/PDF，然后识别题目内容和准备标准答案
-          </p>
-        </div>
-        <AddExam />
-      </div>
+      <PageHead
+        title="考试管理"
+        subtitle="创建考试，导入一份卷子图片/PDF，然后识别题目内容和准备标准答案"
+        actions={<AddExam />}
+      />
       <ExamsTable />
     </div>
   )

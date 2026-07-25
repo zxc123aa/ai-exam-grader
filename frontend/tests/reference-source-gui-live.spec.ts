@@ -18,6 +18,13 @@ test("reference GUI keeps every recognized answer while flagging uncertain OCR",
     "../outputs/reference-gui-full-flow.png",
   )
 
+  // 参考算法 GUI（独立服务，:3417）不在本套件管理范围内，未启动时跳过
+  try {
+    await page.request.get("http://127.0.0.1:3417", { timeout: 5_000 })
+  } catch {
+    test.skip(true, "参考算法 GUI 服务（127.0.0.1:3417）未运行")
+  }
+
   await page.goto("http://127.0.0.1:3417")
   await expect(page.locator("#health span")).toContainText("8 路并发")
 

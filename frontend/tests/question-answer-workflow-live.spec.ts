@@ -56,10 +56,17 @@ test("real question-recognition draft renders backend counts and timing dynamica
   await expect(page.getByTestId("average-confidence")).toHaveText(
     `${expectedAverage}%`,
   )
+  // 耗时明细默认折叠在「批次详情（调试）」里，先展开再断言
+  await page.getByText("批次详情（调试）").click()
   await expect(page.getByText("方向检测")).toBeVisible()
   await expect(page.getByText("版面分割")).toBeVisible()
   await expect(page.getByText("裁切", { exact: true })).toBeVisible()
   await expect(page.getByText("OCR", { exact: true })).toBeVisible()
+  // 题目列表默认收起，先展开第一行再断言卷面作答
+  await page
+    .getByTestId(/^recognition-item-/)
+    .first()
+    .click()
   await expect(
     page.getByText(items[0].student_answer_text, { exact: true }).first(),
   ).toBeVisible()
@@ -85,7 +92,12 @@ test("question confirmation and immutable answer publishing render end to end", 
   const headers = { Authorization: `Bearer ${token}` }
   const examResponse = await page.request.post(`${apiBase}/exams/`, {
     headers,
-    data: { title: `工作流验收-${Date.now()}`, subject: "物理" },
+    data: {
+      title: `工作流验收-${Date.now()}`,
+      subject: "物理",
+      // 平台账号创建考试必须指定 org_id（默认学校）
+      org_id: "00000000-0000-0000-0000-000000000001",
+    },
   })
   expect(examResponse.ok()).toBeTruthy()
   const exam = await examResponse.json()
@@ -360,11 +372,9 @@ test("question confirmation and immutable answer publishing render end to end", 
   })
 
   try {
-    await page.goto("/login")
-    await page.evaluate(
-      (value) => localStorage.setItem("access_token", value),
-      token,
-    )
+    await page.addInitScript((value) => {
+      localStorage.setItem("access_token", value)
+    }, token)
     await page.goto(`/exams/${exam.id}/questions?runId=${recognitionRun.id}`)
     await expect(page.getByRole("heading", { name: exam.title })).toBeVisible()
     await expect(page.getByTestId(/^recognition-item-/)).toHaveCount(
@@ -372,19 +382,30 @@ test("question confirmation and immutable answer publishing render end to end", 
     )
     await expect(page.getByText("平均置信度")).toBeVisible()
     await expect(page.getByTestId("average-confidence")).toHaveText("85%")
+    // 题目列表默认收起，先展开第一行再断言卷面作答
+    await page
+      .getByTestId(/^recognition-item-/)
+      .first()
+      .click()
     await expect(
       page.getByText(questionItems[0].student_answer_text),
     ).toBeVisible()
+    // 耗时明细默认折叠在「批次详情（调试）」里，先展开再断言
+    await page.getByText("批次详情（调试）").click()
     await expect(page.getByText("方向检测")).toBeVisible()
     await expect(page.getByText("版面分割")).toBeVisible()
     await expect(page.getByText("OCR", { exact: true })).toBeVisible()
     await page.getByRole("button", { name: "确认题目并进入标准答案" }).click()
+    // 生成参考答案前，标准答案页只展示模式选择与确认题目数
     await expect(
-      page.getByText("答案与评分准则", { exact: true }),
+      page.getByRole("button", { name: "生成参考答案" }),
     ).toBeVisible()
-    await expect(page.getByText("pomoai")).toBeVisible()
-    await expect(page.getByText("gpt-5.6-sol")).toBeVisible()
-    await page.getByRole("button", { name: "生成答案草稿" }).click()
+    await page.getByRole("button", { name: "生成参考答案" }).click()
+    await expect(page.getByText("答案匹配与评分准则")).toBeVisible()
+    await expect(page.getByText("pomoai", { exact: true })).toBeVisible()
+    await expect(
+      page.getByText("gpt-5.6-sol", { exact: true }).last(),
+    ).toBeVisible()
     await expect(page.getByTestId(/^answer-item-/)).toHaveCount(
       answerItems.length,
     )

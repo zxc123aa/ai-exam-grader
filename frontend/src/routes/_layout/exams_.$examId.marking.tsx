@@ -3,6 +3,7 @@ import { createFileRoute } from "@tanstack/react-router"
 import { FileText } from "lucide-react"
 
 import { ExamsService } from "@/client"
+import { EmptyState } from "@/components/Common/EmptyState"
 import ExamFilesDialog from "@/components/Exams/ExamFilesDialog"
 import RegionMarkingCanvas from "@/components/Exams/RegionMarkingCanvas"
 
@@ -11,7 +12,7 @@ export const Route = createFileRoute("/_layout/exams_/$examId/marking")({
   head: () => ({
     meta: [
       {
-        title: "区域校正 - 智阅卷",
+        title: "框选题目 - 点凡阅卷",
       },
     ],
   }),
@@ -43,33 +44,29 @@ function ExamMarking() {
   )
 
   return (
-    <div className="grid gap-6">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-muted-foreground">
-          多张图片或 PDF 按顺序组成一份完整试卷。
-        </p>
-        {examQuery.data && <ExamFilesDialog exam={examQuery.data} />}
-      </div>
-
+    <div className="grid gap-4">
       {filesQuery.isLoading || regionsQuery.isLoading ? (
-        <div className="rounded-md border p-8 text-sm text-muted-foreground">
+        <div className="rounded-2xl border bg-card p-8 text-muted-foreground text-sm shadow-card">
           正在加载区域标注工作区
         </div>
       ) : documents.length === 0 ? (
-        <div className="flex flex-col gap-4 rounded-md border p-8">
-          <FileText className="size-6 text-muted-foreground" />
-          <div>
-            <h2 className="font-medium">还没有导入试卷</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              请先导入这套卷子的图片或
-              PDF，上传后可以在本页复核区域和页面校正结果。
-            </p>
-          </div>
-          {examQuery.data && <ExamFilesDialog exam={examQuery.data} />}
+        <div className="grid gap-4">
+          <EmptyState
+            icon={FileText}
+            title="还没有导入试卷"
+            description="请先导入这套卷子的图片或 PDF，上传后可以在本页复核区域和页面校正结果"
+            className="bg-card shadow-card"
+          />
+          {examQuery.data && (
+            <div className="flex justify-center">
+              <ExamFilesDialog exam={examQuery.data} />
+            </div>
+          )}
         </div>
       ) : (
         <RegionMarkingCanvas
           examId={examId}
+          exam={examQuery.data}
           documents={documents}
           regions={regions}
         />

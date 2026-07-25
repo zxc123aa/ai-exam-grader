@@ -3,6 +3,7 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   BookCheck,
   Check,
+  ChevronDown,
   FileKey2,
   History,
   Loader2,
@@ -13,9 +14,11 @@ import {
 import { useEffect, useMemo, useState } from "react"
 
 import { ExamsService } from "@/client"
+import { ConfBadge } from "@/components/Common/ConfBadge"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { Tag, type TagVariant } from "@/components/Common/Tag"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
 import { ScoringPointsEditor } from "@/components/Exams/ScoringPointsEditor"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
@@ -29,11 +32,12 @@ import {
 } from "@/components/ui/select"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import useCustomToast from "@/hooks/useCustomToast"
+import { cn } from "@/lib/utils"
 import { workflowApi } from "@/lib/workflow-api"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/answers")({
   component: AnswerWorkspace,
-  head: () => ({ meta: [{ title: "标准答案 - 智阅卷" }] }),
+  head: () => ({ meta: [{ title: "标准答案 - 点凡阅卷" }] }),
 })
 
 type Question = {
@@ -57,7 +61,13 @@ type AnswerRun = {
     | "completed"
     | "completed_with_errors"
     | "failed"
-  timing: { modelMs?: number; totalElapsedMs?: number; usedModels?: string[] }
+  timing: {
+    modelMs?: number
+    totalElapsedMs?: number
+    usedModels?: string[]
+    usedProviders?: string[]
+    fallbackUsed?: boolean
+  }
   item_count: number
   error_message: string | null
   confirmed_at: string | null
@@ -128,8 +138,8 @@ const providerModels: Record<string, string[]> = {
 }
 
 const providerLabels: Record<string, string> = {
-  pomoai: "pomoai（聚合平台）",
-  fluxnode_gemini: "Gemini",
+  pomoai: "聚合平台",
+  fluxnode_gemini: "智能识别",
   fluxnode_grok: "Grok",
   kimi: "Kimi",
 }
@@ -139,18 +149,23 @@ function formatMs(value?: number) {
   return value >= 1000 ? `${(value / 1000).toFixed(2)} 秒` : `${value} 毫秒`
 }
 
+const RUN_STATUS_LABELS: Record<AnswerRun["status"], string> = {
+  queued: "排队中",
+  running: "生成中",
+  completed: "已完成",
+  completed_with_errors: "部分失败",
+  failed: "失败",
+}
+
 function itemStatus(status: AnswerItem["status"]) {
-  const map: Record<
-    AnswerItem["status"],
-    [string, "default" | "secondary" | "outline" | "destructive"]
-  > = {
-    queued: ["排队中", "outline"],
-    running: ["生成中", "secondary"],
-    matched: ["已匹配", "secondary"],
-    conflict: ["匹配冲突", "destructive"],
-    unmatched: ["未匹配", "destructive"],
-    failed: ["生成失败", "destructive"],
-    confirmed: ["已确认", "default"],
+  const map: Record<AnswerItem["status"], [string, TagVariant]> = {
+    queued: ["排队中", "indigo"],
+    running: ["生成中", "sky"],
+    matched: ["已匹配", "violet"],
+    conflict: ["匹配冲突", "amber"],
+    unmatched: ["未匹配", "amber"],
+    failed: ["生成失败", "red"],
+    confirmed: ["已确认", "mint"],
   }
   return map[status]
 }
@@ -163,7 +178,7 @@ type AnswerDraft = {
   scoringPoints: Record<string, unknown>[]
 }
 
-function AnswerItemEditor({
+function AnswerItemRow({
   item,
   draft,
   questions,
@@ -178,103 +193,132 @@ function AnswerItemEditor({
   error?: string
   onChange: (patch: Partial<AnswerDraft>) => void
 }) {
+  const [expanded, setExpanded] = useState(false)
   const [statusLabel, statusVariant] = itemStatus(item.status)
   const question = questions.find(
     (candidate) => candidate.id === draft.questionId,
   )
 
   return (
-    <article
-      className={`grid gap-4 border-b px-4 py-5 last:border-b-0${
-        error ? " border-l-2 border-l-destructive" : ""
-      }`}
+    <div
+      className={error ? "border-l-2 border-l-destructive" : ""}
       data-testid={`answer-item-${item.id}`}
     >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="font-medium">
-              {question?.label ?? item.source_question_key ?? "未匹配条目"}
-            </span>
-            <Badge variant={statusVariant}>{statusLabel}</Badge>
-            {item.confidence !== null && (
-              <Badge variant="outline">
-                置信度 {Math.round(item.confidence * 100)}%
-              </Badge>
-            )}
-          </div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        className="flex w-full cursor-pointer items-center gap-3 px-4 py-3 text-left text-sm hover:bg-muted/50"
+        onClick={() => setExpanded((current) => !current)}
+      >
+        <span className="max-w-56 shrink-0 truncate whitespace-nowrap font-medium">
+          {question?.label ?? item.source_question_key ?? "未匹配条目"}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span
+            className="block truncate text-muted-foreground"
+            title={draft.answerText}
+          >
+            {draft.answerText || "—"}
+          </span>
           {(item.match_reason || item.error_message) && (
-            <div className="mt-1 text-xs text-muted-foreground">
+            <span className="block truncate text-muted-foreground text-xs">
               {item.error_message || item.match_reason}
+            </span>
+          )}
+        </span>
+        <Tag variant="indigo" className="shrink-0">
+          满分 {draft.maxScore || "—"}
+        </Tag>
+        <Tag variant={statusVariant} className="shrink-0">
+          {statusLabel}
+        </Tag>
+        {item.confidence !== null && item.confidence < 0.8 && (
+          <ConfBadge value={item.confidence * 100} className="shrink-0" />
+        )}
+        {error && (
+          <span className="shrink-0 text-xs text-destructive">{error}</span>
+        )}
+        <ChevronDown
+          className={cn(
+            "size-4 shrink-0 text-muted-foreground transition-transform",
+            expanded && "rotate-180",
+          )}
+        />
+      </button>
+
+      {expanded && (
+        <div className="grid gap-4 border-t bg-muted/20 px-4 py-5">
+          <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_140px]">
+            <div className="grid gap-2">
+              <Label>匹配题目</Label>
+              <Select
+                value={draft.questionId}
+                disabled={locked}
+                onValueChange={(value) => onChange({ questionId: value })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">不匹配，保留待处理</SelectItem>
+                  {questions.map((candidate) => (
+                    <SelectItem key={candidate.id} value={candidate.id}>
+                      {candidate.question_key} · {candidate.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid gap-2">
+              <Label>满分</Label>
+              <Input
+                inputMode="decimal"
+                value={draft.maxScore}
+                disabled={locked}
+                onChange={(event) => onChange({ maxScore: event.target.value })}
+              />
+            </div>
+          </div>
+          {question && (
+            <div className="whitespace-pre-wrap border-l-2 pl-3 text-muted-foreground text-sm">
+              {question.question_text}
+            </div>
+          )}
+          <div className="grid gap-2">
+            <Label>标准答案</Label>
+            <textarea
+              className="border-input min-h-32 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={draft.answerText}
+              disabled={locked}
+              onChange={(event) => onChange({ answerText: event.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>总体评分规则</Label>
+            <textarea
+              className="border-input min-h-24 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              value={draft.rubricText}
+              disabled={locked}
+              onChange={(event) => onChange({ rubricText: event.target.value })}
+            />
+          </div>
+          <div className="grid gap-2">
+            <Label>评分点</Label>
+            <ScoringPointsEditor
+              points={draft.scoringPoints}
+              disabled={locked}
+              onChange={(points) => onChange({ scoringPoints: points })}
+            />
+          </div>
+          {item.confidence !== null && (
+            <div className="flex items-center gap-1 text-muted-foreground text-xs">
+              置信度
+              <ConfBadge value={item.confidence * 100} />
             </div>
           )}
         </div>
-        {error && <span className="text-xs text-destructive">{error}</span>}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-[minmax(220px,1fr)_140px]">
-        <div className="grid gap-2">
-          <Label>匹配题目</Label>
-          <Select
-            value={draft.questionId}
-            disabled={locked}
-            onValueChange={(value) => onChange({ questionId: value })}
-          >
-            <SelectTrigger>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="unassigned">不匹配，保留待处理</SelectItem>
-              {questions.map((candidate) => (
-                <SelectItem key={candidate.id} value={candidate.id}>
-                  {candidate.question_key} · {candidate.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label>满分</Label>
-          <Input
-            inputMode="decimal"
-            value={draft.maxScore}
-            disabled={locked}
-            onChange={(event) => onChange({ maxScore: event.target.value })}
-          />
-        </div>
-      </div>
-      {question && (
-        <div className="whitespace-pre-wrap border-l-2 pl-3 text-sm text-muted-foreground">
-          {question.question_text}
-        </div>
       )}
-      <div className="grid gap-2">
-        <Label>标准答案</Label>
-        <textarea
-          className="border-input min-h-32 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={draft.answerText}
-          disabled={locked}
-          onChange={(event) => onChange({ answerText: event.target.value })}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>总体评分规则</Label>
-        <textarea
-          className="border-input min-h-24 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          value={draft.rubricText}
-          disabled={locked}
-          onChange={(event) => onChange({ rubricText: event.target.value })}
-        />
-      </div>
-      <div className="grid gap-2">
-        <Label>评分点</Label>
-        <ScoringPointsEditor
-          points={draft.scoringPoints}
-          disabled={locked}
-          onChange={(points) => onChange({ scoringPoints: points })}
-        />
-      </div>
-    </article>
+    </div>
   )
 }
 
@@ -533,33 +577,35 @@ function AnswerWorkspace() {
   return (
     <div className="grid gap-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <p className="max-w-3xl text-sm text-muted-foreground">
+        <p className="max-w-3xl text-muted-foreground text-sm">
           标准答案只在新卷子首次建库时准备一次。默认用 GPT-5.6 SOL
           根据已确认题目解题，也可以上传答案文档整理；所有答案和评分准则必须人工确认，发布后形成不可变版本，后续批改复用该版本。
         </p>
         <div className="flex flex-wrap gap-2">
-          <Badge variant="secondary">
-            {confirmedQuestions.length} 道已确认题目
-          </Badge>
-          <Badge variant="outline">{publishedQuestions} 道已发布</Badge>
+          <Tag variant="mint">{confirmedQuestions.length} 道已确认题目</Tag>
+          <Tag variant="neutral">{publishedQuestions} 道已发布</Tag>
         </div>
       </header>
 
       {confirmedQuestions.length === 0 ? (
-        <div className="grid min-h-56 place-items-center border-y py-8 text-center">
-          <div>
-            <BookCheck className="mx-auto mb-3 size-6 text-muted-foreground" />
-            <div className="font-medium">尚无已确认题目</div>
-            <Button className="mt-4" asChild>
+        <div className="grid gap-4">
+          <EmptyState
+            icon={BookCheck}
+            title="尚无已确认题目"
+            description="先在“确认题目”页确认题目，再回来准备标准答案"
+            className="bg-card shadow-card"
+          />
+          <div className="flex justify-center">
+            <Button asChild>
               <Link to="/exams/$examId/questions" params={{ examId }}>
-                前往识别内容
+                前往确认题目
               </Link>
             </Button>
           </div>
         </div>
       ) : (
         <>
-          <section className="grid gap-5 border-y py-5">
+          <section className="grid gap-5 rounded-2xl border bg-card p-5 shadow-card">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
               <div className="grid gap-3">
                 <Tabs
@@ -627,6 +673,7 @@ function AnswerWorkspace() {
                   (mode === "document" && !selectedDocuments.length)
                 }
                 onClick={() => create.mutate()}
+                className="bg-gradient-primary text-white hover:opacity-90"
               >
                 {create.isPending ? (
                   <Loader2 className="animate-spin" />
@@ -635,7 +682,7 @@ function AnswerWorkspace() {
                 ) : (
                   <FileKey2 />
                 )}
-                {mode === "model" ? "生成答案草稿" : "整理答案文档"}
+                {mode === "model" ? "生成参考答案" : "整理答案文档"}
               </Button>
             </div>
 
@@ -662,7 +709,7 @@ function AnswerWorkspace() {
                   {answerDocuments.map((document) => (
                     <div
                       key={document.id}
-                      className="flex min-w-0 items-center gap-3 rounded-md border px-3 py-3 text-sm"
+                      className="flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3 text-sm transition-colors hover:bg-secondary/50"
                     >
                       <Checkbox
                         checked={selectedDocuments.includes(document.id)}
@@ -678,9 +725,9 @@ function AnswerWorkspace() {
                       <span className="truncate">
                         {document.stored_file.original_filename}
                       </span>
-                      <Badge variant="outline" className="ml-auto">
+                      <Tag variant="indigo" className="ml-auto">
                         {document.page_count} 页
-                      </Badge>
+                      </Tag>
                     </div>
                   ))}
                 </div>
@@ -689,21 +736,25 @@ function AnswerWorkspace() {
           </section>
 
           {current && (
-            <section className="grid gap-4">
+            <section className="grid gap-4 rounded-2xl border bg-card p-5 shadow-card">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
-                  <h2 className="font-semibold">答案准备批次</h2>
-                  <Badge
+                  <h2 className="font-semibold text-sm">答案准备批次</h2>
+                  <Tag
                     variant={
-                      current.status === "failed"
-                        ? "destructive"
-                        : current.confirmed_at
-                          ? "default"
-                          : "secondary"
+                      current.confirmed_at
+                        ? "mint"
+                        : current.status === "failed"
+                          ? "red"
+                          : current.status === "completed_with_errors"
+                            ? "amber"
+                            : "sky"
                     }
                   >
-                    {current.confirmed_at ? "已确认" : current.status}
-                  </Badge>
+                    {current.confirmed_at
+                      ? "已确认"
+                      : (RUN_STATUS_LABELS[current.status] ?? current.status)}
+                  </Tag>
                 </div>
                 <select
                   className="h-9 max-w-80 rounded-md border bg-background px-3 text-sm"
@@ -718,7 +769,7 @@ function AnswerWorkspace() {
                   ))}
                 </select>
               </div>
-              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-md border bg-border md:grid-cols-4 xl:grid-cols-7">
+              <div className="grid grid-cols-2 gap-px overflow-hidden rounded-xl border bg-border md:grid-cols-4 xl:grid-cols-7">
                 {[
                   [
                     "来源",
@@ -740,56 +791,63 @@ function AnswerWorkspace() {
                   ],
                 ].map(([label, value]) => (
                   <div key={label} className="min-w-0 bg-background px-4 py-3">
-                    <div className="text-xs text-muted-foreground">{label}</div>
-                    <div className="mt-1 truncate text-sm font-medium">
+                    <div className="text-muted-foreground text-xs">{label}</div>
+                    <div className="mt-1 truncate font-medium text-sm">
                       {value}
                     </div>
                   </div>
                 ))}
               </div>
               {current.error_message && (
-                <div className="rounded-md border border-destructive px-4 py-3 text-sm text-destructive">
+                <div className="rounded-xl border border-destructive px-4 py-3 text-destructive text-sm">
                   {current.error_message}
+                </div>
+              )}
+              {current.timing.fallbackUsed && (
+                <div className="rounded-xl border border-amber-200 px-4 py-3 text-amber-700 text-sm">
+                  主通道暂时不可用，本批答案已自动切换备用通道完成
                 </div>
               )}
             </section>
           )}
 
           {current && ["queued", "running"].includes(current.status) ? (
-            <div className="flex min-h-48 items-center justify-center gap-2 border-y text-sm text-muted-foreground">
+            <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border bg-card text-muted-foreground text-sm shadow-card">
               <Loader2 className="animate-spin" />
               正在准备标准答案与评分准则
             </div>
           ) : items.data?.length ? (
             <>
-              <section className="overflow-hidden rounded-md border">
-                <div className="border-b px-4 py-3">
-                  <h2 className="font-semibold">答案匹配与评分准则</h2>
-                  <div className="text-xs text-muted-foreground">
-                    冲突和未匹配项不会进入答案版本
+              <section className="overflow-hidden rounded-2xl border bg-card shadow-card">
+                <div className="border-b px-5 py-4">
+                  <h2 className="font-semibold text-sm">答案匹配与评分准则</h2>
+                  <div className="text-muted-foreground text-xs">
+                    冲突和未匹配项不会进入答案版本。点击条目行展开编辑
                   </div>
                 </div>
-                {(items.data ?? []).map((item) => (
-                  <AnswerItemEditor
-                    key={item.id}
-                    item={item}
-                    draft={
-                      drafts[item.id] ?? {
-                        questionId: item.question_id ?? "unassigned",
-                        answerText: item.answer_text,
-                        maxScore: String(item.max_score),
-                        rubricText: item.rubric_text ?? "",
-                        scoringPoints: item.scoring_points,
+                <div className="divide-y">
+                  {(items.data ?? []).map((item) => (
+                    <AnswerItemRow
+                      key={item.id}
+                      item={item}
+                      draft={
+                        drafts[item.id] ?? {
+                          questionId: item.question_id ?? "unassigned",
+                          answerText: item.answer_text,
+                          maxScore: String(item.max_score),
+                          rubricText: item.rubric_text ?? "",
+                          scoringPoints: item.scoring_points,
+                        }
                       }
-                    }
-                    questions={confirmedQuestions}
-                    locked={Boolean(current?.confirmed_at)}
-                    error={saveErrors[item.id]}
-                    onChange={(patch) => updateDraft(item.id, patch)}
-                  />
-                ))}
+                      questions={confirmedQuestions}
+                      locked={Boolean(current?.confirmed_at)}
+                      error={saveErrors[item.id]}
+                      onChange={(patch) => updateDraft(item.id, patch)}
+                    />
+                  ))}
+                </div>
               </section>
-              <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-md border bg-background px-4 py-3 shadow-md">
+              <div className="sticky bottom-4 z-10 flex flex-wrap items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 shadow-card-lg">
                 <div className="flex items-center gap-2">
                   <Button
                     variant="outline"
@@ -808,20 +866,21 @@ function AnswerWorkspace() {
                     保存全部修改
                   </Button>
                   {dirtyIds.size > 0 && (
-                    <Badge variant="secondary">{dirtyIds.size} 条未保存</Badge>
+                    <Tag variant="amber">{dirtyIds.size} 条未保存</Tag>
                   )}
                   {Object.keys(saveErrors).length > 0 && (
-                    <Badge variant="destructive">
+                    <Tag variant="red">
                       {Object.keys(saveErrors).length} 条保存失败
-                    </Badge>
+                    </Tag>
                   )}
                 </div>
                 {current?.confirmed_at ? (
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">第 2 步 · 发布</Badge>
+                    <Tag variant="indigo">第 2 步 · 发布</Tag>
                     <Button
                       disabled={!draftRevisions.length || publish.isPending}
                       onClick={() => publish.mutate()}
+                      className="bg-gradient-primary text-white hover:opacity-90"
                     >
                       {publish.isPending ? (
                         <Loader2 className="animate-spin" />
@@ -833,12 +892,13 @@ function AnswerWorkspace() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-2">
-                    <Badge variant="secondary">第 1 步 · 确认</Badge>
+                    <Tag variant="indigo">第 1 步 · 确认</Tag>
                     <Button
                       disabled={
                         !completed || confirm.isPending || dirtyIds.size > 0
                       }
                       onClick={() => confirm.mutate()}
+                      className="bg-gradient-primary text-white hover:opacity-90"
                     >
                       {confirm.isPending ? (
                         <Loader2 className="animate-spin" />
@@ -853,17 +913,17 @@ function AnswerWorkspace() {
             </>
           ) : null}
 
-          <section className="grid gap-4 border-t pt-5">
+          <section className="grid gap-4 rounded-2xl border bg-card p-5 shadow-card">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <History className="size-4" />
-                <h2 className="font-semibold">答案版本</h2>
-                <Badge variant="outline">{revisions.data?.count ?? 0}</Badge>
+                <History className="size-4 text-muted-foreground" />
+                <h2 className="font-semibold text-sm">答案版本</h2>
+                <Tag variant="indigo">{revisions.data?.count ?? 0}</Tag>
               </div>
             </div>
-            <div className="overflow-hidden rounded-md border">
+            <div className="overflow-hidden rounded-xl border">
               {(revisions.data?.data ?? []).length === 0 ? (
-                <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+                <div className="px-4 py-8 text-center text-muted-foreground text-sm">
                   尚无答案版本
                 </div>
               ) : (
@@ -876,7 +936,7 @@ function AnswerWorkspace() {
                       <div className="font-medium">
                         第 {revision.question_key} 题
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-1 text-muted-foreground text-xs">
                         版本 {revision.revision_number}
                       </div>
                     </div>
@@ -884,21 +944,21 @@ function AnswerWorkspace() {
                       <div className="line-clamp-2 text-sm">
                         {revision.answer_text}
                       </div>
-                      <div className="mt-1 text-xs text-muted-foreground">
+                      <div className="mt-1 text-muted-foreground text-xs">
                         {revision.source_provider}/{revision.source_model} ·
                         满分 {revision.max_score} ·{" "}
                         {revision.scoring_points.length} 个评分点
                       </div>
                     </div>
-                    <Badge
+                    <Tag
                       variant={
-                        revision.status === "published" ? "default" : "outline"
+                        revision.status === "published" ? "mint" : "amber"
                       }
                     >
                       {revision.status === "published"
                         ? "已发布锁定"
                         : "待发布"}
-                    </Badge>
+                    </Tag>
                   </div>
                 ))
               )}

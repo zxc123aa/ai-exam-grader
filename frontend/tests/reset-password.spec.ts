@@ -1,16 +1,15 @@
 import { expect, test } from "@playwright/test"
 import { findLastEmail } from "./utils/mailcatcher"
+import { createUser } from "./utils/privateApi"
 import { randomEmail, randomPassword } from "./utils/random"
-import { logInUser, signUpNewUser } from "./utils/user"
+import { logInUser } from "./utils/user"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test("Password Recovery title is visible", async ({ page }) => {
   await page.goto("/recover-password")
 
-  await expect(
-    page.getByRole("heading", { name: "Password Recovery" }),
-  ).toBeVisible()
+  await expect(page.getByRole("heading", { name: "找回密码" })).toBeVisible()
 })
 
 test("Input is visible, empty and editable", async ({ page }) => {
@@ -24,25 +23,24 @@ test("Input is visible, empty and editable", async ({ page }) => {
 test("Continue button is visible", async ({ page }) => {
   await page.goto("/recover-password")
 
-  await expect(page.getByRole("button", { name: "Continue" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "继续" })).toBeVisible()
 })
 
 test("User can reset password successfully using the link", async ({
   page,
   request,
 }) => {
-  const fullName = "Test User"
   const email = randomEmail()
   const password = randomPassword()
   const newPassword = randomPassword()
 
-  // Sign up a new user
-  await signUpNewUser(page, fullName, email, password)
+  // 公开注册已关闭，用私有 API 直接创建用户
+  await createUser({ email, password })
 
   await page.goto("/recover-password")
   await page.getByTestId("email-input").fill(email)
 
-  await page.getByRole("button", { name: "Continue" }).click()
+  await page.getByRole("button", { name: "继续" }).click()
 
   const emailData = await findLastEmail({
     request,
@@ -66,8 +64,8 @@ test("User can reset password successfully using the link", async ({
 
   await page.getByTestId("new-password-input").fill(newPassword)
   await page.getByTestId("confirm-password-input").fill(newPassword)
-  await page.getByRole("button", { name: "Reset Password" }).click()
-  await expect(page.getByText("Password updated successfully")).toBeVisible()
+  await page.getByRole("button", { name: "重置密码" }).click()
+  await expect(page.getByText("密码修改成功")).toBeVisible()
 
   // Check if the user is able to login with the new password
   await logInUser(page, email, newPassword)
@@ -81,23 +79,22 @@ test("Expired or invalid reset link", async ({ page }) => {
 
   await page.getByTestId("new-password-input").fill(password)
   await page.getByTestId("confirm-password-input").fill(password)
-  await page.getByRole("button", { name: "Reset Password" }).click()
+  await page.getByRole("button", { name: "重置密码" }).click()
 
   await expect(page.getByText("Invalid token")).toBeVisible()
 })
 
 test("Weak new password validation", async ({ page, request }) => {
-  const fullName = "Test User"
   const email = randomEmail()
   const password = randomPassword()
   const weakPassword = "123"
 
-  // Sign up a new user
-  await signUpNewUser(page, fullName, email, password)
+  // 公开注册已关闭，用私有 API 直接创建用户
+  await createUser({ email, password })
 
   await page.goto("/recover-password")
   await page.getByTestId("email-input").fill(email)
-  await page.getByRole("button", { name: "Continue" }).click()
+  await page.getByRole("button", { name: "继续" }).click()
 
   const emailData = await findLastEmail({
     request,
@@ -117,9 +114,7 @@ test("Weak new password validation", async ({ page, request }) => {
   await page.goto(url)
   await page.getByTestId("new-password-input").fill(weakPassword)
   await page.getByTestId("confirm-password-input").fill(weakPassword)
-  await page.getByRole("button", { name: "Reset Password" }).click()
+  await page.getByRole("button", { name: "重置密码" }).click()
 
-  await expect(
-    page.getByText("Password must be at least 8 characters"),
-  ).toBeVisible()
+  await expect(page.getByText("密码至少需要 8 个字符")).toBeVisible()
 })

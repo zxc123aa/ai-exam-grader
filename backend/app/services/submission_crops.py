@@ -86,6 +86,7 @@ def crop_region_image(
     stored_file: StoredFile,
     region: ExamRegion,
     page_number: int | None = None,
+    padding_ratio: float = 0.012,
 ) -> Image.Image:
     image = render_stored_file_page_image(
         stored_file=stored_file,
@@ -93,10 +94,15 @@ def crop_region_image(
     )
     try:
         image_width, image_height = image.size
-        left = round(region.x * image_width)
-        top = round(region.y * image_height)
-        right = round((region.x + region.width) * image_width)
-        bottom = round((region.y + region.height) * image_height)
+        # 外扩一点余量，避免公式/图形边缘被裁掉（夹紧到页面边界内）
+        pad_x = round(image_height * padding_ratio)
+        pad_y = round(image_height * padding_ratio)
+        left = max(0, round(region.x * image_width) - pad_x)
+        top = max(0, round(region.y * image_height) - pad_y)
+        right = min(image_width, round((region.x + region.width) * image_width) + pad_x)
+        bottom = min(
+            image_height, round((region.y + region.height) * image_height) + pad_y
+        )
         if right <= left or bottom <= top:
             raise SubmissionCropError("Region crop is empty")
         return image.crop((left, top, right, bottom))

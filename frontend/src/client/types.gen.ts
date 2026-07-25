@@ -119,6 +119,32 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type ClassGroupCreate = {
+    name: string;
+    grade_level?: (string | null);
+    org_id?: (string | null);
+};
+
+export type ClassGroupPublic = {
+    name: string;
+    grade_level?: (string | null);
+    id: string;
+    owner_id: string;
+    org_id: string;
+    created_at?: (string | null);
+    student_count?: number;
+};
+
+export type ClassGroupsPublic = {
+    data: Array<ClassGroupPublic>;
+    count: number;
+};
+
+export type ClassGroupUpdate = {
+    name?: (string | null);
+    grade_level?: (string | null);
+};
+
 export type DocumentPageQuad = {
     label?: (string | null);
     points: Array<DocumentQuadPoint>;
@@ -129,10 +155,27 @@ export type DocumentQuadPoint = {
     y: number;
 };
 
+export type ExamAnalysisReportPublic = {
+    overall: string;
+    weak: string;
+    polar: string;
+    advice: string;
+    generated_at: string;
+};
+
+export type ExamComposeRequest = {
+    title: string;
+    question_ids: Array<(string)>;
+};
+
 export type ExamCreate = {
     title: string;
     subject?: (string | null);
     grade_level?: (string | null);
+    exam_date?: (string | null);
+    description?: (string | null);
+    class_ids?: (Array<(string)> | null);
+    org_id?: (string | null);
 };
 
 export type ExamDocumentOrderUpdate = {
@@ -180,10 +223,17 @@ export type ExamPublic = {
     title: string;
     subject?: (string | null);
     grade_level?: (string | null);
+    exam_date?: (string | null);
+    description?: (string | null);
     status?: ExamStatus;
+    shared_grading_enabled?: boolean;
     id: string;
     owner_id: string;
+    org_id: string;
     created_at?: (string | null);
+    class_ids?: Array<(string)>;
+    class_names?: Array<(string)>;
+    is_assigned?: boolean;
 };
 
 export type ExamQuestionPublic = {
@@ -193,6 +243,8 @@ export type ExamQuestionPublic = {
     label: string;
     question_text: string;
     question_type?: (string | null);
+    knowledge_point?: (string | null);
+    difficulty?: (number | null);
     recognition_confidence?: (number | null);
     status: ExamQuestionStatus;
     region_ids?: Array<(string)>;
@@ -326,7 +378,38 @@ export type ExamUpdate = {
     title?: (string | null);
     subject?: (string | null);
     grade_level?: (string | null);
+    exam_date?: (string | null);
+    description?: (string | null);
     status?: (ExamStatus | null);
+    class_ids?: (Array<(string)> | null);
+};
+
+export type GradingAssignmentClassPublic = {
+    class_id: string;
+    class_name: string;
+};
+
+export type GradingAssignmentEntry = {
+    class_id: string;
+    user_id: string;
+};
+
+export type GradingAssignmentItemPublic = {
+    class_id: string;
+    class_name: string;
+    user_id: string;
+    user_name?: (string | null);
+};
+
+export type GradingAssignmentsPublic = {
+    enabled: boolean;
+    assignments?: Array<GradingAssignmentItemPublic>;
+    unassigned?: Array<GradingAssignmentClassPublic>;
+};
+
+export type GradingAssignmentsUpdate = {
+    enabled: boolean;
+    assignments?: Array<GradingAssignmentEntry>;
 };
 
 export type GradingAuditEventPublic = {
@@ -370,8 +453,10 @@ export type GradingRunCreate = {
     model?: (string | null);
     fallback_models?: Array<(string)>;
     submission_ids?: Array<(string)>;
-    review_threshold?: number;
-    max_concurrency?: number;
+    review_threshold?: (number | null);
+    max_concurrency?: (number | null);
+    max_parallel_submissions?: (number | null);
+    max_concurrency_per_submission?: (number | null);
     recognition_run_id?: (string | null);
 };
 
@@ -445,6 +530,79 @@ export type NewPassword = {
     new_password: string;
 };
 
+export type OrgSettingsPublic = {
+    name: string;
+    code: string;
+    exam_sharing_enabled: boolean;
+    contact_name?: (string | null);
+};
+
+export type OrgSettingsUpdate = {
+    contact_name?: (string | null);
+    exam_sharing_enabled?: (boolean | null);
+};
+
+export type PlatformOrgCreate = {
+    name: string;
+    code: string;
+    contact_name?: (string | null);
+    owner?: (PlatformOrgOwnerCreate | null);
+};
+
+export type PlatformOrgDetail = {
+    id: string;
+    name: string;
+    code: string;
+    status: string;
+    exam_sharing_enabled: boolean;
+    contact_name?: (string | null);
+    created_at?: (string | null);
+    exam_count?: number;
+    student_count?: number;
+    teacher_count?: number;
+    users?: Array<PlatformOrgUserItem>;
+};
+
+export type PlatformOrgListItem = {
+    id: string;
+    name: string;
+    code: string;
+    status: string;
+    exam_count?: number;
+    student_count?: number;
+    teacher_count?: number;
+    created_at?: (string | null);
+};
+
+/**
+ * 新建学校时附带的首个 school_owner 账号。
+ */
+export type PlatformOrgOwnerCreate = {
+    email: string;
+    full_name?: (string | null);
+    password: string;
+};
+
+export type PlatformOrgsPublic = {
+    data: Array<PlatformOrgListItem>;
+    count: number;
+};
+
+export type PlatformOrgUpdate = {
+    name?: (string | null);
+    code?: (string | null);
+    status?: (string | null);
+    contact_name?: (string | null);
+};
+
+export type PlatformOrgUserItem = {
+    id: string;
+    email: string;
+    full_name?: (string | null);
+    role: UserRole;
+    is_active: boolean;
+};
+
 export type PrivateUserCreate = {
     email: string;
     password: string;
@@ -475,6 +633,29 @@ export type ProcessingTaskPublic = {
 
 export type ProcessingTaskStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 
+export type ProviderStatus = {
+    name: string;
+    configured: boolean;
+};
+
+export type QuestionBankEntryPublic = {
+    question_id: string;
+    exam_id: string;
+    exam_title: string;
+    question_key: string;
+    label: string;
+    question_text: string;
+    question_type?: (string | null);
+    knowledge_point?: (string | null);
+    difficulty?: (number | null);
+    max_score?: (number | null);
+};
+
+export type QuestionBankPublic = {
+    data: Array<QuestionBankEntryPublic>;
+    count: number;
+};
+
 export type QuestionRecognitionItemPublic = {
     id: string;
     run_id: string;
@@ -484,6 +665,8 @@ export type QuestionRecognitionItemPublic = {
     question_text: string;
     student_answer_text?: (string | null);
     question_type?: (string | null);
+    knowledge_point?: (string | null);
+    difficulty?: (number | null);
     confidence?: (number | null);
     notes?: (string | null);
     region_ids: Array<(string)>;
@@ -504,6 +687,8 @@ export type QuestionRecognitionItemUpdate = {
     question_text?: (string | null);
     student_answer_text?: (string | null);
     question_type?: (string | null);
+    knowledge_point?: (string | null);
+    difficulty?: (number | null);
     confidence?: (number | null);
     notes?: (string | null);
     region_ids?: (Array<(string)> | null);
@@ -605,7 +790,7 @@ export type StandardAnswerPublic = {
     status?: StandardAnswerStatus;
     id: string;
     exam_id: string;
-    exam_region_id: string;
+    exam_region_id?: (string | null);
     question_id?: (string | null);
     current_revision_id?: (string | null);
     version?: number;
@@ -692,6 +877,102 @@ export type StoredFilePublic = {
     created_at?: (string | null);
 };
 
+export type StudentBatchCreate = {
+    rows: Array<StudentBatchRow>;
+    create_accounts?: boolean;
+    dry_run?: boolean;
+};
+
+export type StudentBatchResult = {
+    created?: number;
+    skipped?: number;
+    accounts_created?: number;
+    rows?: Array<StudentBatchRowResult>;
+    errors?: Array<StudentBatchRowResult>;
+};
+
+/**
+ * 花名册批量导入的单行（前端把 CSV/粘贴文本解析成 rows 传入）。
+ */
+export type StudentBatchRow = {
+    name: string;
+    student_no?: (string | null);
+};
+
+export type StudentBatchRowResult = {
+    name: string;
+    student_no?: (string | null);
+    action: string;
+    message?: (string | null);
+};
+
+export type StudentBindAccount = {
+    user_id: string;
+};
+
+export type StudentCreate = {
+    name: string;
+    student_no?: (string | null);
+};
+
+export type StudentExamListItemPublic = {
+    exam_id: string;
+    title: string;
+    subject?: (string | null);
+    grade_level?: (string | null);
+    exam_date?: (string | null);
+    class_name?: (string | null);
+    total_score?: (number | null);
+    total_max_score?: (number | null);
+    class_rank?: (number | null);
+    class_size?: number;
+    question_count?: number;
+    pending_review_count?: number;
+};
+
+export type StudentExamListPublic = {
+    data: Array<StudentExamListItemPublic>;
+    count: number;
+};
+
+export type StudentExamReportPublic = {
+    exam_id: string;
+    title: string;
+    subject?: (string | null);
+    grade_level?: (string | null);
+    exam_date?: (string | null);
+    class_name?: (string | null);
+    student_name?: (string | null);
+    total_score?: (number | null);
+    total_max_score?: (number | null);
+    class_rank?: (number | null);
+    class_size?: number;
+    questions?: Array<StudentExamReportQuestion>;
+};
+
+export type StudentExamReportQuestion = {
+    label: string;
+    score?: (number | null);
+    max_score?: (number | null);
+    score_source?: (string | null);
+    comment?: (string | null);
+    suggested_comment?: (string | null);
+};
+
+export type StudentPublic = {
+    name: string;
+    student_no?: (string | null);
+    id: string;
+    class_id: string;
+    user_id?: (string | null);
+    created_at?: (string | null);
+};
+
+export type StudentsPublic = {
+    data: Array<StudentPublic>;
+    count: number;
+};
+
 export type StudentSubmissionPublic = {
     student_name?: (string | null);
     student_identifier?: (string | null);
@@ -706,6 +987,7 @@ export type StudentSubmissionPublic = {
     stored_file: StoredFilePublic;
     page_count?: number;
     original_stored_file_id?: (string | null);
+    student_id?: (string | null);
     registration_homography?: ({
     [key: string]: unknown;
 } | null);
@@ -729,6 +1011,11 @@ export type StudentSubmissionsPublic = {
 };
 
 export type StudentSubmissionStatus = 'uploaded' | 'registration_pending' | 'registration_failed' | 'ready_for_review';
+
+export type StudentUpdate = {
+    name?: (string | null);
+    student_no?: (string | null);
+};
 
 export type SubmissionAnnotationCreate = {
     label: string;
@@ -809,6 +1096,73 @@ export type SubmissionAnnotationUpdate = {
 
 export type SubmissionRegistrationStatus = 'pending' | 'manual_confirmed' | 'auto_confirmed' | 'failed';
 
+export type SystemConfigPublic = {
+    vision_provider: string;
+    vision_model: string;
+    grading_provider: string;
+    grading_model: string;
+    region_provider: string;
+    region_model: string;
+    recognition_provider: string;
+    recognition_model: string;
+    fallback_models: Array<(string)>;
+    review_threshold: number;
+    max_concurrency: number;
+    providers: Array<ProviderStatus>;
+};
+
+export type SystemConfigUpdate = {
+    vision_provider?: (string | null);
+    vision_model?: (string | null);
+    grading_provider?: (string | null);
+    grading_model?: (string | null);
+    region_provider?: (string | null);
+    region_model?: (string | null);
+    recognition_provider?: (string | null);
+    recognition_model?: (string | null);
+    fallback_models?: (Array<(string)> | null);
+    review_threshold?: (number | null);
+    max_concurrency?: (number | null);
+};
+
+export type TeacherBatchCreate = {
+    rows: Array<TeacherBatchRow>;
+    dry_run?: boolean;
+};
+
+export type TeacherBatchResult = {
+    created?: number;
+    skipped?: number;
+    rows?: Array<TeacherBatchRowResult>;
+    errors?: Array<TeacherBatchRowResult>;
+};
+
+export type TeacherBatchRow = {
+    name?: (string | null);
+    employee_no?: (string | null);
+    email?: (string | null);
+    subjects?: (string | null);
+    class_names?: (string | null);
+};
+
+export type TeacherBatchRowResult = {
+    name?: (string | null);
+    email?: (string | null);
+    action: string;
+    message?: (string | null);
+};
+
+export type TeachingProfilePublic = {
+    class_ids?: Array<(string)>;
+    class_names?: Array<(string)>;
+    subjects?: Array<(string)>;
+};
+
+export type TeachingProfileUpdate = {
+    class_ids?: Array<(string)>;
+    subjects?: Array<(string)>;
+};
+
 export type Token = {
     access_token: string;
     token_type?: string;
@@ -824,7 +1178,10 @@ export type UserCreate = {
     is_active?: boolean;
     is_superuser?: boolean;
     full_name?: (string | null);
+    role?: UserRole;
+    employee_no?: (string | null);
     password: string;
+    org_id?: (string | null);
 };
 
 export type UserPublic = {
@@ -832,8 +1189,12 @@ export type UserPublic = {
     is_active?: boolean;
     is_superuser?: boolean;
     full_name?: (string | null);
+    role?: UserRole;
+    employee_no?: (string | null);
     id: string;
     created_at?: (string | null);
+    org_id?: (string | null);
+    org_name?: (string | null);
 };
 
 export type UserRegister = {
@@ -841,6 +1202,8 @@ export type UserRegister = {
     password: string;
     full_name?: (string | null);
 };
+
+export type UserRole = 'platform_superuser' | 'platform_support' | 'school_owner' | 'school_admin' | 'teacher' | 'student';
 
 export type UsersPublic = {
     data: Array<UserPublic>;
@@ -853,6 +1216,9 @@ export type UserUpdate = {
     is_superuser?: (boolean | null);
     full_name?: (string | null);
     password?: (string | null);
+    role?: (UserRole | null);
+    org_id?: (string | null);
+    employee_no?: (string | null);
 };
 
 export type UserUpdateMe = {
@@ -872,6 +1238,73 @@ export type ValidationError = {
 
 export type WorkflowRunStatus = 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
 
+export type ClassesReadClassesResponse = (ClassGroupsPublic);
+
+export type ClassesCreateClassData = {
+    requestBody: ClassGroupCreate;
+};
+
+export type ClassesCreateClassResponse = (ClassGroupPublic);
+
+export type ClassesUpdateClassData = {
+    classId: string;
+    requestBody: ClassGroupUpdate;
+};
+
+export type ClassesUpdateClassResponse = (ClassGroupPublic);
+
+export type ClassesDeleteClassData = {
+    classId: string;
+};
+
+export type ClassesDeleteClassResponse = (Message);
+
+export type ClassesReadStudentsData = {
+    classId: string;
+};
+
+export type ClassesReadStudentsResponse = (StudentsPublic);
+
+export type ClassesCreateStudentData = {
+    classId: string;
+    requestBody: StudentCreate;
+};
+
+export type ClassesCreateStudentResponse = (StudentPublic);
+
+export type ClassesCreateStudentsBatchData = {
+    classId: string;
+    requestBody: StudentBatchCreate;
+};
+
+export type ClassesCreateStudentsBatchResponse = (StudentBatchResult);
+
+export type ClassesUpdateStudentData = {
+    requestBody: StudentUpdate;
+    studentId: string;
+};
+
+export type ClassesUpdateStudentResponse = (StudentPublic);
+
+export type ClassesDeleteStudentData = {
+    studentId: string;
+};
+
+export type ClassesDeleteStudentResponse = (Message);
+
+export type ClassesBindStudentAccountData = {
+    requestBody: StudentBindAccount;
+    studentId: string;
+};
+
+export type ClassesBindStudentAccountResponse = (StudentPublic);
+
+export type ClassesUnbindStudentAccountData = {
+    studentId: string;
+};
+
+export type ClassesUnbindStudentAccountResponse = (StudentPublic);
+
 export type ExamsReadExamsData = {
     limit?: number;
     skip?: number;
@@ -884,6 +1317,20 @@ export type ExamsCreateExamData = {
 };
 
 export type ExamsCreateExamResponse = (ExamPublic);
+
+export type ExamsReadQuestionBankData = {
+    difficulty?: (number | null);
+    knowledgePoint?: (string | null);
+    questionType?: (string | null);
+};
+
+export type ExamsReadQuestionBankResponse = (QuestionBankPublic);
+
+export type ExamsComposeExamData = {
+    requestBody: ExamComposeRequest;
+};
+
+export type ExamsComposeExamResponse = (ExamPublic);
 
 export type ExamsReadExamData = {
     examId: string;
@@ -903,6 +1350,19 @@ export type ExamsDeleteExamData = {
 };
 
 export type ExamsDeleteExamResponse = (Message);
+
+export type ExamsReadGradingAssignmentsData = {
+    examId: string;
+};
+
+export type ExamsReadGradingAssignmentsResponse = (GradingAssignmentsPublic);
+
+export type ExamsUpdateGradingAssignmentsData = {
+    examId: string;
+    requestBody: GradingAssignmentsUpdate;
+};
+
+export type ExamsUpdateGradingAssignmentsResponse = (GradingAssignmentsPublic);
 
 export type ExamsUploadExamFileData = {
     examId: string;
@@ -1063,6 +1523,12 @@ export type ExamsReadExamScoresSummaryData = {
 };
 
 export type ExamsReadExamScoresSummaryResponse = (ExamScoreSummaryPublic);
+
+export type ExamsCreateExamAnalysisReportData = {
+    examId: string;
+};
+
+export type ExamsCreateExamAnalysisReportResponse = (ExamAnalysisReportPublic);
 
 export type ExamsPreprocessStudentSubmissionPhotoData = {
     examId: string;
@@ -1342,6 +1808,50 @@ export type LoginRecoverPasswordHtmlContentData = {
 
 export type LoginRecoverPasswordHtmlContentResponse = (string);
 
+export type OrgReadOrgSettingsResponse = (OrgSettingsPublic);
+
+export type OrgUpdateOrgSettingsData = {
+    requestBody: OrgSettingsUpdate;
+};
+
+export type OrgUpdateOrgSettingsResponse = (OrgSettingsPublic);
+
+export type PlatformListOrgsResponse = (PlatformOrgsPublic);
+
+export type PlatformCreateOrgData = {
+    requestBody: PlatformOrgCreate;
+};
+
+export type PlatformCreateOrgResponse = (PlatformOrgDetail);
+
+export type PlatformReadOrgData = {
+    orgId: string;
+};
+
+export type PlatformReadOrgResponse = (PlatformOrgDetail);
+
+export type PlatformUpdateOrgData = {
+    orgId: string;
+    requestBody: PlatformOrgUpdate;
+};
+
+export type PlatformUpdateOrgResponse = (PlatformOrgDetail);
+
+export type PlatformAddOrgOwnerData = {
+    orgId: string;
+    requestBody: PlatformOrgOwnerCreate;
+};
+
+export type PlatformAddOrgOwnerResponse = (PlatformOrgUserItem);
+
+export type PlatformReadSystemConfigResponse = (SystemConfigPublic);
+
+export type PlatformUpdateSystemConfigData = {
+    requestBody: SystemConfigUpdate;
+};
+
+export type PlatformUpdateSystemConfigResponse = (SystemConfigPublic);
+
 export type PrivateCreateUserData = {
     requestBody: PrivateUserCreate;
 };
@@ -1458,6 +1968,14 @@ export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsData = {
 
 export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse = (StandardAnswerRevisionsPublic);
 
+export type StudentsReadMyExamsResponse = (StudentExamListPublic);
+
+export type StudentsReadMyExamReportData = {
+    examId: string;
+};
+
+export type StudentsReadMyExamReportResponse = (StudentExamReportPublic);
+
 export type TasksCreateTestTaskData = {
     requestBody: ProcessingTaskCreate;
 };
@@ -1483,6 +2001,12 @@ export type UsersCreateUserData = {
 
 export type UsersCreateUserResponse = (UserPublic);
 
+export type UsersCreateTeachersBatchData = {
+    requestBody: TeacherBatchCreate;
+};
+
+export type UsersCreateTeachersBatchResponse = (TeacherBatchResult);
+
 export type UsersReadUserMeResponse = (UserPublic);
 
 export type UsersDeleteUserMeResponse = (Message);
@@ -1503,7 +2027,7 @@ export type UsersRegisterUserData = {
     requestBody: UserRegister;
 };
 
-export type UsersRegisterUserResponse = (UserPublic);
+export type UsersRegisterUserResponse = (unknown);
 
 export type UsersReadUserByIdData = {
     userId: string;
@@ -1523,6 +2047,19 @@ export type UsersDeleteUserData = {
 };
 
 export type UsersDeleteUserResponse = (Message);
+
+export type UsersReadTeachingProfileData = {
+    userId: string;
+};
+
+export type UsersReadTeachingProfileResponse = (TeachingProfilePublic);
+
+export type UsersUpdateTeachingProfileData = {
+    requestBody: TeachingProfileUpdate;
+    userId: string;
+};
+
+export type UsersUpdateTeachingProfileResponse = (TeachingProfilePublic);
 
 export type UtilsTestEmailData = {
     emailTo: string;

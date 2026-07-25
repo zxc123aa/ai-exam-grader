@@ -21,7 +21,7 @@ class _Response:
 def test_process_stored_file_sends_evidence_verification_mode(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_process_pages(*, pages, verification_mode):
+    def fake_process_pages(*, pages, verification_mode, **_kwargs):
         captured["pages"] = pages
         captured["verificationMode"] = verification_mode
         return reference_algorithm._normalize_reference_payload(
@@ -60,7 +60,7 @@ def test_process_stored_file_sends_evidence_verification_mode(monkeypatch) -> No
 def test_process_stored_files_defaults_to_fast_verification_mode(monkeypatch) -> None:
     captured: dict = {}
 
-    def fake_process_pages(*, pages, verification_mode):
+    def fake_process_pages(*, pages, verification_mode, **_kwargs):
         captured["pages"] = pages
         captured["verificationMode"] = verification_mode
         return {"results": []}
@@ -119,7 +119,7 @@ def test_page_context_includes_adjacent_pages_across_image_files(monkeypatch) ->
         ),
     )
 
-    def fake_process_pages(*, pages, verification_mode):
+    def fake_process_pages(*, pages, verification_mode, **_kwargs):
         captured["page_ids"] = [page["id"] for page in pages]
         captured["verification_mode"] = verification_mode
         return {

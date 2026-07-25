@@ -1,17 +1,22 @@
 import uuid
+from math import ceil
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func
 from sqlmodel import col, select
 
-from app.api.deps import CurrentUser, SessionDep
-from app.core.config import settings
+from app.api.deps import (
+    CurrentUser,
+    SessionDep,
+    get_current_teacher_user,
+)
 from app.models import (
     Exam,
     ExamQuestion,
     ExamQuestionStatus,
     ExamRegion,
+    GradingAssignment,
     GradingAuditEvent,
     GradingAuditEventPublic,
     GradingItem,
@@ -35,16 +40,36 @@ from app.models import (
     get_datetime_utc,
 )
 from app.services.grading_workflow import execute_grading_run, publish_standard_answers
+from app.services.org_scope import (
+    can_see_exam,
+    can_write_exam,
+    exam_classes_with_submissions,
+    restricted_assigned_classes,
+    submission_class_filter,
+)
 from app.services.recognition_workflow import execute_recognition_run
 from app.services.rubric_workflow import execute_rubric_generation
+from app.services.system_config import get_grading_defaults
 
-router = APIRouter(prefix="/grading", tags=["grading"])
+router = APIRouter(
+    prefix="/grading",
+    tags=["grading"],
+    dependencies=[Depends(get_current_teacher_user)],
+)
 
 
-def owned_exam(session: SessionDep, user: CurrentUser, exam_id: uuid.UUID) -> Exam:
+def owned_exam(
+    session: SessionDep,
+    user: CurrentUser,
+    exam_id: uuid.UUID,
+    *,
+    require_write: bool = False,
+) -> Exam:
     exam = session.get(Exam, exam_id)
-    if not exam or (not user.is_superuser and exam.owner_id != user.id):
+    if not exam or not can_see_exam(session, user, exam):
         raise HTTPException(status_code=404, detail="考试不存在")
+    if require_write and not can_write_exam(user, exam):
+        raise HTTPException(status_code=403, detail="无权修改该考试")
     return exam
 
 
@@ -87,7 +112,7 @@ def create_recognition_run(
     run_in: RecognitionRunCreate,
     background_tasks: BackgroundTasks,
 ) -> Any:
-    owned_exam(session, current_user, run_in.exam_id)
+    owned_exam(session, current_user, run_in.exam_id, require_write=True)
     submission = session.get(StudentSubmission, run_in.submission_id)
     if not submission or submission.exam_id != run_in.exam_id:
         raise HTTPException(status_code=404, detail="答卷不存在")
@@ -300,7 +325,29 @@ def run_public(session: SessionDep, run: GradingRun) -> GradingRunPublic:
 def create_run(
     *, session: SessionDep, current_user: CurrentUser, run_in: GradingRunCreate
 ) -> Any:
-    owned_exam(session, current_user, run_in.exam_id)
+    exam = owned_exam(session, current_user, run_in.exam_id, require_write=True)
+    # 共享批卷守卫：所有有答卷的班级必须已分配老师，否则不能发起批改
+    if exam.shared_grading_enabled:
+        assigned_ids = set(
+            session.exec(
+                select(GradingAssignment.class_id).where(
+                    GradingAssignment.exam_id == exam.id
+                )
+            ).all()
+        )
+        missing_names = [
+            class_group.name
+            for class_group in exam_classes_with_submissions(session, exam)
+            if class_group.id not in assigned_ids
+        ]
+        if missing_names:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "共享批卷尚有班级未分配老师，无法发起批改："
+                    f"{', '.join(missing_names)}"
+                ),
+            )
     if run_in.recognition_run_id:
         recognition = owned_run(session, current_user, run_in.recognition_run_id)
         if recognition.config_snapshot.get(
@@ -354,25 +401,48 @@ def create_run(
         )
         raise HTTPException(status_code=409, detail=detail)
     locked_versions = [revision.revision_number for _, revision in answer_rows]
+    # 请求未显式给的字段回落系统设置（DB 覆盖 + env 兜底）
+    defaults = get_grading_defaults(session)
+    if (
+        run_in.max_parallel_submissions is not None
+        or run_in.max_concurrency_per_submission is not None
+    ):
+        max_parallel_submissions = run_in.max_parallel_submissions or 8
+        max_concurrency_per_submission = (
+            run_in.max_concurrency_per_submission or 4
+        )
+        max_concurrency = min(
+            32, max_parallel_submissions * max_concurrency_per_submission
+        )
+    else:
+        # 旧客户端只传 max_concurrency：保持原总并发，并推导出兼容的两级限制。
+        max_concurrency = (
+            run_in.max_concurrency
+            if run_in.max_concurrency is not None
+            else int(defaults["max_concurrency"])
+        )
+        max_parallel_submissions = min(8, max_concurrency)
+        max_concurrency_per_submission = max(
+            1, ceil(max_concurrency / max_parallel_submissions)
+        )
     run = GradingRun(
         exam_id=run_in.exam_id,
         created_by_id=current_user.id,
-        provider=run_in.provider or settings.GRADING_DEFAULT_PROVIDER,
-        model=run_in.model or settings.GRADING_DEFAULT_MODEL,
-        fallback_models=run_in.fallback_models
-        or [
-            item.strip()
-            for item in settings.VISION_FALLBACK_MODELS.split(",")
-            if item.strip()
-        ],
+        provider=run_in.provider or defaults["grading_provider"],
+        model=run_in.model or defaults["grading_model"],
+        fallback_models=run_in.fallback_models or defaults["fallback_models"],
         answer_version=max(locked_versions, default=1),
         config_snapshot={
             "submission_ids": [str(item) for item in run_in.submission_ids],
-            "review_threshold": run_in.review_threshold,
+            "review_threshold": run_in.review_threshold
+            if run_in.review_threshold is not None
+            else defaults["review_threshold"],
             "vision_provider": run_in.vision_provider
-            or settings.VISION_DEFAULT_PROVIDER,
-            "vision_model": run_in.vision_model or settings.VISION_DEFAULT_MODEL,
-            "max_concurrency": run_in.max_concurrency,
+            or defaults["vision_provider"],
+            "vision_model": run_in.vision_model or defaults["vision_model"],
+            "max_concurrency": max_concurrency,
+            "max_parallel_submissions": max_parallel_submissions,
+            "max_concurrency_per_submission": max_concurrency_per_submission,
             "recognition_run_id": str(run_in.recognition_run_id)
             if run_in.recognition_run_id
             else None,
@@ -462,7 +532,7 @@ def generate_rubrics(
     exam_id: uuid.UUID,
     background_tasks: BackgroundTasks,
 ) -> Any:
-    owned_exam(session, current_user, exam_id)
+    owned_exam(session, current_user, exam_id, require_write=True)
     task = ProcessingTask(
         task_type="professional_rubric_generation",
         created_by_id=current_user.id,
@@ -493,14 +563,21 @@ def review_queue(
     audit_annotation_ids = select(GradingAuditEvent.annotation_id).where(
         GradingAuditEvent.grading_run_id == run.id
     )
-    rows = session.exec(
+    statement = (
         select(SubmissionAnnotation, StudentSubmission)
         .join(
             StudentSubmission,
             SubmissionAnnotation.submission_id == StudentSubmission.id,
         )
         .where(SubmissionAnnotation.id.in_(audit_annotation_ids))
-    ).all()
+    )
+    # 共享批卷：被分配的非管理老师只看到负责班级的复核项
+    exam = session.get(Exam, run.exam_id)
+    if exam is not None:
+        restricted = restricted_assigned_classes(session, current_user, exam)
+        if restricted is not None:
+            statement = statement.where(submission_class_filter(*restricted))
+    rows = session.exec(statement).all()
     result = []
     threshold = float(run.config_snapshot.get("review_threshold", 0.8))
     for annotation, submission in rows:

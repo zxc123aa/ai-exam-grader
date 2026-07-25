@@ -32,7 +32,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
       <div className="relative hidden overflow-hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-10">
         <div
           aria-hidden
-          className="pointer-events-none absolute -top-32 -right-32 size-96 rounded-full bg-indigo-500/20 blur-3xl"
+          className="pointer-events-none absolute -top-32 -right-32 size-96 rounded-full bg-primary/15 blur-3xl"
         />
         <div
           aria-hidden

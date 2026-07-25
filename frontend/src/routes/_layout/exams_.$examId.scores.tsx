@@ -1,10 +1,21 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { ArrowDownWideNarrow, ArrowUpNarrowWide, Download } from "lucide-react"
+import {
+  ArrowDownWideNarrow,
+  ArrowUpNarrowWide,
+  Download,
+  Lightbulb,
+  RefreshCw,
+} from "lucide-react"
 import { useMemo, useState } from "react"
 import type { ExamScoreSummaryRow } from "@/client"
 import { ExamsService } from "@/client"
-import { Badge } from "@/components/ui/badge"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { PageHead } from "@/components/Common/PageHead"
+import { Tag } from "@/components/Common/Tag"
+import { BarChart } from "@/components/charts/BarChart"
+import { DonutChart } from "@/components/charts/DonutChart"
+import { HBarChart } from "@/components/charts/HBarChart"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -19,7 +30,7 @@ import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/scores")({
   component: ScoresOverview,
-  head: () => ({ meta: [{ title: "成绩总览 - 智阅卷" }] }),
+  head: () => ({ meta: [{ title: "成绩总览 - 点凡阅卷" }] }),
 })
 
 const UNASSIGNED_CLASS = "未分班"
@@ -131,6 +142,38 @@ function csvCell(value: string | number | null | undefined): string {
   return `"${text.replace(/"/g, '""')}"`
 }
 
+/** 成绩分布直方图分段：按满分自适应，10 分一段，<60 起。 */
+function buildDistributionBins(scores: number[], fullMark: number) {
+  const labels: string[] = []
+  if (fullMark > 60) {
+    labels.push("<60")
+    for (let lo = 60; lo < fullMark; lo += 10) {
+      labels.push(lo + 10 >= fullMark ? `≥${lo}` : `${lo}-${lo + 9}`)
+    }
+  } else {
+    for (let lo = 0; lo < fullMark; lo += 10) {
+      labels.push(`${lo}-${lo + 9}`)
+    }
+  }
+  const data = labels.map(() => 0)
+  for (const score of scores) {
+    const index =
+      fullMark > 60
+        ? score < 60
+          ? 0
+          : Math.min(1 + Math.floor((score - 60) / 10), labels.length - 1)
+        : Math.min(Math.floor(score / 10), labels.length - 1)
+    data[index] += 1
+  }
+  return { labels, data }
+}
+
+/** 题目标签转「第N题」：取标签中的数字，没有数字则原样展示。 */
+function questionChartLabel(label: string): string {
+  const digits = label.match(/\d+/)
+  return digits ? `第${digits[0]}题` : label
+}
+
 function ScoresOverview() {
   const { examId } = Route.useParams()
   const [classFilter, setClassFilter] = useState("all")
@@ -204,6 +247,50 @@ function ScoresOverview() {
     }
   }, [filtered])
 
+  const analysis = useMemo(() => {
+    const scored = filtered.filter((student) => student.totalScore != null)
+    const totals = scored.map((student) => student.totalScore as number)
+    const fullMark = Math.max(
+      0,
+      ...scored.map((student) => student.totalMaxScore ?? 0),
+    )
+    const distribution = buildDistributionBins(totals, fullMark || 100)
+    const segments = [
+      { name: "优秀 ≥85%", value: 0, color: "var(--chart-5)" },
+      { name: "良好 70-84%", value: 0, color: "var(--chart-2)" },
+      { name: "中等 60-69%", value: 0, color: "var(--chart-3)" },
+      { name: "待提高 <60%", value: 0, color: "var(--chart-4)" },
+    ]
+    if (fullMark > 0) {
+      for (const total of totals) {
+        const ratio = (total / fullMark) * 100
+        segments[
+          ratio >= 85 ? 0 : ratio >= 70 ? 1 : ratio >= 60 ? 2 : 3
+        ].value += 1
+      }
+    }
+    const questionRates = questionLabels.map((label) => {
+      let earned = 0
+      let available = 0
+      for (const student of filtered) {
+        const question = student.questions.get(label)
+        if (question?.score != null && question.maxScore) {
+          earned += question.score
+          available += question.maxScore
+        }
+      }
+      return {
+        label: questionChartLabel(label),
+        value: available > 0 ? Math.round((earned / available) * 100) : 0,
+      }
+    })
+    return { distribution, segments, questionRates }
+  }, [filtered, questionLabels])
+
+  const report = useMutation({
+    mutationFn: () => ExamsService.createExamAnalysisReport({ examId }),
+  })
+
   const hasSubmissions = rows.length > 0
   const hasScores = students.some((student) => student.totalScore != null)
 
@@ -256,7 +343,7 @@ function ScoresOverview() {
 
   if (!hasSubmissions) {
     return (
-      <Card>
+      <Card className="rounded-2xl shadow-card">
         <CardContent className="py-10 text-center text-muted-foreground">
           还没有学生答卷。请先在「导入」步骤的导入中心上传学生答卷照片。
         </CardContent>
@@ -266,13 +353,13 @@ function ScoresOverview() {
 
   if (!hasScores) {
     return (
-      <Card>
+      <Card className="rounded-2xl shadow-card">
         <CardContent className="py-10 text-center text-muted-foreground">
           已导入 {rows.length} 份答卷，但还没有批改数据。请先在
           <Link
             to="/exams/$examId/grading"
             params={{ examId }}
-            className="mx-1 underline"
+            className="mx-1 text-primary underline"
           >
             批量批改
           </Link>
@@ -284,8 +371,18 @@ function ScoresOverview() {
 
   return (
     <div className="flex flex-col gap-6">
+      <PageHead
+        title="成绩总览"
+        subtitle="按班级查看学生得分明细与复核状态"
+        actions={
+          <Button variant="outline" onClick={exportCsv}>
+            <Download />
+            导出 CSV
+          </Button>
+        }
+      />
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex flex-wrap gap-6 rounded-md border px-4 py-3 text-sm">
+        <div className="flex flex-wrap gap-6 rounded-2xl border bg-card px-5 py-4 shadow-card text-sm">
           <div>
             <span className="text-muted-foreground">参考人数</span>
             <p className="text-lg font-semibold">{stats.scoredCount}</p>
@@ -355,16 +452,121 @@ function ScoresOverview() {
               </SelectItem>
             </SelectContent>
           </Select>
-          <Button variant="outline" onClick={exportCsv}>
-            <Download className="mr-1 size-4" />
-            导出 CSV
-          </Button>
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        图例：<span className="italic text-muted-foreground">斜体</span>= AI
-        建议分，未复核；常规字体 = 已复核的最终分。
-      </p>
+      <div className="grid gap-6 lg:grid-cols-2">
+        <Card className="rounded-2xl shadow-card">
+          <CardHeader>
+            <CardTitle className="flex flex-wrap items-center gap-3 text-base">
+              成绩分布
+              <span className="text-xs font-normal text-muted-foreground">
+                单位：人
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <BarChart
+              labels={analysis.distribution.labels}
+              data={analysis.distribution.data}
+              unit=" 人"
+            />
+          </CardContent>
+        </Card>
+        <Card className="rounded-2xl shadow-card">
+          <CardHeader>
+            <CardTitle className="text-base">分数段占比</CardTitle>
+          </CardHeader>
+          <CardContent className="flex items-center justify-center">
+            <DonutChart segments={analysis.segments} size={170} stroke={20} />
+          </CardContent>
+        </Card>
+      </div>
+      <Card className="rounded-2xl shadow-card">
+        <CardHeader>
+          <CardTitle className="flex flex-wrap items-center gap-3 text-base">
+            各题得分率
+            <span className="text-xs font-normal text-muted-foreground">
+              低于 60% 标红，建议重点讲评
+            </span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <HBarChart items={analysis.questionRates} />
+        </CardContent>
+      </Card>
+      <Card className="rounded-2xl shadow-card">
+        <CardHeader className="flex flex-row flex-wrap items-center justify-between gap-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Lightbulb className="size-4 text-primary" />
+            学情分析
+          </CardTitle>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => report.mutate()}
+            disabled={report.isPending}
+          >
+            <RefreshCw className={cn(report.isPending && "animate-spin")} />
+            {report.data ? "重新生成" : "生成报告"}
+          </Button>
+        </CardHeader>
+        <CardContent>
+          {report.isPending ? (
+            <div className="flex items-center justify-center gap-2 py-10 text-sm text-muted-foreground">
+              <RefreshCw className="size-4 animate-spin" />
+              正在结合最新批阅数据生成…
+            </div>
+          ) : report.isError ? (
+            <div className="py-6 text-center text-sm text-destructive">
+              学情报告生成失败，请稍后重试。
+            </div>
+          ) : report.data ? (
+            <div className="flex flex-col gap-4">
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">整体表现</h4>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {report.data.overall}
+                </p>
+              </div>
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">薄弱知识点</h4>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {report.data.weak}
+                </p>
+              </div>
+              <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 dark:border-amber-500/40 dark:bg-amber-500/10">
+                <h4 className="mb-1 text-sm font-semibold text-amber-700 dark:text-amber-400">
+                  两极分化提示
+                </h4>
+                <p className="text-sm leading-relaxed">{report.data.polar}</p>
+              </div>
+              <div>
+                <h4 className="mb-1 text-sm font-semibold">教学建议</h4>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {report.data.advice}
+                </p>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                生成时间：
+                {new Date(report.data.generated_at).toLocaleString("zh-CN")}
+              </p>
+            </div>
+          ) : (
+            <EmptyState
+              icon={Lightbulb}
+              title="还没有生成学情报告"
+              description="点击右上角「生成报告」，AI 将结合最新批阅数据生成整体表现、薄弱知识点、两极分化提示与教学建议。"
+            />
+          )}
+        </CardContent>
+      </Card>
+      <div>
+        <h2 className="text-lg font-semibold">成绩明细</h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          图例：<span className="italic text-muted-foreground">斜体</span>= AI
+          建议分，未复核；常规字体 = 已复核的最终分。
+        </p>
+      </div>
       {groups.map(([className, members]) => {
         const scores = members
           .map((student) => student.totalScore)
@@ -374,7 +576,7 @@ function ScoresOverview() {
             ? scores.reduce((sum, value) => sum + value, 0) / scores.length
             : null
         return (
-          <Card key={className}>
+          <Card key={className} className="rounded-2xl shadow-card">
             <CardHeader>
               <CardTitle className="flex flex-wrap items-center gap-3 text-base">
                 {className}
@@ -442,22 +644,22 @@ function ScoresOverview() {
                       })}
                       <td className="py-2 pr-3">
                         {student.pendingReviewCount > 0 ? (
-                          <Badge variant="secondary">
+                          <Tag variant="amber">
                             {student.pendingReviewCount} 题
-                          </Badge>
+                          </Tag>
                         ) : (
                           "--"
                         )}
                       </td>
                       <td className="py-2 pr-3">
                         {student.registrationFailed ? (
-                          <Badge variant="destructive">登记失败</Badge>
+                          <Tag variant="red">登记失败</Tag>
                         ) : student.pendingReviewCount > 0 ? (
-                          <Badge variant="secondary">待复核</Badge>
+                          <Tag variant="amber">待复核</Tag>
                         ) : student.totalScore != null ? (
-                          <Badge>已出分</Badge>
+                          <Tag variant="mint">已出分</Tag>
                         ) : (
-                          <Badge variant="outline">未批改</Badge>
+                          <Tag variant="indigo">未批改</Tag>
                         )}
                       </td>
                       <td className="py-2 text-right">

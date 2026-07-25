@@ -7,12 +7,16 @@ import time
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, BackgroundTasks, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import (
+    CurrentUser,
+    SessionDep,
+    get_current_teacher_user,
+)
 from app.models import (
     AnswerPreparationItem,
     AnswerPreparationItemPublic,
@@ -55,14 +59,20 @@ from app.models import (
     get_datetime_utc,
 )
 from app.services.file_storage import get_stored_file_path
+from app.services.org_scope import can_see_exam, can_write_exam
 from app.services.pdf_rendering import get_pdf_page_count
 from app.services.question_answer_workflow import (
     execute_answer_preparation,
     execute_question_recognition,
     persist_question_recognition_payload,
 )
+from app.services.system_config import get_grading_defaults
 
-router = APIRouter(prefix="/exams", tags=["question-answer-workflow"])
+router = APIRouter(
+    prefix="/exams",
+    tags=["question-answer-workflow"],
+    dependencies=[Depends(get_current_teacher_user)],
+)
 
 
 def _natural_key(value: str | None) -> tuple:
@@ -74,13 +84,17 @@ def _natural_key(value: str | None) -> tuple:
 
 
 def _owned_exam(
-    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    *,
+    require_write: bool = False,
 ) -> Exam:
     exam = session.get(Exam, exam_id)
-    if not exam:
+    if not exam or not can_see_exam(session, current_user, exam):
         raise HTTPException(status_code=404, detail="考试不存在")
-    if not current_user.is_superuser and exam.owner_id != current_user.id:
-        raise HTTPException(status_code=403, detail="无权访问该考试")
+    if require_write and not can_write_exam(current_user, exam):
+        raise HTTPException(status_code=403, detail="无权修改该考试")
     return exam
 
 
@@ -89,8 +103,10 @@ def _question_run(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     run_id: uuid.UUID,
+    *,
+    require_write: bool = False,
 ) -> QuestionRecognitionRun:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=require_write)
     run = session.get(QuestionRecognitionRun, run_id)
     if not run or run.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="题目识别任务不存在")
@@ -102,8 +118,10 @@ def _answer_run(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     run_id: uuid.UUID,
+    *,
+    require_write: bool = False,
 ) -> AnswerPreparationRun:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=require_write)
     run = session.get(AnswerPreparationRun, run_id)
     if not run or run.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="答案准备任务不存在")
@@ -174,7 +192,7 @@ def create_question_recognition_run(
     run_in: QuestionRecognitionRunCreate,
     background_tasks: BackgroundTasks,
 ) -> QuestionRecognitionRunPublic:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=True)
     document_ids = list(dict.fromkeys(run_in.document_ids))
     documents = list(
         session.exec(
@@ -191,11 +209,12 @@ def create_question_recognition_run(
             status_code=422,
             detail="题目识别只能选择题目源页面：可以是空白卷，也可以是一份代表学生卷；答案文档请在标准答案页面导入",
         )
+    defaults = get_grading_defaults(session)
     run = QuestionRecognitionRun(
         exam_id=exam_id,
         created_by_id=current_user.id,
-        provider="fluxnode_gemini",
-        model="gemini-3.5-flash",
+        provider=str(defaults["recognition_provider"]),
+        model=str(defaults["recognition_model"]),
         engine="reference-node",
         document_ids=[str(item) for item in document_ids],
     )
@@ -217,7 +236,7 @@ def import_marking_recognition_run(
     exam_id: uuid.UUID,
     import_in: MarkingRecognitionImport,
 ) -> QuestionRecognitionRunPublic:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=True)
     document_ids = list(dict.fromkeys(import_in.document_ids))
     rows = session.exec(
         select(ExamDocument, StoredFile)
@@ -429,7 +448,7 @@ def update_question_recognition_item(
     item = session.get(QuestionRecognitionItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="题目识别项不存在")
-    run = _question_run(session, current_user, exam_id, item.run_id)
+    run = _question_run(session, current_user, exam_id, item.run_id, require_write=True)
     if run.confirmed_at:
         raise HTTPException(status_code=409, detail="识别任务已确认，不能再修改")
     update = item_in.model_dump(exclude_unset=True)
@@ -507,7 +526,7 @@ def confirm_question_recognition_run(
     exam_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> QuestionRecognitionRunPublic:
-    run = _question_run(session, current_user, exam_id, run_id)
+    run = _question_run(session, current_user, exam_id, run_id, require_write=True)
     if run.confirmed_at:
         return _question_run_public(session, run)
     if run.status not in {
@@ -554,6 +573,8 @@ def confirm_question_recognition_run(
             question.label = item.label.strip()
             question.question_text = item.question_text.strip()
             question.question_type = item.question_type
+            question.knowledge_point = item.knowledge_point
+            question.difficulty = item.difficulty
             question.recognition_confidence = item.confidence
             question.status = ExamQuestionStatus.CONFIRMED
             question.confirmed_by_id = current_user.id
@@ -649,7 +670,7 @@ def create_answer_preparation_run(
     run_in: AnswerPreparationRunCreate,
     background_tasks: BackgroundTasks,
 ) -> AnswerPreparationRunPublic:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=True)
     confirmed_count = session.exec(
         select(func.count())
         .select_from(ExamQuestion)
@@ -775,7 +796,7 @@ def update_answer_preparation_item(
     item = session.get(AnswerPreparationItem, item_id)
     if not item:
         raise HTTPException(status_code=404, detail="答案准备项不存在")
-    run = _answer_run(session, current_user, exam_id, item.run_id)
+    run = _answer_run(session, current_user, exam_id, item.run_id, require_write=True)
     if run.confirmed_at or item.revision_id:
         raise HTTPException(status_code=409, detail="答案已确认，不能修改历史快照")
     update = item_in.model_dump(exclude_unset=True)
@@ -855,7 +876,7 @@ def confirm_answer_preparation_run(
     exam_id: uuid.UUID,
     run_id: uuid.UUID,
 ) -> AnswerPreparationRunPublic:
-    run = _answer_run(session, current_user, exam_id, run_id)
+    run = _answer_run(session, current_user, exam_id, run_id, require_write=True)
     if run.confirmed_at:
         return _answer_run_public(session, run)
     if run.status not in {
@@ -902,6 +923,10 @@ def confirm_answer_preparation_run(
         for question in questions:
             item = selected[question.id]
             _validate_answer_item(item)
+            source_provider = str(
+                item.raw_result.get("_used_provider") or run.provider
+            )
+            source_model = str(item.raw_result.get("_used_model") or run.model)
             answer = session.exec(
                 select(StandardAnswer).where(
                     StandardAnswer.exam_id == exam_id,
@@ -930,8 +955,8 @@ def confirm_answer_preparation_run(
                     status=StandardAnswerStatus.DRAFT,
                     question_text=question.question_text,
                     question_type=question.question_type,
-                    source_provider=run.provider,
-                    source_model=run.model,
+                    source_provider=source_provider,
+                    source_model=source_model,
                     generation_confidence=(
                         float(item.confidence) if item.confidence is not None else None
                     ),
@@ -958,8 +983,8 @@ def confirm_answer_preparation_run(
                 max_score=item.max_score,
                 rubric_text=item.rubric_text.strip() if item.rubric_text else None,
                 scoring_points=item.scoring_points,
-                source_provider=run.provider,
-                source_model=run.model,
+                source_provider=source_provider,
+                source_model=source_model,
                 generation_confidence=item.confidence,
                 content_hash=_revision_hash(question=question, item=item),
                 status=StandardAnswerRevisionStatus.DRAFT,
@@ -1026,7 +1051,7 @@ def publish_standard_answer_revisions(
     exam_id: uuid.UUID,
     publish_in: StandardAnswerPublishRequest,
 ) -> StandardAnswerRevisionsPublic:
-    _owned_exam(session, current_user, exam_id)
+    _owned_exam(session, current_user, exam_id, require_write=True)
     statement = (
         select(StandardAnswerRevision, StandardAnswer)
         .join(

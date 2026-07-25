@@ -1,5 +1,64 @@
 # 进度摘要
 
+更新时间：2026-07-24
+
+### 2026-07-24 协作批卷 + 视觉系统切换 + 稳定性修复
+
+- 协作批卷：教师任教档案（任教班级 TeacherClassLink + 科目标签，`/users/{id}/teaching`）；考试共享批卷（`shared_grading_enabled` + GradingAssignment 按班分配）；未分完不能发起批改（400 含缺班名）；被分配老师在答卷/批注/复核/成绩只见负责班级、跨班写 403；用户管理可编辑任教、grading 页批改分配卡（班级×老师矩阵，任教优先）、workbench 范围条「你负责：X班」、考试列表「协作」标记（迁移 f7a3b5c9d2e4）。
+- 视觉系统切换为小程序同款：唯一强调蓝 #2E5BFF、暖白底 #FAFAF9、墨色三级、hairline 边、语义色收敛；logo 换 BookOpenCheck、图标块中性化、闪光图标仅留两处核心自动化。
+- 复核入口统一到横批工作台（`?student=` 定位）；workbench 左侧学生选择列；未分班排最后；裁切缺失有明确空态。
+- 稳定性：pypdfium2 非线程安全导致并发后全部 PDF 渲染 422——加进程级 `PDFIUM_LOCK` 串行化根治；E2E 遗留测试考生（流程测试考生）数据已清除。
+- 验证：pytest 237 passed（1 个基线环境失败）、前端 tsc/biome/构建通过、双账号实测分配视角差异。
+
+更新时间：2026-07-23（三）
+
+### 2026-07-23（三）简洁化第二批 + 横批工作台 + 品牌定名点凡阅卷
+
+- 品牌正式定名「点凡阅卷」（DIANFAN），产品原则写入 `AGENTS.md`：老师工具、AI 退后台、每题一个决定。
+- 批卷工作台重构为「按题横批」：答题大图（缩放/平移）+ 底部固定评分栏（点分=保存+跳下一份）+ 键盘（数字/A/F/空格/←→）+ 可收起评分依据（低置信度自动展开）。
+- 去 AI 符号：建议评分/学习建议/自动批改通过率/生成参考答案；置信度仅低时提示；模型/服务商/阈值/并发仅管理角色可见。
+- 视觉克制：圆角 10px、阴影近乎不可见改边框区分、渐变仅留主 CTA/激活导航/logo。
+- 复核队列说人话：「答案字迹不清/评分依据不足/分数接近边界」+「继续复核 N 题」主入口（workbench 支持 ?filter=needs_review）。
+- 系统设置（仅平台超管）：SystemConfig 表 + `/platform/system-config` 读写判题/视觉模型与默认阈值并发，新批次生效，env 兜底。
+- 识别内容/标准答案页改紧凑行列表+行内展开编辑；报告去模板化（主要失分摘要、具体化建议、错题裁切图区、雷达降为次要）。
+- 步骤改名：导入模板卷→框选题目→确认题目→标准答案→批改批次→成绩；导入中心整页化；考试选择器跟随路由。
+- 验证：pytest 229 passed（1 基线环境失败）、Playwright 57 passed/0 failed/7 skipped（外部依赖）、tsc/biome/构建通过。
+
+更新时间：2026-07-23（二）
+
+### 2026-07-23（二）多租户角色体系：平台 × 学校
+
+- 角色模型 6 档：平台侧 `platform_superuser`（超管）/`platform_support`（运营，跨校只读）；学校侧 `school_owner`（总管理员，校内全部+学校设置）/`school_admin`（管理员，管老师学生+全校只读）/`teacher`/`student`（迁移 a7b8c9d0e1f2，userrole 枚举只加不删）。
+- Organization 表（name/code/status/exam_sharing_enabled/contact_name）；存量数据回填「默认学校」；User/Exam/ClassGroup 加 org_id（迁移 c4d6e8f0a2b4，班级名改为 (org,name) 唯一）。
+- 数据隔离（services/org_scope.py）：platform 看全部；school_owner/admin 看本校；teacher 看自己的+（学校开启共享时）同校只读；写操作限本人考试（school_owner 可写本校）；不可见统一 404。
+- 端点：`/platform/orgs` 学校 CRUD+首个总管理员（超管）/详情（运营可读）；`/org/settings` 学校设置（teacher 可读、school_owner 可写互见开关）；`/users/signup` 关闭（管理员创建制）；用户管理按角色分级创建、列表学校隔离。
+- 前端：平台控制台（学校列表/详情/新建向导/添加总管理员）；学校设置页（教师间互见开关）；侧栏按 6 角色渲染；登录/注册入口清理；考试信息表单必填校验；班级改学校内共享；全局 403 误踢登录修复（仅凭证失效才登出）。
+- 验证：pytest 222 passed（3 个基线环境失败）；前端 tsc/biome/构建通过；双学校真实隔离验证（示范二中 owner 只见本校）；测试学校「示范二中」demo2.owner@example.com 已建。
+
+更新时间：2026-07-23
+
+### 2026-07-23 规范化整改：考试信息 / 角色体系 / 班级学生实体 / 学生端
+
+- 角色体系：`User.role`（superuser/admin/teacher/student，迁移 c8e2f4a6b105 回填）；admin+ 管用户（不能设超管）、teacher 管自己的考试班级、student 仅访问 `/students/me/*`；开放注册默认 student；业务路由对学生 403。
+- 班级学生实体（迁移 e7b3c5d9f204）：`ClassGroup`/`Student`/`ExamClassLink`/`StudentSubmission.student_id`；演示数据回填 001班/002班 各 4 人；导入答卷自动归位（不存在则自动创建）；学生可绑定 role=student 登录账号。
+- 考试信息：`exam_date`、`description`、班级多对多关联（迁移 f1a2b3c4d5e6）；新建/编辑考试完整表单（名称/科目/年级/班级/时间/备注）；考试列表显示班级 Tag、考试时间、进度（替代失效的 status）。
+- 学生端：`/my/exams` 成绩卡片列表 + `/my/exams/$id` A4 个人报告（只读、可打印）；未绑定档案显示引导空态；登录按角色分流、路由守卫、侧栏按角色渲染。
+- 前端新增页：班级学生管理（班级 CRUD + 名单 + 批量添加 + 绑定账号）；用户管理角色化（角色列 + 角色下拉）。
+- 命名修正：步骤「导入」→「导入卷面」、「批量批改」→「批改批次」；toast 标题中文化；导入中心从弹窗改为整页（弹窗保留给步骤条入口，共用 ImportCenterTabs）；考试管理提至主导航第二位；「进入」按钮按进度跳转（完成→批卷工作台）。
+- 裁切图端点回退：批注无持久化裁切时按模板区域实时裁切（修复批卷工作台裁切图 404）。
+- 验证：后端 pytest 189 passed（3 个基线环境失败）；前端 tsc/biome/生产构建通过；学生账号（刘雨欣）真实登录验证学生端数据与隔离。
+
+更新时间：2026-07-22
+
+### 2026-07-22 前端 UI 全面重构（对齐「智批 AI」原型）
+
+- 设计令牌重写（`frontend/src/index.css`）：靛紫主色 #6366F1、18px 大圆角、shadow-card、深浅双主题；移除「试卷红笔」视觉（PaperRule/RedSeal/Noto Serif）。
+- App Shell：浅色侧栏（工作台/导入试卷/批卷工作台/改卷报告/班级分析/重新组卷 + 管理区）+ 顶栏（页面标题、考试选择器、全局搜索占位、通知、头像）；产品名统一为「智批 AI」。
+- 组件库：`components/Common/`（StatCard/Tag/Chip/ConfBadge/ProgressBar/PageHead/EmptyState/AvatarGradient）+ `components/charts/`（recharts 封装：Line/Donut/Bar/HBar/Radar + 手写 Heatmap）。
+- 新页面：工作台重设计（统计卡/批卷任务/趋势/快捷操作）；批卷工作台三栏页（学生列表+题目裁切对照+AI 评分卡，改分/采纳 AI/评语，续页合并）；改卷报告（A4 版式 + 打印导出 PDF）；班级分析（分布/分数段/各题得分率/AI 学情报告）；重新组卷（知识点勾选+难度+题型数量+薄弱点优先）。
+- 后端：`ExamQuestion`/`QuestionRecognitionItem` 加 `knowledge_point`、`difficulty`（迁移 e5f7a9c1d304）；`StandardAnswer.exam_region_id` 放宽可空；新增 `GET /exams/question-bank`、`POST /exams/compose`、`POST /exams/{id}/analysis-report`（LLM 四段学情报告，不缓存）；区域接口返回题目关联（question_key/role）。
+- 验证：后端 pytest 164 passed（3 个基线环境失败）；前端 tsc/biome/生产构建通过；各页面 Playwright 深浅色截图核对。
+
 更新时间：2026-07-18
 
 ### 2026-07-18 识别复核门禁与稳定性复核

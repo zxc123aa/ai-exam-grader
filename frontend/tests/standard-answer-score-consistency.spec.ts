@@ -139,20 +139,19 @@ test("standard answer page shows evidence-backed scores totaling 100", async ({
   await page.goto("/login")
   await page.evaluate(() => localStorage.setItem("access_token", "mock-token"))
   await page.goto(`/exams/${examId}/answers`)
-  await expect(page.getByText("答案与评分准则", { exact: true })).toBeVisible()
+  await expect(page.getByRole("button", { name: "生成参考答案" })).toBeVisible()
 
-  await page.getByRole("button", { name: "生成答案草稿" }).click()
+  await page.getByRole("button", { name: "生成参考答案" }).click()
+  await expect(page.getByText("答案匹配与评分准则")).toBeVisible()
 
-  const scoreInputs = page.locator(
-    '[data-testid^="answer-item-"] input[inputmode="decimal"]',
-  )
-  await expect(scoreInputs).toHaveCount(expectedScores.length)
+  // 答案列表默认收起，逐行展开后读取满分输入框
   const displayedScores: number[] = []
   for (let index = 0; index < expectedScores.length; index += 1) {
-    await expect(scoreInputs.nth(index)).toHaveValue(
-      String(expectedScores[index]),
-    )
-    displayedScores.push(Number(await scoreInputs.nth(index).inputValue()))
+    const row = page.getByTestId(`answer-item-answer-item-${index + 1}`)
+    await row.click()
+    const scoreInput = row.locator('input[inputmode="decimal"]')
+    await expect(scoreInput).toHaveValue(String(expectedScores[index]))
+    displayedScores.push(Number(await scoreInput.inputValue()))
   }
   expect(displayedScores).toEqual(expectedScores)
   expect(displayedScores.reduce((total, score) => total + score, 0)).toBe(100)

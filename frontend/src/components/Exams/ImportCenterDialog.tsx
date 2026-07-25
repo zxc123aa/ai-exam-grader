@@ -7,12 +7,12 @@ import {
   Upload,
   Users,
 } from "lucide-react"
-import { type ReactNode, useEffect, useState } from "react"
+import { type ReactNode, useState } from "react"
 
 import { type ExamPublic, ExamsService } from "@/client"
+import { Tag } from "@/components/Common/Tag"
 import { ExamFilesContent } from "@/components/Exams/ExamFilesDialog"
 import { StudentSubmissionsContent } from "@/components/Exams/StudentSubmissionsDialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -83,9 +83,9 @@ function AnswerDocumentsContent({
 
   return (
     <div className="grid gap-5">
-      <div className="grid gap-3 rounded-md border p-4">
+      <div className="grid gap-3 rounded-xl border p-4">
         <div>
-          <div className="text-sm font-medium">上传标准答案文档</div>
+          <div className="font-medium text-sm">上传标准答案文档</div>
           <p className="mt-1 text-xs text-muted-foreground">
             支持 PDF
             或图片（JPG/PNG）。上传后到“标准答案”页选择该文档，整理出答案与评分准则。
@@ -113,10 +113,10 @@ function AnswerDocumentsContent({
         </div>
       </div>
 
-      <div className="rounded-md border">
+      <div className="rounded-xl border">
         <div className="flex items-center justify-between border-b px-4 py-3">
-          <span className="text-sm font-medium">已上传的答案文档</span>
-          <Badge variant="secondary">{answerDocuments.length}</Badge>
+          <span className="font-medium text-sm">已上传的答案文档</span>
+          <Tag variant="indigo">{answerDocuments.length}</Tag>
         </div>
         {files.isLoading ? (
           <div className="flex items-center gap-2 px-4 py-8 text-sm text-muted-foreground">
@@ -152,7 +152,64 @@ function AnswerDocumentsContent({
 }
 
 /**
- * 考试级唯一导入入口：模板卷 / 学生答卷 / 标准答案文档 三个 tab。
+ * 导入中心的三个 tab 内容（模板卷 / 学生答卷 / 标准答案文档）。
+ * 弹窗（ImportCenterDialog）和导入页（/exams/$id）共用；
+ * onUploadingChange 供弹窗在批量上传时阻止误关闭。
+ */
+export function ImportCenterTabs({
+  exam,
+  initialTab = "blank",
+  onUploadingChange,
+}: {
+  exam: ExamPublic
+  initialTab?: ImportCenterTab
+  onUploadingChange?: (uploading: boolean) => void
+}) {
+  const [tab, setTab] = useState<ImportCenterTab>(initialTab)
+  const [isBatchUploading, setIsBatchUploading] = useState(false)
+
+  const handleUploadingChange = (uploading: boolean) => {
+    setIsBatchUploading(uploading)
+    onUploadingChange?.(uploading)
+  }
+
+  return (
+    <Tabs
+      value={tab}
+      onValueChange={(value) => setTab(value as ImportCenterTab)}
+    >
+      <TabsList>
+        <TabsTrigger value="blank" disabled={isBatchUploading}>
+          <FileText />
+          模板卷（空白试卷）
+        </TabsTrigger>
+        <TabsTrigger value="submission">
+          <Users />
+          学生答卷（待批改）
+        </TabsTrigger>
+        <TabsTrigger value="answer" disabled={isBatchUploading}>
+          <FileKey2 />
+          标准答案文档
+        </TabsTrigger>
+      </TabsList>
+      <TabsContent value="blank" className="pt-4">
+        <ExamFilesContent exam={exam} />
+      </TabsContent>
+      <TabsContent value="submission" className="pt-4">
+        <StudentSubmissionsContent
+          exam={exam}
+          onUploadingChange={handleUploadingChange}
+        />
+      </TabsContent>
+      <TabsContent value="answer" className="pt-4">
+        <AnswerDocumentsContent exam={exam} />
+      </TabsContent>
+    </Tabs>
+  )
+}
+
+/**
+ * 考试级导入入口的弹窗形式：供步骤条「导入」和区域校正页等上下文入口使用。
  * 支持受控打开（open/onOpenChange）和自渲染触发按钮（trigger 或默认按钮），
  * initialTab 指定打开时的初始 tab。
  */
@@ -170,7 +227,6 @@ export function ImportCenterDialog({
   initialTab?: ImportCenterTab
 }) {
   const [internalOpen, setInternalOpen] = useState(false)
-  const [tab, setTab] = useState<ImportCenterTab>(initialTab)
   const [isBatchUploading, setIsBatchUploading] = useState(false)
   const { showErrorToast } = useCustomToast()
   const isOpen = open ?? internalOpen
@@ -182,10 +238,6 @@ export function ImportCenterDialog({
     if (onOpenChange) onOpenChange(nextOpen)
     else setInternalOpen(nextOpen)
   }
-
-  useEffect(() => {
-    if (isOpen) setTab(initialTab)
-  }, [isOpen, initialTab])
 
   return (
     <Dialog open={isOpen} onOpenChange={setOpen}>
@@ -206,37 +258,11 @@ export function ImportCenterDialog({
             模板卷、学生答卷和标准答案文档都从这里导入。
           </DialogDescription>
         </DialogHeader>
-        <Tabs
-          value={tab}
-          onValueChange={(value) => setTab(value as ImportCenterTab)}
-        >
-          <TabsList>
-            <TabsTrigger value="blank" disabled={isBatchUploading}>
-              <FileText />
-              模板卷（空白试卷）
-            </TabsTrigger>
-            <TabsTrigger value="submission">
-              <Users />
-              学生答卷（待批改）
-            </TabsTrigger>
-            <TabsTrigger value="answer" disabled={isBatchUploading}>
-              <FileKey2 />
-              标准答案文档
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="blank" className="pt-4">
-            <ExamFilesContent exam={exam} />
-          </TabsContent>
-          <TabsContent value="submission" className="pt-4">
-            <StudentSubmissionsContent
-              exam={exam}
-              onUploadingChange={setIsBatchUploading}
-            />
-          </TabsContent>
-          <TabsContent value="answer" className="pt-4">
-            <AnswerDocumentsContent exam={exam} />
-          </TabsContent>
-        </Tabs>
+        <ImportCenterTabs
+          exam={exam}
+          initialTab={initialTab}
+          onUploadingChange={setIsBatchUploading}
+        />
       </DialogContent>
     </Dialog>
   )

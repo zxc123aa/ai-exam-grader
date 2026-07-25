@@ -1,4 +1,6 @@
 import base64
+import json
+import statistics
 import time
 import uuid
 from pathlib import Path
@@ -7,20 +9,29 @@ from typing import Any, Literal
 import cv2
 import jwt
 import numpy as np
-from fastapi import APIRouter, Form, Header, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, func, select
+from sqlmodel import Session, col, func, select
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import (
+    CurrentUser,
+    SessionDep,
+    get_current_teacher_user,
+    is_platform_user,
+)
 from app.core import security
 from app.core.config import settings
 from app.models import (
     AnnotationGradingStatus,
     AnswerPreparationRun,
+    ClassGroup,
     Exam,
+    ExamAnalysisReportPublic,
+    ExamClassLink,
+    ExamComposeRequest,
     ExamCreate,
     ExamDocument,
     ExamDocumentOrderUpdate,
@@ -32,6 +43,7 @@ from app.models import (
     ExamPublic,
     ExamQuestion,
     ExamQuestionRegion,
+    ExamQuestionStatus,
     ExamRegion,
     ExamRegionCandidate,
     ExamRegionCandidatesPublic,
@@ -45,16 +57,26 @@ from app.models import (
     ExamScoreSummaryRow,
     ExamsPublic,
     ExamUpdate,
+    GradingAssignment,
+    GradingAssignmentClassPublic,
+    GradingAssignmentItemPublic,
+    GradingAssignmentsPublic,
+    GradingAssignmentsUpdate,
     GradingRun,
     Message,
     ProcessingTask,
     ProcessingTaskPublic,
     ProcessingTaskStatus,
+    QuestionBankEntryPublic,
+    QuestionBankPublic,
     QuestionRecognitionRun,
     StandardAnswer,
     StandardAnswerCreate,
     StandardAnswerPublic,
+    StandardAnswerRevision,
+    StandardAnswerRevisionStatus,
     StandardAnswersPublic,
+    StandardAnswerStatus,
     StandardAnswerUpdate,
     StoredFile,
     StoredFilePublic,
@@ -71,21 +93,37 @@ from app.models import (
     SubmissionRegistrationStatus,
     TokenPayload,
     User,
+    UserRole,
     get_datetime_utc,
 )
+from app.services.class_students import resolve_student_for_submission
 from app.services.exam_photo_preprocessing import (
     PhotoPreprocessingError,
     preprocess_exam_photo_with_page_quads,
 )
 from app.services.file_storage import (
+    MAX_UPLOAD_BYTES,
+    MAX_ZIP_UPLOAD_BYTES,
     SCAN_PHOTO_CONTENT_TYPES,
     assert_allowed_signature,
     cleanup_stored_file_path,
     get_stored_file_path,
+    is_zip_upload,
     read_upload_file_bytes,
     store_generated_file,
     store_upload_file,
     validate_scan_photo_upload_file,
+)
+from app.services.org_scope import (
+    assigned_class_ids,
+    can_see_exam,
+    can_write_exam,
+    exam_classes_with_submissions,
+    exams_visible_filter,
+    resolve_target_org_id,
+    restricted_assigned_classes,
+    submission_class_filter,
+    submission_in_assigned_classes,
 )
 from app.services.pdf_rendering import (
     InvalidPdfError,
@@ -116,23 +154,92 @@ from app.services.submission_crops import (
     crop_region_png,
     resolve_exam_region_paper_page,
 )
+from app.services.system_config import get_grading_defaults
+from app.services.vision_grading import VisionGradingError, call_json_model
+from app.services.zip_submissions import build_pdf_bytes_from_zip
 from app.worker import (
     process_submission_processing_task,
     run_submission_processing_task,
 )
 
-router = APIRouter(prefix="/exams", tags=["exams"])
+router = APIRouter(
+    prefix="/exams",
+    tags=["exams"],
+    dependencies=[Depends(get_current_teacher_user)],
+)
 
 
 def get_exam_for_user(
-    *, session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    require_write: bool = False,
 ) -> Exam:
+    """按可见性取考试：不可见一律 404（不区分「不存在」与「跨校/他人考试」）。
+
+    require_write=True 时再叠加写权限校验（自己的考试 / school_owner 写本校 /
+    平台超管），可见但无权写时 403。
+    """
     exam = session.get(Exam, exam_id)
-    if not exam:
+    if not exam or not can_see_exam(session, current_user, exam):
         raise HTTPException(status_code=404, detail="Exam not found")
-    if not current_user.is_superuser and exam.owner_id != current_user.id:
+    if require_write and not can_write_exam(current_user, exam):
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return exam
+
+
+def build_exam_public(
+    *, session: Session, exam: Exam, is_assigned: bool = False
+) -> ExamPublic:
+    """ExamPublic 组装：附加 ExamClassLink 读出的 class_ids / class_names。"""
+    public = ExamPublic.model_validate(exam)
+    public.is_assigned = is_assigned
+    rows = session.exec(
+        select(ExamClassLink, ClassGroup)
+        .join(ClassGroup, ExamClassLink.class_id == ClassGroup.id)
+        .where(
+            ExamClassLink.exam_id == exam.id,
+            ClassGroup.org_id == exam.org_id,
+        )
+        .order_by(col(ClassGroup.name).asc())
+    ).all()
+    public.class_ids = [link.class_id for link, _class_group in rows]
+    public.class_names = [class_group.name for _link, class_group in rows]
+    return public
+
+
+def replace_exam_class_links(
+    *,
+    session: Session,
+    exam: Exam,
+    class_ids: list[uuid.UUID],
+) -> None:
+    """整体重建考试的班级关联；班级不存在或不在考试所属学校时 400。"""
+    unique_ids = list(dict.fromkeys(class_ids))
+    class_groups = (
+        list(
+            session.exec(
+                select(ClassGroup).where(
+                    col(ClassGroup.id).in_(unique_ids),
+                    ClassGroup.org_id == exam.org_id,
+                )
+            ).all()
+        )
+        if unique_ids
+        else []
+    )
+    if len(class_groups) != len(unique_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid class_ids: 班级不存在或不属于本学校",
+        )
+    for link in session.exec(
+        select(ExamClassLink).where(ExamClassLink.exam_id == exam.id)
+    ).all():
+        session.delete(link)
+    for class_id in unique_ids:
+        session.add(ExamClassLink(exam_id=exam.id, class_id=class_id))
 
 
 def get_stored_file_page_count(stored_file: StoredFile) -> int:
@@ -286,6 +393,7 @@ def build_student_submission_public(
         student_name=submission.student_name,
         student_identifier=submission.student_identifier,
         class_name=submission.class_name,
+        student_id=submission.student_id,
         status=submission.status,
         registration_status=submission.registration_status,
         registration_quality=submission.registration_quality,
@@ -548,8 +656,14 @@ def get_exam_document_for_user(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     document_id: uuid.UUID,
+    require_write: bool = False,
 ) -> tuple[ExamDocument, StoredFile]:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=require_write,
+    )
     statement = (
         select(ExamDocument, StoredFile)
         .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
@@ -647,8 +761,15 @@ def get_student_submission_for_user(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     submission_id: uuid.UUID,
+    require_write: bool = False,
+    skip_assigned_restriction: bool = False,
 ) -> tuple[StudentSubmission, StoredFile]:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    exam = get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=require_write,
+    )
     statement = (
         select(StudentSubmission, StoredFile)
         .join(StoredFile, StudentSubmission.stored_file_id == StoredFile.id)
@@ -660,7 +781,39 @@ def get_student_submission_for_user(
     row = session.exec(statement).first()
     if not row:
         raise HTTPException(status_code=404, detail="Student submission not found")
+    # 共享批卷：被分配的非管理老师只能看到负责班级的答卷
+    if not skip_assigned_restriction:
+        restricted = restricted_assigned_classes(session, current_user, exam)
+        if restricted is not None:
+            class_ids, class_names = restricted
+            if not submission_in_assigned_classes(
+                session, row[0], class_ids, class_names
+            ):
+                raise HTTPException(
+                    status_code=404, detail="Student submission not found"
+                )
     return row
+
+
+def assert_can_write_submission_annotations(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam: Exam,
+    submission: StudentSubmission,
+) -> None:
+    """批注写权限：考试可写者（owner/校方管理/平台超管）放行；
+    共享批卷中被分配的老师只能改负责班级的答卷，跨班 403。"""
+    if can_write_exam(current_user, exam):
+        return
+    restricted = restricted_assigned_classes(session, current_user, exam)
+    if restricted is not None:
+        class_ids, class_names = restricted
+        if submission_in_assigned_classes(
+            session, submission, class_ids, class_names
+        ):
+            return
+    raise HTTPException(status_code=403, detail="无权批改非负责班级的答卷")
 
 
 def get_exam_region_for_user(
@@ -669,8 +822,14 @@ def get_exam_region_for_user(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     region_id: uuid.UUID,
+    require_write: bool = False,
 ) -> ExamRegion:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=require_write,
+    )
     region = session.get(ExamRegion, region_id)
     if not region or region.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Exam region not found")
@@ -683,8 +842,14 @@ def get_standard_answer_for_user(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     answer_id: uuid.UUID,
+    require_write: bool = False,
 ) -> StandardAnswer:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=require_write,
+    )
     answer = session.get(StandardAnswer, answer_id)
     if not answer or answer.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Standard answer not found")
@@ -697,12 +862,14 @@ def get_question_region_for_standard_answer(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     region_id: uuid.UUID,
+    require_write: bool = False,
 ) -> ExamRegion:
     region = get_exam_region_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
         region_id=region_id,
+        require_write=require_write,
     )
     if region.region_type != ExamRegionType.QUESTION:
         raise HTTPException(
@@ -719,12 +886,46 @@ def get_submission_annotation_for_user(
     exam_id: uuid.UUID,
     submission_id: uuid.UUID,
     annotation_id: uuid.UUID,
+    require_write: bool = False,
 ) -> SubmissionAnnotation:
     get_student_submission_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
         submission_id=submission_id,
+        require_write=require_write,
+    )
+    annotation = session.get(SubmissionAnnotation, annotation_id)
+    if not annotation or annotation.submission_id != submission_id:
+        raise HTTPException(status_code=404, detail="Submission annotation not found")
+    return annotation
+
+
+def get_submission_annotation_for_write(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    annotation_id: uuid.UUID,
+) -> SubmissionAnnotation:
+    """批注写端点取数：考试可见后按「可写考试 或 被分配老师负责班级」校验，
+    被分配老师跨班写 403。"""
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    submission, _stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+        skip_assigned_restriction=True,
+    )
+    assert_can_write_submission_annotations(
+        session=session,
+        current_user=current_user,
+        exam=exam,
+        submission=submission,
     )
     annotation = session.get(SubmissionAnnotation, annotation_id)
     if not annotation or annotation.submission_id != submission_id:
@@ -829,29 +1030,38 @@ def get_user_from_authorization_header(
 def read_exams(
     session: SessionDep, current_user: CurrentUser, skip: int = 0, limit: int = 100
 ) -> Any:
-    if current_user.is_superuser:
-        count_statement = select(func.count()).select_from(Exam)
-        statement = (
-            select(Exam).order_by(col(Exam.created_at).desc()).offset(skip).limit(limit)
-        )
-    else:
-        count_statement = (
-            select(func.count())
-            .select_from(Exam)
-            .where(Exam.owner_id == current_user.id)
-        )
-        statement = (
-            select(Exam)
-            .where(Exam.owner_id == current_user.id)
-            .order_by(col(Exam.created_at).desc())
-            .offset(skip)
-            .limit(limit)
-        )
+    visible = exams_visible_filter(session, current_user)
+    count_statement = select(func.count()).select_from(Exam).where(visible)
+    statement = (
+        select(Exam)
+        .where(visible)
+        .order_by(col(Exam.created_at).desc())
+        .offset(skip)
+        .limit(limit)
+    )
 
     count = session.exec(count_statement).one()
     exams = session.exec(statement).all()
+    # 当前用户被分配的共享批卷考试（列表一次查询，避免逐考试回表）
+    assigned_exam_ids = set(
+        session.exec(
+            select(GradingAssignment.exam_id).where(
+                GradingAssignment.user_id == current_user.id
+            )
+        ).all()
+    )
     return ExamsPublic(
-        data=[ExamPublic.model_validate(exam) for exam in exams], count=count
+        data=[
+            build_exam_public(
+                session=session,
+                exam=exam,
+                is_assigned=(
+                    exam.shared_grading_enabled and exam.id in assigned_exam_ids
+                ),
+            )
+            for exam in exams
+        ],
+        count=count,
     )
 
 
@@ -859,8 +1069,230 @@ def read_exams(
 def create_exam(
     *, session: SessionDep, current_user: CurrentUser, exam_in: ExamCreate
 ) -> Any:
-    exam = Exam.model_validate(exam_in, update={"owner_id": current_user.id})
+    # 学校角色的考试归入本人学校；平台角色必须显式指定 org_id
+    org_id = resolve_target_org_id(session, current_user, exam_in.org_id)
+    if org_id is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "平台账号创建考试必须指定 org_id"
+                if is_platform_user(current_user)
+                else "账号未归属学校，无法创建考试"
+            ),
+        )
+    exam = Exam.model_validate(
+        exam_in.model_dump(exclude={"class_ids", "org_id"}),
+        update={"owner_id": current_user.id, "org_id": org_id},
+    )
     session.add(exam)
+    session.flush()
+    if exam_in.class_ids is not None:
+        replace_exam_class_links(
+            session=session,
+            exam=exam,
+            class_ids=exam_in.class_ids,
+        )
+    session.commit()
+    session.refresh(exam)
+    return build_exam_public(session=session, exam=exam)
+
+
+# 注意：/question-bank 与 /compose 必须注册在 /{exam_id} 之前，
+# 否则 "question-bank" 会被当作 exam_id 解析。
+@router.get("/question-bank", response_model=QuestionBankPublic)
+def read_question_bank(
+    session: SessionDep,
+    current_user: CurrentUser,
+    knowledge_point: str | None = None,
+    question_type: str | None = None,
+    difficulty: int | None = None,
+) -> Any:
+    statement = (
+        select(ExamQuestion, Exam)
+        .join(Exam, ExamQuestion.exam_id == Exam.id)
+        .where(ExamQuestion.status == ExamQuestionStatus.CONFIRMED)
+    )
+    # 题库按学校共享：本校已确认题目全员可见，跨校不可见
+    if not is_platform_user(current_user):
+        statement = statement.where(Exam.org_id == current_user.org_id)
+    if knowledge_point:
+        statement = statement.where(
+            ExamQuestion.knowledge_point == knowledge_point
+        )
+    if question_type:
+        statement = statement.where(ExamQuestion.question_type == question_type)
+    if difficulty is not None:
+        statement = statement.where(ExamQuestion.difficulty == difficulty)
+    rows = list(session.exec(statement).all())
+
+    published_scores: dict[uuid.UUID, float] = {}
+    question_ids = [question.id for question, _exam in rows]
+    if question_ids:
+        answers = session.exec(
+            select(StandardAnswer).where(
+                col(StandardAnswer.question_id).in_(question_ids),
+                StandardAnswer.current_revision_id.is_not(None),
+            )
+        ).all()
+        published_scores = {answer.question_id: answer.max_score for answer in answers}
+
+    entries = [
+        QuestionBankEntryPublic(
+            question_id=question.id,
+            exam_id=exam.id,
+            exam_title=exam.title,
+            question_key=question.question_key,
+            label=question.label,
+            question_text=question.question_text[:200],
+            question_type=question.question_type,
+            knowledge_point=question.knowledge_point,
+            difficulty=question.difficulty,
+            max_score=published_scores.get(question.id),
+        )
+        for question, exam in rows
+    ]
+    entries.sort(key=lambda entry: (entry.exam_title, entry.question_key))
+    return QuestionBankPublic(data=entries, count=len(entries))
+
+
+@router.post("/compose", response_model=ExamPublic)
+def compose_exam(
+    *, session: SessionDep, current_user: CurrentUser, compose_in: ExamComposeRequest
+) -> Any:
+    question_ids = list(dict.fromkeys(compose_in.question_ids))
+    questions = list(
+        session.exec(
+            select(ExamQuestion).where(
+                col(ExamQuestion.id).in_(question_ids),
+                ExamQuestion.status == ExamQuestionStatus.CONFIRMED,
+            )
+        ).all()
+    )
+    if len(questions) != len(question_ids):
+        raise HTTPException(status_code=422, detail="部分题目不存在或尚未确认")
+    questions_by_id = {question.id: question for question in questions}
+    source_exam_ids = {question.exam_id for question in questions}
+    source_exams = {
+        exam.id: exam
+        for exam in session.exec(
+            select(Exam).where(col(Exam.id).in_(source_exam_ids))
+        ).all()
+    }
+    if not is_platform_user(current_user):
+        if current_user.org_id is None:
+            raise HTTPException(status_code=400, detail="账号未归属学校，无法组卷")
+        for source_exam in source_exams.values():
+            if source_exam.org_id != current_user.org_id:
+                raise HTTPException(status_code=403, detail="无权访问题目来源考试")
+        org_id = current_user.org_id
+    else:
+        # 平台账号组卷：来源考试必须属于同一所学校，新卷挂到该校
+        source_org_ids = {source_exam.org_id for source_exam in source_exams.values()}
+        if len(source_org_ids) != 1:
+            raise HTTPException(
+                status_code=400, detail="题目来源考试必须属于同一所学校"
+            )
+        org_id = source_org_ids.pop()
+
+    exam = Exam.model_validate(
+        ExamCreate(title=compose_in.title),
+        update={"owner_id": current_user.id, "org_id": org_id},
+    )
+    session.add(exam)
+    session.flush()
+
+    now = get_datetime_utc()
+    for index, question_id in enumerate(question_ids, start=1):
+        source = questions_by_id[question_id]
+        question = ExamQuestion(
+            exam_id=exam.id,
+            question_key=str(index),
+            label=source.label,
+            question_text=source.question_text,
+            question_type=source.question_type,
+            knowledge_point=source.knowledge_point,
+            difficulty=source.difficulty,
+            status=ExamQuestionStatus.CONFIRMED,
+            confirmed_by_id=current_user.id,
+            confirmed_at=now,
+            updated_at=now,
+        )
+        session.add(question)
+        session.flush()
+
+        source_answer = session.exec(
+            select(StandardAnswer).where(
+                StandardAnswer.question_id == source.id,
+                StandardAnswer.current_revision_id.is_not(None),
+            )
+        ).first()
+        if not source_answer or not source_answer.current_revision_id:
+            continue
+        source_revision = session.get(
+            StandardAnswerRevision, source_answer.current_revision_id
+        )
+        if not source_revision:
+            continue
+        # 数字卷没有扫描区域，region 关联留空。
+        answer = StandardAnswer(
+            exam_id=exam.id,
+            exam_region_id=None,
+            question_id=question.id,
+            answer_text=source_revision.answer_text,
+            max_score=float(source_revision.max_score),
+            rubric_text=source_revision.rubric_text,
+            scoring_points=source_revision.scoring_points,
+            status=StandardAnswerStatus.READY,
+            version=1,
+            source_provider=source_revision.source_provider,
+            source_model=source_revision.source_model,
+            generation_confidence=(
+                float(source_revision.generation_confidence)
+                if source_revision.generation_confidence is not None
+                else None
+            ),
+            answer_hash=source_revision.content_hash,
+            question_text=source_revision.question_text,
+            question_type=source_revision.question_type,
+            rubric_config={
+                "schema_version": "confirmed-answer-revision-v1",
+                "scoring_points": source_revision.scoring_points,
+            },
+            validation_report={
+                "valid": True,
+                "human_confirmed": True,
+                "published": True,
+            },
+            published_at=now,
+            published_by_id=current_user.id,
+            updated_at=now,
+        )
+        session.add(answer)
+        session.flush()
+        revision = StandardAnswerRevision(
+            standard_answer_id=answer.id,
+            question_id=question.id,
+            revision_number=1,
+            question_key=question.question_key,
+            question_text=source_revision.question_text,
+            question_type=source_revision.question_type,
+            answer_text=source_revision.answer_text,
+            max_score=source_revision.max_score,
+            rubric_text=source_revision.rubric_text,
+            scoring_points=source_revision.scoring_points,
+            source_provider=source_revision.source_provider,
+            source_model=source_revision.source_model,
+            generation_confidence=source_revision.generation_confidence,
+            content_hash=source_revision.content_hash,
+            status=StandardAnswerRevisionStatus.PUBLISHED,
+            created_by_id=current_user.id,
+            published_by_id=current_user.id,
+            published_at=now,
+        )
+        session.add(revision)
+        session.flush()
+        answer.current_revision_id = revision.id
+        session.add(answer)
     session.commit()
     session.refresh(exam)
     return exam
@@ -870,9 +1302,141 @@ def create_exam(
 def read_exam(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Any:
-    return get_exam_for_user(
+    exam = get_exam_for_user(
         session=session, current_user=current_user, exam_id=exam_id
     )
+    is_assigned = exam.shared_grading_enabled and bool(
+        assigned_class_ids(session, exam.id, current_user.id)
+    )
+    return build_exam_public(session=session, exam=exam, is_assigned=is_assigned)
+
+
+def _build_grading_assignments_public(
+    *, session: SessionDep, exam: Exam
+) -> GradingAssignmentsPublic:
+    rows = session.exec(
+        select(GradingAssignment, ClassGroup, User)
+        .join(ClassGroup, GradingAssignment.class_id == ClassGroup.id)
+        .join(User, GradingAssignment.user_id == User.id)
+        .where(GradingAssignment.exam_id == exam.id)
+        .order_by(col(ClassGroup.name).asc())
+    ).all()
+    assignments = [
+        GradingAssignmentItemPublic(
+            class_id=class_group.id,
+            class_name=class_group.name,
+            user_id=user.id,
+            user_name=user.full_name or user.email,
+        )
+        for _assignment, class_group, user in rows
+    ]
+    assigned_class_id_set = {assignment.class_id for assignment in assignments}
+    unassigned = [
+        GradingAssignmentClassPublic(class_id=class_group.id, class_name=class_group.name)
+        for class_group in exam_classes_with_submissions(session, exam)
+        if class_group.id not in assigned_class_id_set
+    ]
+    return GradingAssignmentsPublic(
+        enabled=exam.shared_grading_enabled,
+        assignments=assignments,
+        unassigned=unassigned,
+    )
+
+
+@router.get(
+    "/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic
+)
+def read_grading_assignments(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> Any:
+    """共享批卷分配（只读）：本校非学生角色均可读；跨校 404。"""
+    exam = session.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if not is_platform_user(current_user) and (
+        current_user.org_id is None or current_user.org_id != exam.org_id
+    ):
+        raise HTTPException(status_code=404, detail="Exam not found")
+    return _build_grading_assignments_public(session=session, exam=exam)
+
+
+@router.put(
+    "/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic
+)
+def update_grading_assignments(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    assignments_in: GradingAssignmentsUpdate,
+) -> Any:
+    """整体覆盖共享批卷分配：exam owner / school_owner / school_admin 可写。
+
+    校验：班级属于本考试学校；被分配用户是本校非 student 角色。
+    """
+    exam = session.get(Exam, exam_id)
+    if not exam:
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if not is_platform_user(current_user) and (
+        current_user.org_id is None or current_user.org_id != exam.org_id
+    ):
+        raise HTTPException(status_code=404, detail="Exam not found")
+    if not can_write_exam(current_user, exam):
+        raise HTTPException(status_code=403, detail="Not enough permissions")
+    # 同班重复出现时以最后一条为准
+    entries: dict[uuid.UUID, uuid.UUID] = {}
+    for entry in assignments_in.assignments:
+        entries[entry.class_id] = entry.user_id
+    class_ids = list(entries)
+    class_groups = (
+        list(
+            session.exec(
+                select(ClassGroup).where(
+                    col(ClassGroup.id).in_(class_ids),
+                    ClassGroup.org_id == exam.org_id,
+                )
+            ).all()
+        )
+        if class_ids
+        else []
+    )
+    if len(class_groups) != len(class_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid class_ids: 班级不存在或不属于本学校",
+        )
+    user_ids = list(dict.fromkeys(entries.values()))
+    assignees = (
+        list(session.exec(select(User).where(col(User.id).in_(user_ids))).all())
+        if user_ids
+        else []
+    )
+    for assignee in assignees:
+        if (
+            assignee.org_id != exam.org_id
+            or assignee.role == UserRole.STUDENT
+            or is_platform_user(assignee)
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid user_id: 被分配老师必须是本校非学生角色",
+            )
+    if len(assignees) != len(user_ids):
+        raise HTTPException(status_code=400, detail="Invalid user_id: 用户不存在")
+    for assignment in session.exec(
+        select(GradingAssignment).where(GradingAssignment.exam_id == exam.id)
+    ).all():
+        session.delete(assignment)
+    session.flush()
+    for class_id, user_id in entries.items():
+        session.add(
+            GradingAssignment(exam_id=exam.id, class_id=class_id, user_id=user_id)
+        )
+    exam.shared_grading_enabled = assignments_in.enabled
+    session.add(exam)
+    session.commit()
+    session.refresh(exam)
+    return _build_grading_assignments_public(session=session, exam=exam)
 
 
 @router.post("/{exam_id}/files", response_model=ExamDocumentPublic)
@@ -886,7 +1450,10 @@ async def upload_exam_file(
     preprocess: Literal["auto", "force", "none"] = Form(default="auto"),
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     stored_file = await store_upload_file(
         session=session,
@@ -955,7 +1522,10 @@ async def upload_exam_files(
     preprocess: Literal["auto", "force", "none"] = Form(default="auto"),
 ) -> ExamDocumentsPublic:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     if not files:
         raise HTTPException(status_code=422, detail="At least one file is required")
@@ -1038,7 +1608,12 @@ def reorder_exam_files(
     exam_id: uuid.UUID,
     order_in: ExamDocumentOrderUpdate,
 ) -> ExamDocumentsPublic:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
     if len(order_in.document_ids) != len(set(order_in.document_ids)):
         raise HTTPException(
             status_code=422, detail="Document order contains duplicates"
@@ -1141,7 +1716,10 @@ def clear_exam_paper_files(
     exam_id: uuid.UUID,
 ) -> ExamDocumentsPublic:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     delete_exam_source_derived_data(session=session, exam_id=exam.id)
     documents = session.exec(
@@ -1182,7 +1760,10 @@ def delete_exam_file(
     document_id: uuid.UUID,
 ) -> ExamDocumentsPublic:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     document = session.get(ExamDocument, document_id)
     if not document or document.exam_id != exam.id:
@@ -1240,7 +1821,12 @@ def recognize_exam_files_with_reference_algorithm(
     exam_id: uuid.UUID,
     recognition_in: ExamDocumentRecognitionRequest,
 ) -> dict:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
     if len(recognition_in.document_ids) != len(set(recognition_in.document_ids)):
         raise HTTPException(status_code=422, detail="Document list contains duplicates")
     rows = session.exec(
@@ -1263,9 +1849,12 @@ def recognize_exam_files_with_reference_algorithm(
             detail="Some exam documents do not belong to this exam",
         )
     try:
+        defaults = get_grading_defaults(session)
         return process_stored_files(
             documents=documents,
             verification_mode=recognition_in.verification_mode,
+            provider=str(defaults["region_provider"]),
+            model=str(defaults["region_model"]),
         )
     except Exception as exc:
         raise HTTPException(
@@ -1492,6 +2081,7 @@ def preprocess_exam_file_with_quads(
         current_user=current_user,
         exam_id=exam_id,
         document_id=document_id,
+        require_write=True,
     )
     source_file = get_exam_document_source_image(
         session=session,
@@ -1588,6 +2178,7 @@ def auto_rectify_exam_file(
         current_user=current_user,
         exam_id=exam_id,
         document_id=document_id,
+        require_write=True,
     )
     try:
         processed_file, exam_document = auto_rectify_exam_document_record(
@@ -1621,7 +2212,12 @@ def auto_rectify_exam_files(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
 ) -> ExamDocumentsPublic:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
     rows = session.exec(
         select(ExamDocument, StoredFile)
         .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
@@ -1718,10 +2314,13 @@ def read_exam_region_candidates(
     provider_failover_count = 0
     if engine == GEMINI_LAYOUT_ENGINE_NAME:
         try:
+            layout_defaults = get_grading_defaults(session)
             layout_payload = layout_stored_file(
                 stored_file=stored_file,
                 page_numbers=[page_number],
                 assume_upright=bool(exam_document.preprocessing_status == "completed"),
+                provider=str(layout_defaults["region_provider"]),
+                model=str(layout_defaults["region_model"]),
             )
             layouts = [
                 item
@@ -1837,9 +2436,15 @@ def recognize_exam_document_with_reference_algorithm(
         current_user=current_user,
         exam_id=exam_id,
         document_id=document_id,
+        require_write=True,
     )
     try:
-        return process_stored_file(stored_file=stored_file)
+        defaults = get_grading_defaults(session)
+        return process_stored_file(
+            stored_file=stored_file,
+            provider=str(defaults["region_provider"]),
+            model=str(defaults["region_model"]),
+        )
     except Exception as exc:
         raise HTTPException(
             status_code=502,
@@ -1860,6 +2465,7 @@ def recognize_exam_document_page_with_reference_algorithm(
         current_user=current_user,
         exam_id=exam_id,
         document_id=document_id,
+        require_write=True,
     )
     documents = session.exec(
         select(ExamDocument, StoredFile)
@@ -1874,11 +2480,14 @@ def recognize_exam_document_page_with_reference_algorithm(
         )
     ).all()
     try:
+        defaults = get_grading_defaults(session)
         return process_stored_file_page_context(
             documents=list(documents),
             target_document_id=document.id,
             target_page_number=page_number,
             context_radius=1,
+            provider=str(defaults["region_provider"]),
+            model=str(defaults["region_model"]),
         )
     except Exception as exc:
         raise HTTPException(
@@ -1900,7 +2509,13 @@ async def upload_student_submission(
     preprocess: Literal["auto", "force", "none"] = Form(default="auto"),
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
+    zip_upload = is_zip_upload(
+        filename=file.filename, content_type=file.content_type
     )
     stored_file = await store_upload_file(
         session=session,
@@ -1909,6 +2524,12 @@ async def upload_student_submission(
         owner_id=exam.owner_id,
         commit=False,
         validate_exam_file=True,
+        max_bytes=MAX_ZIP_UPLOAD_BYTES if zip_upload else MAX_UPLOAD_BYTES,
+        too_large_status=(
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+            if zip_upload
+            else status.HTTP_413_CONTENT_TOO_LARGE
+        ),
     )
     try:
         validate_uploaded_pdf(stored_file)
@@ -1916,19 +2537,45 @@ async def upload_student_submission(
         session.rollback()
         raise
     active_file = stored_file
+    zip_note: str | None = None
     try:
-        (
-            active_file,
-            preprocessing_metadata,
-            preprocessing_quality,
-            preprocessing_status,
-            original_file_id,
-        ) = preprocess_uploaded_image_file(
-            session=session,
-            owner_id=exam.owner_id,
-            stored_file=stored_file,
-            preprocess_mode=preprocess,
-        )
+        if zip_upload:
+            # zip 答卷包：解包照片 → 逐张预处理 → 合并多页 PDF；
+            # 原始 zip 作为 original 留存，答卷文件用生成的 PDF。
+            zip_contents = get_stored_file_path(stored_file).read_bytes()
+            merged_pdf, image_count, preprocessed_count = build_pdf_bytes_from_zip(
+                zip_contents, preprocess_mode=preprocess
+            )
+            source_name = Path(stored_file.original_filename).stem
+            active_file = store_generated_file(
+                session=session,
+                owner_id=exam.owner_id,
+                original_filename=f"{source_name}-scanned.pdf",
+                content_type="application/pdf",
+                contents=merged_pdf,
+                commit=False,
+            )
+            preprocessing_metadata = None
+            preprocessing_quality = None
+            preprocessing_status = "not_required"
+            original_file_id = stored_file.id
+            zip_note = (
+                f"ZIP 解包：{image_count} 张照片合并为一份答卷，"
+                f"{preprocessed_count} 张已自动校正"
+            )
+        else:
+            (
+                active_file,
+                preprocessing_metadata,
+                preprocessing_quality,
+                preprocessing_status,
+                original_file_id,
+            ) = preprocess_uploaded_image_file(
+                session=session,
+                owner_id=exam.owner_id,
+                stored_file=stored_file,
+                preprocess_mode=preprocess,
+            )
         submission = StudentSubmission(
             exam_id=exam.id,
             stored_file_id=active_file.id,
@@ -1940,12 +2587,25 @@ async def upload_student_submission(
             registration_status=SubmissionRegistrationStatus.PENDING,
             registration_quality=preprocessing_quality,
             registration_notes=(
-                f"scan_preprocessing={preprocessing_status}"
-                if preprocessing_metadata is not None
-                else None
+                zip_note
+                if zip_note is not None
+                else (
+                    f"scan_preprocessing={preprocessing_status}"
+                    if preprocessing_metadata is not None
+                    else None
+                )
             ),
             registration_homography=preprocessing_metadata,
         )
+        student = resolve_student_for_submission(
+            session=session,
+            owner_id=exam.owner_id,
+            org_id=exam.org_id,
+            class_name=class_name,
+            student_name=student_name,
+        )
+        if student is not None:
+            submission.student_id = student.id
         session.add(submission)
         session.commit()
     except Exception:
@@ -1965,7 +2625,9 @@ async def upload_student_submission(
 def read_student_submissions(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Any:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
     count_statement = (
         select(func.count())
         .select_from(StudentSubmission)
@@ -1977,6 +2639,12 @@ def read_student_submissions(
         .where(StudentSubmission.exam_id == exam_id)
         .order_by(col(StudentSubmission.created_at).desc())
     )
+    # 共享批卷：被分配的非管理老师只看到负责班级的答卷
+    restricted = restricted_assigned_classes(session, current_user, exam)
+    if restricted is not None:
+        class_filter = submission_class_filter(*restricted)
+        count_statement = count_statement.where(class_filter)
+        statement = statement.where(class_filter)
     count = session.exec(count_statement).one()
     rows = session.exec(statement).all()
     submissions = [
@@ -1990,18 +2658,35 @@ def read_student_submissions(
 def read_exam_scores_summary(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Any:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
-    submissions = list(
-        session.exec(
-            select(StudentSubmission)
-            .where(StudentSubmission.exam_id == exam_id)
-            .order_by(
-                col(StudentSubmission.class_name).asc(),
-                col(StudentSubmission.student_name).asc(),
-                col(StudentSubmission.created_at).asc(),
-            )
-        ).all()
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
     )
+    restricted = restricted_assigned_classes(session, current_user, exam)
+    return _build_exam_scores_summary(
+        session=session, exam_id=exam_id, restricted=restricted
+    )
+
+
+def _build_exam_scores_summary(
+    *,
+    session: Session,
+    exam_id: uuid.UUID,
+    restricted: tuple[list[uuid.UUID], list[str]] | None = None,
+) -> ExamScoreSummaryPublic:
+    submissions_statement = (
+        select(StudentSubmission)
+        .where(StudentSubmission.exam_id == exam_id)
+        .order_by(
+            col(StudentSubmission.class_name).asc(),
+            col(StudentSubmission.student_name).asc(),
+            col(StudentSubmission.created_at).asc(),
+        )
+    )
+    if restricted is not None:
+        submissions_statement = submissions_statement.where(
+            submission_class_filter(*restricted)
+        )
+    submissions = list(session.exec(submissions_statement).all())
     annotations = (
         list(
             session.exec(
@@ -2120,6 +2805,152 @@ def read_exam_scores_summary(
     return ExamScoreSummaryPublic(data=rows, count=len(rows))
 
 
+def _compute_exam_analysis_stats(summary: ExamScoreSummaryPublic) -> dict | None:
+    """汇总成绩统计数据：按「班级 + 学生姓名」合并多条 submission（与前端
+    成绩矩阵口径一致），计算整体指标和各题得分率。没有任何成绩时返回 None。"""
+    students: dict[str, dict] = {}
+    for row in summary.data:
+        class_name = (row.class_name or "").strip() or "未分班"
+        student_name = (row.student_name or "").strip() or "未识别"
+        key = f"{class_name}{student_name}"
+        student = students.setdefault(
+            key, {"total_score": None, "total_max_score": None, "questions": {}}
+        )
+        if row.total_score is not None:
+            student["total_score"] = (student["total_score"] or 0) + row.total_score
+        if row.total_max_score is not None:
+            student["total_max_score"] = (
+                student["total_max_score"] or 0
+            ) + row.total_max_score
+        for question in row.questions:
+            existing = student["questions"].get(question.label)
+            if existing is None or (
+                existing.get("score_source") != "final"
+                and question.score_source == "final"
+            ):
+                student["questions"][question.label] = {
+                    "score": question.score,
+                    "max_score": question.max_score,
+                    "score_source": question.score_source,
+                }
+    scored = [s for s in students.values() if s["total_score"] is not None]
+    if not scored:
+        return None
+    totals = [float(s["total_score"]) for s in scored]
+    full_marks = [
+        float(s["total_max_score"]) for s in scored if s["total_max_score"]
+    ]
+    full_mark = max(full_marks) if full_marks else None
+    sorted_totals = sorted(totals)
+    quartile = max(1, len(sorted_totals) // 4)
+    question_stats: dict[str, dict] = {}
+    for student in scored:
+        for label, question in student["questions"].items():
+            if question["score"] is None or not question["max_score"]:
+                continue
+            entry = question_stats.setdefault(label, {"score": 0.0, "max": 0.0})
+            entry["score"] += float(question["score"])
+            entry["max"] += float(question["max_score"])
+    question_rates = [
+        {"label": label, "rate": round(entry["score"] / entry["max"] * 100, 1)}
+        for label, entry in question_stats.items()
+        if entry["max"] > 0
+    ]
+    question_rates.sort(key=lambda item: item["rate"])
+    return {
+        "student_count": len(scored),
+        "average": round(sum(totals) / len(totals), 1),
+        "full_mark": full_mark,
+        "max": max(totals),
+        "min": min(totals),
+        "pass_rate": (
+            round(
+                sum(1 for t in totals if full_mark and t >= full_mark * 0.6)
+                / len(totals)
+                * 100,
+                1,
+            )
+            if full_mark
+            else None
+        ),
+        "excellent_rate": (
+            round(
+                sum(1 for t in totals if full_mark and t >= full_mark * 0.85)
+                / len(totals)
+                * 100,
+                1,
+            )
+            if full_mark
+            else None
+        ),
+        "stddev": round(statistics.pstdev(totals), 2) if len(totals) > 1 else 0.0,
+        "top_quartile_avg": round(
+            sum(sorted_totals[-quartile:]) / quartile, 1
+        ),
+        "bottom_quartile_avg": round(sum(sorted_totals[:quartile]) / quartile, 1),
+        "weakest_questions": question_rates[:3],
+    }
+
+
+@router.post(
+    "/{exam_id}/analysis-report", response_model=ExamAnalysisReportPublic
+)
+def create_exam_analysis_report(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> Any:
+    """基于最新批阅成绩调用 LLM 生成四段式班级学情报告。
+
+    暂不做持久化缓存——每次调用都重新统计并生成；后续如报告生成耗时或
+    成本成为问题，可增加缓存表（按 exam_id + 成绩摘要哈希）复用结果。
+    """
+    exam = get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
+    summary = _build_exam_scores_summary(session=session, exam_id=exam_id)
+    stats = _compute_exam_analysis_stats(summary)
+    if stats is None:
+        raise HTTPException(
+            status_code=400,
+            detail="该考试还没有批改成绩，无法生成学情报告",
+        )
+    prompt = (
+        "你是一位经验丰富的中文教研员。根据以下班级考试统计数据，撰写学情分析报告。"
+        "只返回 JSON，不要 Markdown："
+        '{"overall":"整体表现（2-3句，结合平均分/及格率/优秀率）",'
+        '"weak":"薄弱点（结合得分率最低的题目，2-3句）",'
+        '"polar":"两极分化提示（结合标准差与前25%/后25%均分差距，1-2句）",'
+        '"advice":"教学建议（2-3条可执行建议，连贯成段）"}。\n'
+        f"考试：{exam.title}\n"
+        f"统计数据：{json.dumps(stats, ensure_ascii=False)}"
+    )
+    defaults = get_grading_defaults(session)
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"AI 学情报告生成失败：{exc}"
+        ) from exc
+    report = {
+        key: str(parsed.get(key) or "").strip()
+        for key in ("overall", "weak", "polar", "advice")
+    }
+    if not all(report.values()):
+        raise HTTPException(
+            status_code=502, detail="AI 学情报告返回内容不完整，请重试"
+        )
+    return ExamAnalysisReportPublic(
+        **report, generated_at=get_datetime_utc()
+    )
+
+
 @router.post(
     "/{exam_id}/submissions/preprocess-photo",
     response_model=StudentSubmissionPublic,
@@ -2135,8 +2966,79 @@ async def preprocess_student_submission_photo(
     class_name: str | None = Form(default=None),
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
+    if is_zip_upload(filename=file.filename, content_type=file.content_type):
+        # zip 答卷包：解包后逐张走照片预处理，合并为一份多页 PDF 答卷
+        contents = await read_upload_file_bytes(
+            file=file,
+            max_bytes=MAX_ZIP_UPLOAD_BYTES,
+            too_large_status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
+        if not contents[:4].startswith(b"PK"):
+            raise HTTPException(
+                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+                detail="Uploaded file content does not match its declared type",
+            )
+        merged_pdf, image_count, preprocessed_count = build_pdf_bytes_from_zip(
+            contents, preprocess_mode="auto"
+        )
+        source_name = Path(file.filename or "scan-photos").stem
+        original_file = store_generated_file(
+            session=session,
+            owner_id=exam.owner_id,
+            original_filename=file.filename or "scan-photos.zip",
+            content_type=file.content_type or "application/zip",
+            contents=contents,
+            commit=False,
+        )
+        stored_file = store_generated_file(
+            session=session,
+            owner_id=exam.owner_id,
+            original_filename=f"{source_name}-preprocessed.pdf",
+            content_type="application/pdf",
+            contents=merged_pdf,
+            commit=False,
+        )
+        try:
+            submission = StudentSubmission(
+                exam_id=exam.id,
+                stored_file_id=stored_file.id,
+                original_stored_file_id=original_file.id,
+                student_name=student_name,
+                student_identifier=student_identifier,
+                class_name=class_name,
+                status=StudentSubmissionStatus.REGISTRATION_PENDING,
+                registration_status=SubmissionRegistrationStatus.PENDING,
+                registration_notes=(
+                    f"ZIP 解包：{image_count} 张照片已预处理并合并为一份答卷，"
+                    f"{preprocessed_count} 张已自动校正"
+                ),
+            )
+            student = resolve_student_for_submission(
+                session=session,
+                owner_id=exam.owner_id,
+                org_id=exam.org_id,
+                class_name=class_name,
+                student_name=student_name,
+            )
+            if student is not None:
+                submission.student_id = student.id
+            session.add(submission)
+            session.commit()
+        except Exception:
+            session.rollback()
+            cleanup_stored_file_path(get_stored_file_path(stored_file))
+            cleanup_stored_file_path(get_stored_file_path(original_file))
+            raise
+        session.refresh(submission)
+        session.refresh(stored_file)
+        return build_student_submission_public(
+            submission=submission, stored_file=stored_file
+        )
     validate_scan_photo_upload_file(file)
     contents = await read_upload_file_bytes(file=file)
     assert_allowed_signature(
@@ -2197,6 +3099,15 @@ async def preprocess_student_submission_photo(
             ),
             registration_homography=preprocessing_metadata,
         )
+        student = resolve_student_for_submission(
+            session=session,
+            owner_id=exam.owner_id,
+            org_id=exam.org_id,
+            class_name=class_name,
+            student_name=student_name,
+        )
+        if student is not None:
+            submission.student_id = student.id
         session.add(submission)
         session.commit()
     except Exception:
@@ -2231,8 +3142,18 @@ def build_appended_pages_pdf_bytes(
     """Convert an uploaded file into PDF pages ready to append.
 
     Photos go through the same rectification/split flow as the
-    preprocess-photo endpoint; PDFs are appended as-is.
+    preprocess-photo endpoint; PDFs are appended as-is; ZIP 包按解包照片
+    逐张处理后合并追加。
     """
+    if is_zip_upload(
+        filename=stored_file.original_filename,
+        content_type=stored_file.content_type,
+    ):
+        zip_contents = get_stored_file_path(stored_file).read_bytes()
+        merged_pdf, _image_count, _preprocessed_count = build_pdf_bytes_from_zip(
+            zip_contents, preprocess_mode=preprocess_mode
+        )
+        return merged_pdf
     contents = stored_file_to_pdf_bytes(stored_file)
     if stored_file.content_type == "application/pdf" or preprocess_mode == "none":
         return contents
@@ -2268,13 +3189,17 @@ async def append_student_submission_pages(
     preprocess: Literal["auto", "force", "none"] = Form(default="auto"),
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     submission, stored_file = get_student_submission_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
         submission_id=submission_id,
+        require_write=True,
     )
     if submission.registration_status == SubmissionRegistrationStatus.MANUAL_CONFIRMED:
         raise HTTPException(
@@ -2291,6 +3216,9 @@ async def append_student_submission_pages(
             status_code=status.HTTP_409_CONFLICT,
             detail="Submission already has grading data; appending pages would invalidate it",
         )
+    zip_upload = is_zip_upload(
+        filename=file.filename, content_type=file.content_type
+    )
     uploaded_file = await store_upload_file(
         session=session,
         current_user=current_user,
@@ -2298,6 +3226,12 @@ async def append_student_submission_pages(
         owner_id=exam.owner_id,
         commit=False,
         validate_exam_file=True,
+        max_bytes=MAX_ZIP_UPLOAD_BYTES if zip_upload else MAX_UPLOAD_BYTES,
+        too_large_status=(
+            status.HTTP_422_UNPROCESSABLE_ENTITY
+            if zip_upload
+            else status.HTTP_413_CONTENT_TOO_LARGE
+        ),
     )
     try:
         validate_uploaded_pdf(uploaded_file)
@@ -2384,6 +3318,7 @@ def update_student_submission_registration(
         current_user=current_user,
         exam_id=exam_id,
         submission_id=submission_id,
+        require_write=True,
     )
     updated_at = get_datetime_utc()
     submission.registration_status = registration_in.registration_status
@@ -2426,6 +3361,7 @@ def create_student_submission_processing_task(
         current_user=current_user,
         exam_id=exam_id,
         submission_id=submission_id,
+        require_write=True,
     )
     task = ProcessingTask(
         task_type="student_submission_processing",
@@ -2604,19 +3540,33 @@ def read_submission_annotation_crop(
         if matching_crop:
             break
 
-    if not matching_crop:
-        raise HTTPException(status_code=404, detail="Annotation crop not found")
+    storage_key = matching_crop.get("storage_key") if matching_crop else None
+    if storage_key:
+        upload_root = settings.LOCAL_UPLOAD_DIR.resolve()
+        path = (upload_root / storage_key).resolve()
+        if path.is_relative_to(upload_root) and path.exists():
+            return FileResponse(
+                path=path, media_type="image/png", filename=path.name
+            )
 
-    storage_key = matching_crop.get("storage_key")
-    if not storage_key:
+    # 回退：批量批改生成的批注没有持久化裁切图，按模板区域实时裁切。
+    _submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+    )
+    region = session.get(ExamRegion, annotation.exam_region_id)
+    if region is None or region.exam_id != exam_id:
         raise HTTPException(status_code=404, detail="Annotation crop not found")
-    upload_root = settings.LOCAL_UPLOAD_DIR.resolve()
-    path = (upload_root / storage_key).resolve()
-    if not path.is_relative_to(upload_root):
-        raise HTTPException(status_code=404, detail="Annotation crop not found")
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="Annotation crop file not found")
-    return FileResponse(path=path, media_type="image/png", filename=path.name)
+    return Response(
+        content=crop_region_from_stored_file(
+            stored_file=stored_file,
+            region=region,
+            page_number=resolve_exam_region_paper_page(session, region),
+        ),
+        media_type="image/png",
+    )
 
 
 @router.get(
@@ -2662,11 +3612,21 @@ def create_submission_annotation(
     submission_id: uuid.UUID,
     annotation_in: SubmissionAnnotationCreate,
 ) -> Any:
-    get_student_submission_for_user(
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    submission, _stored_file = get_student_submission_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
         submission_id=submission_id,
+        skip_assigned_restriction=True,
+    )
+    assert_can_write_submission_annotations(
+        session=session,
+        current_user=current_user,
+        exam=exam,
+        submission=submission,
     )
     if annotation_in.exam_region_id:
         get_exam_region_for_user(
@@ -2697,7 +3657,7 @@ def update_submission_annotation(
     annotation_id: uuid.UUID,
     annotation_in: SubmissionAnnotationUpdate,
 ) -> Any:
-    annotation = get_submission_annotation_for_user(
+    annotation = get_submission_annotation_for_write(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
@@ -2750,7 +3710,7 @@ def delete_submission_annotation(
     submission_id: uuid.UUID,
     annotation_id: uuid.UUID,
 ) -> Message:
-    annotation = get_submission_annotation_for_user(
+    annotation = get_submission_annotation_for_write(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
@@ -2787,7 +3747,12 @@ def create_standard_answer(
     exam_id: uuid.UUID,
     answer_in: StandardAnswerCreate,
 ) -> Any:
-    get_exam_for_user(session=session, current_user=current_user, exam_id=exam_id)
+    get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
     region = get_question_region_for_standard_answer(
         session=session,
         current_user=current_user,
@@ -2851,6 +3816,7 @@ def update_standard_answer(
         current_user=current_user,
         exam_id=exam_id,
         answer_id=answer_id,
+        require_write=True,
     )
     if answer.current_revision_id is not None:
         raise HTTPException(
@@ -2860,11 +3826,15 @@ def update_standard_answer(
     answer.sqlmodel_update(answer_in.model_dump(exclude_unset=True))
     answer.updated_at = get_datetime_utc()
     session.add(answer)
-    affected_annotations = session.exec(
-        select(SubmissionAnnotation).where(
-            SubmissionAnnotation.exam_region_id == answer.exam_region_id
-        )
-    ).all()
+    affected_annotations = (
+        session.exec(
+            select(SubmissionAnnotation).where(
+                SubmissionAnnotation.exam_region_id == answer.exam_region_id
+            )
+        ).all()
+        if answer.exam_region_id is not None
+        else []
+    )
     for annotation in affected_annotations:
         if annotation.grading_status in {
             AnnotationGradingStatus.SUCCEEDED,
@@ -2890,6 +3860,7 @@ def delete_standard_answer(
         current_user=current_user,
         exam_id=exam_id,
         answer_id=answer_id,
+        require_write=True,
     )
     if answer.current_revision_id is not None:
         raise HTTPException(
@@ -2927,7 +3898,10 @@ def create_exam_region(
     region_in: ExamRegionCreate,
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     if region_in.exam_document_id:
         document = session.get(ExamDocument, region_in.exam_document_id)
@@ -2956,6 +3930,7 @@ def update_exam_region(
         current_user=current_user,
         exam_id=exam_id,
         region_id=region_id,
+        require_write=True,
     )
     update_data = region_in.model_dump(exclude_unset=True)
     document_id = update_data.get("exam_document_id")
@@ -2994,6 +3969,7 @@ def delete_exam_region(
         current_user=current_user,
         exam_id=exam_id,
         region_id=region_id,
+        require_write=True,
     )
     session.delete(region)
     session.commit()
@@ -3009,13 +3985,23 @@ def update_exam(
     exam_in: ExamUpdate,
 ) -> Any:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
-    exam.sqlmodel_update(exam_in.model_dump(exclude_unset=True))
+    update_data = exam_in.model_dump(exclude_unset=True, exclude={"class_ids"})
+    exam.sqlmodel_update(update_data)
     session.add(exam)
+    if exam_in.class_ids is not None:
+        replace_exam_class_links(
+            session=session,
+            exam=exam,
+            class_ids=exam_in.class_ids,
+        )
     session.commit()
     session.refresh(exam)
-    return exam
+    return build_exam_public(session=session, exam=exam)
 
 
 @router.delete("/{exam_id}")
@@ -3023,7 +4009,10 @@ def delete_exam(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Message:
     exam = get_exam_for_user(
-        session=session, current_user=current_user, exam_id=exam_id
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
     )
     session.delete(exam)
     session.commit()

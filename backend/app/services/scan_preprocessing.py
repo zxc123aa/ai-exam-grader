@@ -295,7 +295,7 @@ def detect_page_polygons_with_gemini(
     prompt = GEMINI_PAGE_POLYGON_PROMPT
     try:
         parsed, used_model, elapsed_ms = call_json_model(
-            provider="fluxnode_gemini",
+            provider=settings.VISION_DEFAULT_PROVIDER,
             model=settings.VISION_DEFAULT_MODEL,
             fallback_models=[],
             messages=[
@@ -351,7 +351,7 @@ def detect_page_polygons_with_gemini(
         )
         try:
             retry_parsed, retry_model, retry_elapsed_ms = call_json_model(
-                provider="fluxnode_gemini",
+                provider=settings.VISION_DEFAULT_PROVIDER,
                 model=settings.VISION_DEFAULT_MODEL,
                 messages=[
                     {

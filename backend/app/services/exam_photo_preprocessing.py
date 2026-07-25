@@ -941,7 +941,7 @@ def normalize_reading_orientation(
 
     try:
         parsed, used_model, model_elapsed_ms = call_json_model(
-            provider="fluxnode_gemini",
+            provider=settings.VISION_DEFAULT_PROVIDER,
             model=settings.VISION_DEFAULT_MODEL,
             fallback_models=[],
             messages=[{"role": "user", "content": content}],

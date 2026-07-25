@@ -4,21 +4,11 @@ import { createUser } from "./utils/privateApi.ts"
 import { randomEmail, randomPassword } from "./utils/random"
 import { logInUser, logOutUser } from "./utils/user"
 
-const tabs = ["My profile", "Password", "Danger zone"]
-
-test("My profile tab is active by default", async ({ page }) => {
+test("设置页分区卡片可见", async ({ page }) => {
   await page.goto("/settings")
-  await expect(page.getByRole("tab", { name: "My profile" })).toHaveAttribute(
-    "aria-selected",
-    "true",
-  )
-})
-
-test("All tabs are visible", async ({ page }) => {
-  await page.goto("/settings")
-  for (const tab of tabs) {
-    await expect(page.getByRole("tab", { name: tab })).toBeVisible()
-  }
+  await expect(page.getByRole("heading", { name: "基本信息" })).toBeVisible()
+  await expect(page.getByRole("heading", { name: "安全" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "编辑" })).toBeVisible()
 })
 
 test.describe("Edit user profile", () => {
@@ -35,17 +25,16 @@ test.describe("Edit user profile", () => {
   test.beforeEach(async ({ page }) => {
     await logInUser(page, email, password)
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "My profile" }).click()
   })
 
   test("Edit user name with a valid name", async ({ page }) => {
     const updatedName = "Test User 2"
 
-    await page.getByRole("button", { name: "Edit" }).click()
-    await page.getByLabel("Full name").fill(updatedName)
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "编辑" }).click()
+    await page.getByLabel("姓名").fill(updatedName)
+    await page.getByRole("button", { name: "保存" }).click()
 
-    await expect(page.getByText("User updated successfully")).toBeVisible()
+    await expect(page.getByText("个人资料更新成功")).toBeVisible()
     await expect(
       page.locator("form").getByText(updatedName, { exact: true }),
     ).toBeVisible()
@@ -54,11 +43,11 @@ test.describe("Edit user profile", () => {
   test("Edit user email with an invalid email shows error", async ({
     page,
   }) => {
-    await page.getByRole("button", { name: "Edit" }).click()
-    await page.getByLabel("Email").fill("")
+    await page.getByRole("button", { name: "编辑" }).click()
+    await page.getByLabel("邮箱").fill("")
     await page.locator("body").click()
 
-    await expect(page.getByText("Invalid email address")).toBeVisible()
+    await expect(page.getByText("邮箱地址格式不正确")).toBeVisible()
   })
 })
 
@@ -73,13 +62,12 @@ test.describe("Edit user email", () => {
     await createUser({ email, password })
     await logInUser(page, email, password)
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "My profile" }).click()
 
-    await page.getByRole("button", { name: "Edit" }).click()
-    await page.getByLabel("Email").fill(updatedEmail)
-    await page.getByRole("button", { name: "Save" }).click()
+    await page.getByRole("button", { name: "编辑" }).click()
+    await page.getByLabel("邮箱").fill(updatedEmail)
+    await page.getByRole("button", { name: "保存" }).click()
 
-    await expect(page.getByText("User updated successfully")).toBeVisible()
+    await expect(page.getByText("个人资料更新成功")).toBeVisible()
     await expect(
       page.locator("form").getByText(updatedEmail, { exact: true }),
     ).toBeVisible()
@@ -96,10 +84,9 @@ test.describe("Cancel edit actions", () => {
 
     await logInUser(page, email, password)
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "My profile" }).click()
-    await page.getByRole("button", { name: "Edit" }).click()
-    await page.getByLabel("Full name").fill("Test User")
-    await page.getByRole("button", { name: "Cancel" }).first().click()
+    await page.getByRole("button", { name: "编辑" }).click()
+    await page.getByLabel("姓名").fill("Test User")
+    await page.getByRole("button", { name: "取消" }).first().click()
 
     await expect(
       page.locator("form").getByText(user.full_name as string, { exact: true }),
@@ -113,10 +100,9 @@ test.describe("Cancel edit actions", () => {
 
     await logInUser(page, email, password)
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "My profile" }).click()
-    await page.getByRole("button", { name: "Edit" }).click()
-    await page.getByLabel("Email").fill(randomEmail())
-    await page.getByRole("button", { name: "Cancel" }).first().click()
+    await page.getByRole("button", { name: "编辑" }).click()
+    await page.getByLabel("邮箱").fill(randomEmail())
+    await page.getByRole("button", { name: "取消" }).first().click()
 
     await expect(
       page.locator("form").getByText(email, { exact: true }),
@@ -136,13 +122,12 @@ test.describe("Change password", () => {
     await logInUser(page, email, password)
 
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "Password" }).click()
     await page.getByTestId("current-password-input").fill(password)
     await page.getByTestId("new-password-input").fill(newPassword)
     await page.getByTestId("confirm-password-input").fill(newPassword)
-    await page.getByRole("button", { name: "Update Password" }).click()
+    await page.getByRole("button", { name: "更新密码" }).click()
 
-    await expect(page.getByText("Password updated successfully")).toBeVisible()
+    await expect(page.getByText("密码修改成功")).toBeVisible()
 
     await logOutUser(page)
     await logInUser(page, email, newPassword)
@@ -163,7 +148,6 @@ test.describe("Change password validation", () => {
   test.beforeEach(async ({ page }) => {
     await logInUser(page, email, password)
     await page.goto("/settings")
-    await page.getByRole("tab", { name: "Password" }).click()
   })
 
   test("Update password with weak passwords", async ({ page }) => {
@@ -172,7 +156,7 @@ test.describe("Change password validation", () => {
     await page.getByTestId("current-password-input").fill(password)
     await page.getByTestId("new-password-input").fill(weakPassword)
     await page.getByTestId("confirm-password-input").fill(weakPassword)
-    await page.getByRole("button", { name: "Update Password" }).click()
+    await page.getByRole("button", { name: "更新密码" }).click()
 
     await expect(
       page.getByText("Password must be at least 8 characters"),
@@ -185,7 +169,7 @@ test.describe("Change password validation", () => {
     await page.getByTestId("current-password-input").fill(password)
     await page.getByTestId("new-password-input").fill(randomPassword())
     await page.getByTestId("confirm-password-input").fill(randomPassword())
-    await page.getByRole("button", { name: "Update Password" }).click()
+    await page.getByRole("button", { name: "更新密码" }).click()
 
     await expect(page.getByText("The passwords don't match")).toBeVisible()
   })
@@ -194,7 +178,7 @@ test.describe("Change password validation", () => {
     await page.getByTestId("current-password-input").fill(password)
     await page.getByTestId("new-password-input").fill(password)
     await page.getByTestId("confirm-password-input").fill(password)
-    await page.getByRole("button", { name: "Update Password" }).click()
+    await page.getByRole("button", { name: "更新密码" }).click()
 
     await expect(
       page.getByText("New password cannot be the same as the current one"),

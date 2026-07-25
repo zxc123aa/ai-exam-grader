@@ -96,8 +96,8 @@ function formatScanWarning(warning: ScanWarning) {
     content_near_bottom_edge: "底部内容靠近裁切边缘",
     content_near_left_edge: "左侧内容靠近裁切边缘",
     content_near_right_edge: "右侧内容靠近裁切边缘",
-    vision_page_polygon_rejected: "Gemini 页面边界未通过几何校验",
-    vision_page_polygon_failed: "Gemini 页面边界检测失败",
+    vision_page_polygon_rejected: "页面边界未通过几何校验",
+    vision_page_polygon_failed: "页面边界检测失败",
     doc_unwarping_unavailable: "文档方向/曲面展开服务暂不可用",
     doc_unwarping_quality_rejected: "曲面展开结果退化，已保留透视校正页",
   }
@@ -155,7 +155,7 @@ function PreprocessingPreview({
     {
       kind: "detected_overlay",
       label: "原图检测框",
-      description: "看 Gemini/OpenCV 找到的纸面边界",
+      description: "看识别出的纸面边界",
     },
     {
       kind: "corrected_spread",
@@ -260,8 +260,11 @@ function formatScanStrategy(document: ExamDocumentPublic) {
     center_fallback: "中心回退",
     split_half_page_fallback: "左右页回退",
     scan_service_single_page: "文档展开",
+    scan_stable_two_page_gutter: "双页中缝拆分",
+    scan_stable_single_page: "单页",
   }
-  return typeof strategy === "string" ? labels[strategy] || strategy : null
+  // 未知策略名不展示原始引擎标识，统一归为自动拆分
+  return typeof strategy === "string" ? (labels[strategy] ?? "自动拆分") : null
 }
 
 function moveItem<T>(items: T[], index: number, offset: -1 | 1) {

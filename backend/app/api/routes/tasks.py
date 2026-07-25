@@ -3,7 +3,7 @@ from typing import Any
 
 from fastapi import APIRouter, HTTPException
 
-from app.api.deps import CurrentUser, SessionDep
+from app.api.deps import CurrentUser, SessionDep, is_superuser
 from app.models import (
     ProcessingTask,
     ProcessingTaskCreate,
@@ -44,6 +44,6 @@ def read_task(
     task = session.get(ProcessingTask, task_id)
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    if not current_user.is_superuser and task.created_by_id != current_user.id:
+    if not is_superuser(current_user) and task.created_by_id != current_user.id:
         raise HTTPException(status_code=403, detail="Not enough permissions")
     return task

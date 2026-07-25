@@ -1,10 +1,11 @@
 import { Link } from "@tanstack/react-router"
 import type { ColumnDef } from "@tanstack/react-table"
-import { Copy, Ellipsis, Upload } from "lucide-react"
+import { Copy, Ellipsis, Pencil, Upload } from "lucide-react"
 
 import type { ExamPublic } from "@/client"
+import { Tag } from "@/components/Common/Tag"
+import EditExam from "@/components/Exams/EditExam"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -13,26 +14,23 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Skeleton } from "@/components/ui/skeleton"
 import { useCopyToClipboard } from "@/hooks/useCopyToClipboard"
 import { useExamProgress } from "@/hooks/useExamProgress"
 
-const examStatusLabels: Record<string, string> = {
-  draft: "草稿",
-  marking: "标注中",
-  ready: "已就绪",
-  processing: "处理中",
-  completed: "已完成",
-  archived: "已归档",
-}
-
 function ExamRowActions({ exam }: { exam: ExamPublic }) {
-  const { currentStep } = useExamProgress(exam.id)
+  const { currentStep, allDone } = useExamProgress(exam.id)
   const [, copy] = useCopyToClipboard()
+
+  // 流程未走完 → 进到当前应做步骤；已全部完成 → 直接进批卷工作台
+  const target = allDone
+    ? ("/exams/$examId/workbench" as const)
+    : currentStep.to
 
   return (
     <div className="flex justify-end gap-2">
       <Button size="sm" asChild>
-        <Link to={currentStep.to} params={{ examId: exam.id }}>
+        <Link to={target} params={{ examId: exam.id }}>
           进入
         </Link>
       </Button>
@@ -44,6 +42,15 @@ function ExamRowActions({ exam }: { exam: ExamPublic }) {
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <EditExam
+            exam={exam}
+            trigger={
+              <DropdownMenuItem onSelect={(event) => event.preventDefault()}>
+                <Pencil />
+                编辑信息
+              </DropdownMenuItem>
+            }
+          />
           <ImportCenterDialog
             exam={exam}
             trigger={
@@ -64,40 +71,85 @@ function ExamRowActions({ exam }: { exam: ExamPublic }) {
   )
 }
 
+function ExamProgressCell({ examId }: { examId: string }) {
+  const { currentStep, allDone, isLoading } = useExamProgress(examId)
+
+  if (isLoading) {
+    return <Skeleton className="h-6 w-16 rounded-full" />
+  }
+  if (allDone) {
+    return <Tag variant="mint">已完成</Tag>
+  }
+  return <Tag variant="amber">{currentStep.label}</Tag>
+}
+
 export const columns: ColumnDef<ExamPublic>[] = [
   {
     accessorKey: "title",
-    header: "考试名称",
+    header: "名称",
     cell: ({ row }) => (
-      <span className="font-medium">{row.original.title}</span>
+      <span className="inline-flex items-center gap-2 font-medium">
+        {row.original.title}
+        {row.original.shared_grading_enabled && (
+          <Tag variant="neutral">协作</Tag>
+        )}
+      </span>
     ),
   },
   {
     accessorKey: "subject",
     header: "科目",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.original.subject || "未设置"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "grade_level",
+    header: "年级",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.original.grade_level || "未设置"}
+      </span>
+    ),
+  },
+  {
+    accessorKey: "class_names",
+    header: "班级",
     cell: ({ row }) => {
+      const names = row.original.class_names ?? []
+      if (names.length === 0) {
+        return <span className="text-muted-foreground">未关联</span>
+      }
       return (
-        <span className="text-muted-foreground">
-          {row.original.subject || "未设置"}
-        </span>
+        <div className="flex flex-wrap gap-1">
+          {names.map((name) => (
+            <Tag key={name} variant="sky">
+              {name}
+            </Tag>
+          ))}
+        </div>
       )
     },
   },
   {
-    accessorKey: "status",
-    header: "状态",
-    cell: ({ row }) => {
-      const status = row.original.status
-      return (
-        <Badge variant="secondary" className="capitalize">
-          {status ? examStatusLabels[status] || status : "未设置"}
-        </Badge>
-      )
-    },
+    accessorKey: "exam_date",
+    header: "考试时间",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground">
+        {row.original.exam_date || "未设置"}
+      </span>
+    ),
+  },
+  {
+    id: "progress",
+    header: "进度",
+    cell: ({ row }) => <ExamProgressCell examId={row.original.id} />,
   },
   {
     id: "actions",
-    header: "",
+    header: "操作",
     cell: ({ row }) => <ExamRowActions exam={row.original} />,
   },
 ]

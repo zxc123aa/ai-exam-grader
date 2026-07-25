@@ -47,8 +47,15 @@ const useAuth = () => {
 
   const loginMutation = useMutation({
     mutationFn: login,
-    onSuccess: () => {
-      navigate({ to: "/" })
+    onSuccess: async () => {
+      // 登录后按角色分流：学生进「我的成绩」，其余进工作台
+      const me = await queryClient.fetchQuery<UserPublic | null>({
+        queryKey: ["currentUser"],
+        queryFn: UsersService.readUserMe,
+      })
+      const role =
+        me?.role ?? (me?.is_superuser ? "platform_superuser" : "teacher")
+      navigate({ to: role === "student" ? "/my/exams" : "/" })
     },
     onError: handleError.bind(showErrorToast),
   })

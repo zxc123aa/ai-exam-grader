@@ -7,9 +7,37 @@ from sqlmodel import Session, select
 from app import crud
 from app.core.config import settings
 from app.core.security import verify_password
-from app.models import User, UserCreate
-from tests.utils.user import create_random_user
+from app.models import TeacherClassLink, User, UserCreate, UserRole
+from tests.utils.user import create_random_user, user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
+
+DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
+
+
+def _create_school_owner(
+    client: TestClient, db: Session
+) -> tuple[User, dict[str, str]]:
+    email = random_email()
+    password = random_lower_string()
+    user = crud.create_user(
+        session=db,
+        user_create=UserCreate(
+            email=email,
+            password=password,
+            role=UserRole.SCHOOL_OWNER,
+            org_id=DEFAULT_ORG_ID,
+        ),
+    )
+    headers = user_authentication_headers(client=client, email=email, password=password)
+    return user, headers
+
+
+def _create_class(client: TestClient, headers: dict[str, str], name: str) -> dict:
+    r = client.post(
+        f"{settings.API_V1_STR}/classes/", headers=headers, json={"name": name}
+    )
+    assert r.status_code == 200, r.text
+    return r.json()
 
 
 def test_get_users_superuser_me(
@@ -317,6 +345,7 @@ def test_update_password_me_same_password_error(
 
 
 def test_register_user(client: TestClient, db: Session) -> None:
+    # 公开注册已关闭（多租户阶段 3），账号由学校管理员/平台创建
     username = random_email()
     password = random_lower_string()
     full_name = random_lower_string()
@@ -325,18 +354,12 @@ def test_register_user(client: TestClient, db: Session) -> None:
         f"{settings.API_V1_STR}/users/signup",
         json=data,
     )
-    assert r.status_code == 200
-    created_user = r.json()
-    assert created_user["email"] == username
-    assert created_user["full_name"] == full_name
+    assert r.status_code == 403
+    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
-    assert user_db
-    assert user_db.email == username
-    assert user_db.full_name == full_name
-    verified, _ = verify_password(password, user_db.hashed_password)
-    assert verified
+    assert user_db is None
 
 
 def test_register_user_already_exists_error(client: TestClient) -> None:
@@ -351,8 +374,8 @@ def test_register_user_already_exists_error(client: TestClient) -> None:
         f"{settings.API_V1_STR}/users/signup",
         json=data,
     )
-    assert r.status_code == 400
-    assert r.json()["detail"] == "The user with this email already exists in the system"
+    assert r.status_code == 403
+    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
 
 
 def test_update_user(
@@ -418,6 +441,7 @@ def test_update_user_email_exists(
 
 
 def test_delete_user_me(client: TestClient, db: Session) -> None:
+    """自删已禁用：任何角色删除自己都应 403，且账号仍在。"""
     username = random_email()
     password = random_lower_string()
     user_in = UserCreate(email=username, password=password)
@@ -437,15 +461,10 @@ def test_delete_user_me(client: TestClient, db: Session) -> None:
         f"{settings.API_V1_STR}/users/me",
         headers=headers,
     )
-    assert r.status_code == 200
-    deleted_user = r.json()
-    assert deleted_user["message"] == "User deleted successfully"
+    assert r.status_code == 403
+    assert r.json()["detail"] == "账号不支持自行删除，如需停用请联系学校管理员"
     result = db.exec(select(User).where(User.id == user_id)).first()
-    assert result is None
-
-    user_query = select(User).where(User.id == user_id)
-    user_db = db.execute(user_query).first()
-    assert user_db is None
+    assert result is not None
 
 
 def test_delete_user_me_as_superuser(
@@ -457,7 +476,7 @@ def test_delete_user_me_as_superuser(
     )
     assert r.status_code == 403
     response = r.json()
-    assert response["detail"] == "Super users are not allowed to delete themselves"
+    assert response["detail"] == "账号不支持自行删除，如需停用请联系学校管理员"
 
 
 def test_delete_user_super_user(
@@ -519,3 +538,161 @@ def test_delete_user_without_privileges(
     )
     assert r.status_code == 403
     assert r.json()["detail"] == "The user doesn't have enough privileges"
+
+
+def test_batch_import_teachers(client: TestClient, db: Session) -> None:
+    _, headers = _create_school_owner(client, db)
+    class_group = _create_class(client, headers, "高三1班")
+    r = client.post(
+        f"{settings.API_V1_STR}/users/batch",
+        headers=headers,
+        json={
+            "rows": [
+                {
+                    "name": "王老师",
+                    "employee_no": "T001",
+                    "email": "wang@example.com",
+                    "subjects": "物理,化学",
+                    "class_names": "高三1班",
+                },
+                {"name": "李老师", "email": "li@example.com"},
+            ]
+        },
+    )
+    assert r.status_code == 200, r.text
+    content = r.json()
+    assert content["created"] == 2
+    assert content["skipped"] == 0
+    assert content["errors"] == []
+    user = crud.get_user_by_email(session=db, email="wang@example.com")
+    assert user is not None
+    assert user.role == UserRole.TEACHER
+    assert user.employee_no == "T001"
+    assert user.full_name == "王老师"
+    assert str(user.org_id) == DEFAULT_ORG_ID
+    assert user.is_active is True
+    assert user.subjects == ["物理", "化学"]
+    verified, _ = verify_password("Dianfan@2026", user.hashed_password)
+    assert verified
+    link = db.exec(
+        select(TeacherClassLink).where(TeacherClassLink.user_id == user.id)
+    ).first()
+    assert link is not None
+    assert str(link.class_id) == class_group["id"]
+
+
+def test_batch_import_teachers_dry_run(client: TestClient, db: Session) -> None:
+    _, headers = _create_school_owner(client, db)
+    r = client.post(
+        f"{settings.API_V1_STR}/users/batch",
+        headers=headers,
+        json={
+            "rows": [{"name": "王老师", "email": "dryrun@example.com"}],
+            "dry_run": True,
+        },
+    )
+    assert r.status_code == 200
+    assert r.json()["rows"][0]["action"] == "create"
+    assert crud.get_user_by_email(session=db, email="dryrun@example.com") is None
+
+
+def test_batch_import_teachers_skips_existing_email(
+    client: TestClient, db: Session
+) -> None:
+    _, headers = _create_school_owner(client, db)
+    existing_email = random_email()
+    crud.create_user(
+        session=db, user_create=UserCreate(email=existing_email, password="password123")
+    )
+    r = client.post(
+        f"{settings.API_V1_STR}/users/batch",
+        headers=headers,
+        json={
+            "rows": [
+                {"name": "新人", "email": existing_email},
+                {"name": "赵老师", "email": "zhao@example.com"},
+            ]
+        },
+    )
+    assert r.status_code == 200
+    content = r.json()
+    assert content["created"] == 1
+    assert content["skipped"] == 1
+    rows = {row["email"]: row for row in content["rows"]}
+    assert rows[existing_email]["action"] == "skip_exists"
+    assert rows["zhao@example.com"]["action"] == "create"
+
+
+def test_batch_import_teachers_validation_errors(
+    client: TestClient, db: Session
+) -> None:
+    _, headers = _create_school_owner(client, db)
+    _create_class(client, headers, "高三2班")
+    r = client.post(
+        f"{settings.API_V1_STR}/users/batch",
+        headers=headers,
+        json={
+            "rows": [
+                {"name": "缺邮箱"},
+                {"name": "坏邮箱", "email": "not-an-email"},
+                {
+                    "name": "周老师",
+                    "email": "zhou@example.com",
+                    "class_names": "高三2班,不存在的班",
+                },
+            ]
+        },
+    )
+    assert r.status_code == 200
+    content = r.json()
+    assert content["created"] == 0
+    assert len(content["errors"]) == 3
+    rows = content["rows"]
+    assert rows[0]["message"] == "姓名和邮箱必填"
+    assert rows[1]["message"] == "邮箱格式不正确"
+    assert "不存在的班" in rows[2]["message"]
+    assert crud.get_user_by_email(session=db, email="zhou@example.com") is None
+
+
+def test_batch_import_teachers_forbidden_for_teacher(
+    client: TestClient, normal_user_token_headers: dict[str, str]
+) -> None:
+    r = client.post(
+        f"{settings.API_V1_STR}/users/batch",
+        headers=normal_user_token_headers,
+        json={"rows": [{"name": "王老师", "email": "wang2@example.com"}]},
+    )
+    assert r.status_code == 403
+
+
+def test_user_employee_no_read_write(client: TestClient, db: Session) -> None:
+    _, headers = _create_school_owner(client, db)
+    email = random_email()
+    r = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=headers,
+        json={
+            "email": email,
+            "password": "password123",
+            "full_name": "工号老师",
+            "employee_no": "T100",
+        },
+    )
+    assert r.status_code == 200, r.text
+    assert r.json()["employee_no"] == "T100"
+    user_id = r.json()["id"]
+
+    r = client.get(f"{settings.API_V1_STR}/users/{user_id}", headers=headers)
+    assert r.status_code == 200
+    assert r.json()["employee_no"] == "T100"
+
+    r = client.patch(
+        f"{settings.API_V1_STR}/users/{user_id}",
+        headers=headers,
+        json={"employee_no": "T101"},
+    )
+    assert r.status_code == 200
+    assert r.json()["employee_no"] == "T101"
+    user = crud.get_user_by_email(session=db, email=email)
+    assert user is not None
+    assert user.employee_no == "T101"

@@ -1,5 +1,4 @@
 import { Link } from "@tanstack/react-router"
-import { BookOpenCheck } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -11,23 +10,24 @@ interface LogoProps {
 
 function LogoMark({ className }: { className?: string }) {
   return (
-    <span
-      title="智阅卷"
-      className={cn(
-        "flex size-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-sm",
-        className,
-      )}
-    >
-      <BookOpenCheck className="size-4.5" strokeWidth={2.2} />
-    </span>
+    <img
+      src="/brand/logo-mark.png"
+      alt="点凡阅卷"
+      title="点凡阅卷"
+      className={cn("size-9 shrink-0 object-contain", className)}
+    />
   )
 }
 
 function LogoWordmark({ className }: { className?: string }) {
   return (
     <span className={cn("flex min-w-0 flex-col leading-tight", className)}>
-      <span className="truncate text-sm font-semibold">智阅卷</span>
-      <span className="truncate text-[11px] opacity-60">智能阅卷工作台</span>
+      <span className="truncate text-[15px] font-extrabold tracking-wide">
+        点凡阅卷
+      </span>
+      <span className="truncate text-[10px] font-semibold tracking-[1.5px] opacity-50">
+        DIANFAN
+      </span>
     </span>
   )
 }

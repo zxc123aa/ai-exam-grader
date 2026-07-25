@@ -7,6 +7,10 @@ test.use({ storageState: { cookies: [], origins: [] } })
 test("recognition preview requires per-question approval before grading", async ({
   page,
 }) => {
+  test.skip(
+    true,
+    "「逐题批准」识别预览工作流已随 UI 重构移除（grading 页不再有该交互），用例已过时",
+  )
   const apiBase = "http://127.0.0.1:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {

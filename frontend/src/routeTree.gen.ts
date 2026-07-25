@@ -16,10 +16,22 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
+import { Route as LayoutPlatformRouteImport } from './routes/_layout/platform'
+import { Route as LayoutOrgSettingsRouteImport } from './routes/_layout/org-settings'
 import { Route as LayoutExamsRouteImport } from './routes/_layout/exams'
+import { Route as LayoutComposeRouteImport } from './routes/_layout/compose'
+import { Route as LayoutClassesRouteImport } from './routes/_layout/classes'
+import { Route as LayoutAdvancedSettingsRouteImport } from './routes/_layout/advanced-settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutPlatformSettingsRouteImport } from './routes/_layout/platform_.settings'
+import { Route as LayoutPlatformOrgIdRouteImport } from './routes/_layout/platform_.$orgId'
+import { Route as LayoutMyExamsRouteImport } from './routes/_layout/my.exams'
 import { Route as LayoutExamsExamIdRouteImport } from './routes/_layout/exams_.$examId'
+import { Route as LayoutExamsExamIdIndexRouteImport } from './routes/_layout/exams_.$examId.index'
+import { Route as LayoutMyExamsExamIdRouteImport } from './routes/_layout/my.exams_.$examId'
+import { Route as LayoutExamsExamIdWorkbenchRouteImport } from './routes/_layout/exams_.$examId.workbench'
 import { Route as LayoutExamsExamIdScoresRouteImport } from './routes/_layout/exams_.$examId.scores'
+import { Route as LayoutExamsExamIdReportRouteImport } from './routes/_layout/exams_.$examId.report'
 import { Route as LayoutExamsExamIdQuestionsRouteImport } from './routes/_layout/exams_.$examId.questions'
 import { Route as LayoutExamsExamIdMarkingRouteImport } from './routes/_layout/exams_.$examId.marking'
 import { Route as LayoutExamsExamIdGradingRouteImport } from './routes/_layout/exams_.$examId.grading'
@@ -60,9 +72,34 @@ const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   path: '/settings',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutPlatformRoute = LayoutPlatformRouteImport.update({
+  id: '/platform',
+  path: '/platform',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutOrgSettingsRoute = LayoutOrgSettingsRouteImport.update({
+  id: '/org-settings',
+  path: '/org-settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutExamsRoute = LayoutExamsRouteImport.update({
   id: '/exams',
   path: '/exams',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutComposeRoute = LayoutComposeRouteImport.update({
+  id: '/compose',
+  path: '/compose',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutClassesRoute = LayoutClassesRouteImport.update({
+  id: '/classes',
+  path: '/classes',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutAdvancedSettingsRoute = LayoutAdvancedSettingsRouteImport.update({
+  id: '/advanced-settings',
+  path: '/advanced-settings',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
@@ -70,14 +107,50 @@ const LayoutAdminRoute = LayoutAdminRouteImport.update({
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutPlatformSettingsRoute = LayoutPlatformSettingsRouteImport.update({
+  id: '/platform_/settings',
+  path: '/platform/settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutPlatformOrgIdRoute = LayoutPlatformOrgIdRouteImport.update({
+  id: '/platform_/$orgId',
+  path: '/platform/$orgId',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutMyExamsRoute = LayoutMyExamsRouteImport.update({
+  id: '/my/exams',
+  path: '/my/exams',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutExamsExamIdRoute = LayoutExamsExamIdRouteImport.update({
   id: '/exams_/$examId',
   path: '/exams/$examId',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutExamsExamIdIndexRoute = LayoutExamsExamIdIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => LayoutExamsExamIdRoute,
+} as any)
+const LayoutMyExamsExamIdRoute = LayoutMyExamsExamIdRouteImport.update({
+  id: '/my/exams_/$examId',
+  path: '/my/exams/$examId',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutExamsExamIdWorkbenchRoute =
+  LayoutExamsExamIdWorkbenchRouteImport.update({
+    id: '/workbench',
+    path: '/workbench',
+    getParentRoute: () => LayoutExamsExamIdRoute,
+  } as any)
 const LayoutExamsExamIdScoresRoute = LayoutExamsExamIdScoresRouteImport.update({
   id: '/scores',
   path: '/scores',
+  getParentRoute: () => LayoutExamsExamIdRoute,
+} as any)
+const LayoutExamsExamIdReportRoute = LayoutExamsExamIdReportRouteImport.update({
+  id: '/report',
+  path: '/report',
   getParentRoute: () => LayoutExamsExamIdRoute,
 } as any)
 const LayoutExamsExamIdQuestionsRoute =
@@ -118,14 +191,26 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
+  '/classes': typeof LayoutClassesRoute
+  '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
+  '/org-settings': typeof LayoutOrgSettingsRoute
+  '/platform': typeof LayoutPlatformRoute
   '/settings': typeof LayoutSettingsRoute
   '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
+  '/my/exams': typeof LayoutMyExamsRoute
+  '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/platform/settings': typeof LayoutPlatformSettingsRoute
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
   '/exams/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/exams/$examId/report': typeof LayoutExamsExamIdReportRoute
   '/exams/$examId/scores': typeof LayoutExamsExamIdScoresRoute
+  '/exams/$examId/workbench': typeof LayoutExamsExamIdWorkbenchRoute
+  '/my/exams/$examId': typeof LayoutMyExamsExamIdRoute
+  '/exams/$examId/': typeof LayoutExamsExamIdIndexRoute
   '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesByTo {
@@ -134,15 +219,26 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
+  '/classes': typeof LayoutClassesRoute
+  '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
+  '/org-settings': typeof LayoutOrgSettingsRoute
+  '/platform': typeof LayoutPlatformRoute
   '/settings': typeof LayoutSettingsRoute
   '/': typeof LayoutIndexRoute
-  '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
+  '/my/exams': typeof LayoutMyExamsRoute
+  '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/platform/settings': typeof LayoutPlatformSettingsRoute
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
   '/exams/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/exams/$examId/report': typeof LayoutExamsExamIdReportRoute
   '/exams/$examId/scores': typeof LayoutExamsExamIdScoresRoute
+  '/exams/$examId/workbench': typeof LayoutExamsExamIdWorkbenchRoute
+  '/my/exams/$examId': typeof LayoutMyExamsExamIdRoute
+  '/exams/$examId': typeof LayoutExamsExamIdIndexRoute
   '/exams/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRoutesById {
@@ -153,15 +249,27 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRoute
+  '/_layout/advanced-settings': typeof LayoutAdvancedSettingsRoute
+  '/_layout/classes': typeof LayoutClassesRoute
+  '/_layout/compose': typeof LayoutComposeRoute
   '/_layout/exams': typeof LayoutExamsRoute
+  '/_layout/org-settings': typeof LayoutOrgSettingsRoute
+  '/_layout/platform': typeof LayoutPlatformRoute
   '/_layout/settings': typeof LayoutSettingsRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/exams_/$examId': typeof LayoutExamsExamIdRouteWithChildren
+  '/_layout/my/exams': typeof LayoutMyExamsRoute
+  '/_layout/platform_/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/_layout/platform_/settings': typeof LayoutPlatformSettingsRoute
   '/_layout/exams_/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/_layout/exams_/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/_layout/exams_/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
   '/_layout/exams_/$examId/questions': typeof LayoutExamsExamIdQuestionsRoute
+  '/_layout/exams_/$examId/report': typeof LayoutExamsExamIdReportRoute
   '/_layout/exams_/$examId/scores': typeof LayoutExamsExamIdScoresRoute
+  '/_layout/exams_/$examId/workbench': typeof LayoutExamsExamIdWorkbenchRoute
+  '/_layout/my/exams_/$examId': typeof LayoutMyExamsExamIdRoute
+  '/_layout/exams_/$examId/': typeof LayoutExamsExamIdIndexRoute
   '/_layout/exams_/$examId/submissions/$submissionId/review': typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 export interface FileRouteTypes {
@@ -173,14 +281,26 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/advanced-settings'
+    | '/classes'
+    | '/compose'
     | '/exams'
+    | '/org-settings'
+    | '/platform'
     | '/settings'
     | '/exams/$examId'
+    | '/my/exams'
+    | '/platform/$orgId'
+    | '/platform/settings'
     | '/exams/$examId/answers'
     | '/exams/$examId/grading'
     | '/exams/$examId/marking'
     | '/exams/$examId/questions'
+    | '/exams/$examId/report'
     | '/exams/$examId/scores'
+    | '/exams/$examId/workbench'
+    | '/my/exams/$examId'
+    | '/exams/$examId/'
     | '/exams/$examId/submissions/$submissionId/review'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -189,15 +309,26 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/advanced-settings'
+    | '/classes'
+    | '/compose'
     | '/exams'
+    | '/org-settings'
+    | '/platform'
     | '/settings'
     | '/'
-    | '/exams/$examId'
+    | '/my/exams'
+    | '/platform/$orgId'
+    | '/platform/settings'
     | '/exams/$examId/answers'
     | '/exams/$examId/grading'
     | '/exams/$examId/marking'
     | '/exams/$examId/questions'
+    | '/exams/$examId/report'
     | '/exams/$examId/scores'
+    | '/exams/$examId/workbench'
+    | '/my/exams/$examId'
+    | '/exams/$examId'
     | '/exams/$examId/submissions/$submissionId/review'
   id:
     | '__root__'
@@ -207,15 +338,27 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
+    | '/_layout/advanced-settings'
+    | '/_layout/classes'
+    | '/_layout/compose'
     | '/_layout/exams'
+    | '/_layout/org-settings'
+    | '/_layout/platform'
     | '/_layout/settings'
     | '/_layout/'
     | '/_layout/exams_/$examId'
+    | '/_layout/my/exams'
+    | '/_layout/platform_/$orgId'
+    | '/_layout/platform_/settings'
     | '/_layout/exams_/$examId/answers'
     | '/_layout/exams_/$examId/grading'
     | '/_layout/exams_/$examId/marking'
     | '/_layout/exams_/$examId/questions'
+    | '/_layout/exams_/$examId/report'
     | '/_layout/exams_/$examId/scores'
+    | '/_layout/exams_/$examId/workbench'
+    | '/_layout/my/exams_/$examId'
+    | '/_layout/exams_/$examId/'
     | '/_layout/exams_/$examId/submissions/$submissionId/review'
   fileRoutesById: FileRoutesById
 }
@@ -278,11 +421,46 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/platform': {
+      id: '/_layout/platform'
+      path: '/platform'
+      fullPath: '/platform'
+      preLoaderRoute: typeof LayoutPlatformRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/org-settings': {
+      id: '/_layout/org-settings'
+      path: '/org-settings'
+      fullPath: '/org-settings'
+      preLoaderRoute: typeof LayoutOrgSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/exams': {
       id: '/_layout/exams'
       path: '/exams'
       fullPath: '/exams'
       preLoaderRoute: typeof LayoutExamsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/compose': {
+      id: '/_layout/compose'
+      path: '/compose'
+      fullPath: '/compose'
+      preLoaderRoute: typeof LayoutComposeRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/classes': {
+      id: '/_layout/classes'
+      path: '/classes'
+      fullPath: '/classes'
+      preLoaderRoute: typeof LayoutClassesRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/advanced-settings': {
+      id: '/_layout/advanced-settings'
+      path: '/advanced-settings'
+      fullPath: '/advanced-settings'
+      preLoaderRoute: typeof LayoutAdvancedSettingsRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/admin': {
@@ -292,6 +470,27 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/platform_/settings': {
+      id: '/_layout/platform_/settings'
+      path: '/platform/settings'
+      fullPath: '/platform/settings'
+      preLoaderRoute: typeof LayoutPlatformSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/platform_/$orgId': {
+      id: '/_layout/platform_/$orgId'
+      path: '/platform/$orgId'
+      fullPath: '/platform/$orgId'
+      preLoaderRoute: typeof LayoutPlatformOrgIdRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/my/exams': {
+      id: '/_layout/my/exams'
+      path: '/my/exams'
+      fullPath: '/my/exams'
+      preLoaderRoute: typeof LayoutMyExamsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/exams_/$examId': {
       id: '/_layout/exams_/$examId'
       path: '/exams/$examId'
@@ -299,11 +498,39 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutExamsExamIdRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/exams_/$examId/': {
+      id: '/_layout/exams_/$examId/'
+      path: '/'
+      fullPath: '/exams/$examId/'
+      preLoaderRoute: typeof LayoutExamsExamIdIndexRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
+    '/_layout/my/exams_/$examId': {
+      id: '/_layout/my/exams_/$examId'
+      path: '/my/exams/$examId'
+      fullPath: '/my/exams/$examId'
+      preLoaderRoute: typeof LayoutMyExamsExamIdRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/exams_/$examId/workbench': {
+      id: '/_layout/exams_/$examId/workbench'
+      path: '/workbench'
+      fullPath: '/exams/$examId/workbench'
+      preLoaderRoute: typeof LayoutExamsExamIdWorkbenchRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
     '/_layout/exams_/$examId/scores': {
       id: '/_layout/exams_/$examId/scores'
       path: '/scores'
       fullPath: '/exams/$examId/scores'
       preLoaderRoute: typeof LayoutExamsExamIdScoresRouteImport
+      parentRoute: typeof LayoutExamsExamIdRoute
+    }
+    '/_layout/exams_/$examId/report': {
+      id: '/_layout/exams_/$examId/report'
+      path: '/report'
+      fullPath: '/exams/$examId/report'
+      preLoaderRoute: typeof LayoutExamsExamIdReportRouteImport
       parentRoute: typeof LayoutExamsExamIdRoute
     }
     '/_layout/exams_/$examId/questions': {
@@ -349,7 +576,10 @@ interface LayoutExamsExamIdRouteChildren {
   LayoutExamsExamIdGradingRoute: typeof LayoutExamsExamIdGradingRoute
   LayoutExamsExamIdMarkingRoute: typeof LayoutExamsExamIdMarkingRoute
   LayoutExamsExamIdQuestionsRoute: typeof LayoutExamsExamIdQuestionsRoute
+  LayoutExamsExamIdReportRoute: typeof LayoutExamsExamIdReportRoute
   LayoutExamsExamIdScoresRoute: typeof LayoutExamsExamIdScoresRoute
+  LayoutExamsExamIdWorkbenchRoute: typeof LayoutExamsExamIdWorkbenchRoute
+  LayoutExamsExamIdIndexRoute: typeof LayoutExamsExamIdIndexRoute
   LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute: typeof LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute
 }
 
@@ -358,7 +588,10 @@ const LayoutExamsExamIdRouteChildren: LayoutExamsExamIdRouteChildren = {
   LayoutExamsExamIdGradingRoute: LayoutExamsExamIdGradingRoute,
   LayoutExamsExamIdMarkingRoute: LayoutExamsExamIdMarkingRoute,
   LayoutExamsExamIdQuestionsRoute: LayoutExamsExamIdQuestionsRoute,
+  LayoutExamsExamIdReportRoute: LayoutExamsExamIdReportRoute,
   LayoutExamsExamIdScoresRoute: LayoutExamsExamIdScoresRoute,
+  LayoutExamsExamIdWorkbenchRoute: LayoutExamsExamIdWorkbenchRoute,
+  LayoutExamsExamIdIndexRoute: LayoutExamsExamIdIndexRoute,
   LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute:
     LayoutExamsExamIdSubmissionsSubmissionIdReviewRoute,
 }
@@ -368,18 +601,36 @@ const LayoutExamsExamIdRouteWithChildren =
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
+  LayoutAdvancedSettingsRoute: typeof LayoutAdvancedSettingsRoute
+  LayoutClassesRoute: typeof LayoutClassesRoute
+  LayoutComposeRoute: typeof LayoutComposeRoute
   LayoutExamsRoute: typeof LayoutExamsRoute
+  LayoutOrgSettingsRoute: typeof LayoutOrgSettingsRoute
+  LayoutPlatformRoute: typeof LayoutPlatformRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutExamsExamIdRoute: typeof LayoutExamsExamIdRouteWithChildren
+  LayoutMyExamsRoute: typeof LayoutMyExamsRoute
+  LayoutPlatformOrgIdRoute: typeof LayoutPlatformOrgIdRoute
+  LayoutPlatformSettingsRoute: typeof LayoutPlatformSettingsRoute
+  LayoutMyExamsExamIdRoute: typeof LayoutMyExamsExamIdRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRoute,
+  LayoutAdvancedSettingsRoute: LayoutAdvancedSettingsRoute,
+  LayoutClassesRoute: LayoutClassesRoute,
+  LayoutComposeRoute: LayoutComposeRoute,
   LayoutExamsRoute: LayoutExamsRoute,
+  LayoutOrgSettingsRoute: LayoutOrgSettingsRoute,
+  LayoutPlatformRoute: LayoutPlatformRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutExamsExamIdRoute: LayoutExamsExamIdRouteWithChildren,
+  LayoutMyExamsRoute: LayoutMyExamsRoute,
+  LayoutPlatformOrgIdRoute: LayoutPlatformOrgIdRoute,
+  LayoutPlatformSettingsRoute: LayoutPlatformSettingsRoute,
+  LayoutMyExamsExamIdRoute: LayoutMyExamsExamIdRoute,
 }
 
 const LayoutRouteWithChildren =

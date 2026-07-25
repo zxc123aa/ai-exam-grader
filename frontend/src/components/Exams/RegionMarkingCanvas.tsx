@@ -1,9 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { useNavigate } from "@tanstack/react-router"
 import {
+  AlertTriangle,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CircleCheck,
   Save,
   ScanLine,
   Sparkles,
@@ -14,12 +16,15 @@ import { useEffect, useMemo, useRef, useState } from "react"
 import {
   ApiError,
   type ExamDocumentPublic,
+  type ExamPublic,
   type ExamRegionCandidate,
   type ExamRegionPublic,
   ExamsService,
   OpenAPI,
 } from "@/client"
-import { DocumentCornerReviewDialog } from "@/components/Exams/ExamFilesDialog"
+import ExamFilesDialog, {
+  DocumentCornerReviewDialog,
+} from "@/components/Exams/ExamFilesDialog"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -356,7 +361,7 @@ function formatPerspectiveStatus(document: ExamDocumentPublic) {
         : ""
     return `已使用透视校正扫描页${quality}`
   }
-  return "当前是原始照片：Gemini 版面分析只做转正/分题，不等于四角透视摆正。请先在“导入试卷 → 复核四角”生成扫描页。"
+  return "当前是原始照片：版面分析只做转正/分题，不等于四角透视摆正。请先在“导入试卷 → 复核四角”生成扫描页。"
 }
 
 async function fetchPageImageBlob(
@@ -473,10 +478,12 @@ async function recognizeReferenceDocumentPage(
 
 export default function RegionMarkingCanvas({
   examId,
+  exam,
   documents,
   regions,
 }: {
   examId: string
+  exam?: ExamPublic
   documents: ExamDocumentPublic[]
   regions: ExamRegionPublic[]
 }) {
@@ -1054,25 +1061,40 @@ export default function RegionMarkingCanvas({
 
   return (
     <div className="grid gap-4 xl:grid-cols-12">
-      <div className="xl:col-span-full flex flex-col gap-3 rounded-md border px-4 py-3">
+      <div className="xl:col-span-full flex flex-col gap-3 rounded-2xl border bg-card px-4 py-3 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-medium">
               {document.stored_file.original_filename}
             </div>
-            <div className="text-xs text-muted-foreground">
-              已导入 {documentCount} 个文件，共 {pageCount} 页
-              {documentCount > 1 && ` · 第 ${documentIndex + 1} 个文件`}
-              {(document.page_count ?? 1) > 1 && ` · PDF 第 ${pageNumber} 页`}
+            <div className="mt-1 flex flex-wrap items-center gap-1.5 text-muted-foreground text-xs">
+              <span className="rounded-full bg-muted px-2 py-0.5">
+                已导入 {documentCount} 个文件 · 共 {pageCount} 页
+              </span>
+              {documentCount > 1 && (
+                <span className="rounded-full bg-muted px-2 py-0.5">
+                  第 {documentIndex + 1} 个文件
+                </span>
+              )}
+              {(document.page_count ?? 1) > 1 && (
+                <span className="rounded-full bg-muted px-2 py-0.5">
+                  PDF 第 {pageNumber} 页
+                </span>
+              )}
             </div>
             <div
-              className={`mt-1 text-xs ${
+              className={`mt-2 flex items-start gap-1.5 rounded-lg px-3 py-2 text-xs ${
                 hasPerspectivePreprocessing(document)
-                  ? "text-emerald-600 dark:text-emerald-400"
-                  : "text-amber-600 dark:text-amber-400"
+                  ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300"
+                  : "bg-amber-500/10 text-amber-700 dark:text-amber-300"
               }`}
             >
-              {formatPerspectiveStatus(document)}
+              {hasPerspectivePreprocessing(document) ? (
+                <CircleCheck className="mt-0.5 size-3.5 shrink-0" />
+              ) : (
+                <AlertTriangle className="mt-0.5 size-3.5 shrink-0" />
+              )}
+              <span>{formatPerspectiveStatus(document)}</span>
             </div>
           </div>
           <div className="flex shrink-0 items-center gap-1">
@@ -1090,7 +1112,7 @@ export default function RegionMarkingCanvas({
               <ChevronLeft />
               <span className="sr-only">上一页</span>
             </Button>
-            <span className="min-w-20 text-center text-muted-foreground text-sm tabular-nums">
+            <span className="min-w-20 text-center text-muted-foreground text-xs tabular-nums">
               第 {paperPageNumber} / {pageCount} 页
             </span>
             <Button
@@ -1110,7 +1132,7 @@ export default function RegionMarkingCanvas({
           </div>
         </div>
         <Separator />
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
           <div className="flex flex-wrap items-center gap-2">
             <Select
               value={segmentationEngine}
@@ -1122,11 +1144,9 @@ export default function RegionMarkingCanvas({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="gemini_layout_v1">
-                  Gemini 版面分析
-                </SelectItem>
-                <SelectItem value="layout_projection_v0">投影分割</SelectItem>
-                <SelectItem value="layout_ocr_anchor_v1">OCR 锚点</SelectItem>
+                <SelectItem value="gemini_layout_v1">版面分析</SelectItem>
+                <SelectItem value="layout_projection_v0">分栏拆分</SelectItem>
+                <SelectItem value="layout_ocr_anchor_v1">文字锚点</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -1149,6 +1169,7 @@ export default function RegionMarkingCanvas({
             </LoadingButton>
             <LoadingButton
               size="sm"
+              className="bg-gradient-primary text-white hover:opacity-90"
               loading={recognitionMutation.isPending}
               disabled={recognitionOrDetectionPending}
               onClick={() => recognitionMutation.mutate()}
@@ -1157,6 +1178,10 @@ export default function RegionMarkingCanvas({
               识别全卷
             </LoadingButton>
           </div>
+          <Separator
+            orientation="vertical"
+            className="mx-1 hidden h-6 md:block"
+          />
           <div className="flex flex-wrap items-center gap-1">
             <Button
               variant="ghost"
@@ -1184,6 +1209,9 @@ export default function RegionMarkingCanvas({
             >
               {compareOpen ? "关闭对比" : "原图/校正图对比"}
             </Button>
+          </div>
+          <div className="ml-auto flex flex-wrap items-center gap-1">
+            {exam && <ExamFilesDialog exam={exam} />}
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1225,10 +1253,10 @@ export default function RegionMarkingCanvas({
         onSaved={handlePerspectiveSaved}
       />
       {compareOpen && hasPerspectivePreprocessing(document) && (
-        <div className="xl:col-span-full grid gap-4 rounded-md border bg-muted/10 p-4">
+        <div className="xl:col-span-full grid gap-4 rounded-2xl border bg-muted/10 p-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <div className="text-sm font-medium">原图 / 校正图对比</div>
+              <div className="text-sm font-semibold">原图 / 校正图对比</div>
               <div className="text-xs text-muted-foreground">
                 原图 {document.original_stored_file_id} · 当前校正文件{" "}
                 {document.stored_file.id}
@@ -1452,12 +1480,12 @@ export default function RegionMarkingCanvas({
 
       <aside className="grid content-start gap-4 xl:col-span-4 xl:sticky xl:top-4 xl:max-h-[calc(100vh-2rem)] xl:overflow-y-auto xl:pr-1">
         <section
-          className="rounded-md border bg-card"
+          className="rounded-2xl border bg-card shadow-card"
           data-testid="current-page-recognition-panel"
         >
           <div className="flex items-start justify-between gap-3 border-b px-4 py-3">
             <div>
-              <h2 className="font-medium">当前页题目与答案</h2>
+              <h2 className="text-sm font-semibold">当前页题目与答案</h2>
               <p className="mt-1 text-xs text-muted-foreground">
                 第 {paperPageNumber} 页 · 本页{" "}
                 {currentPageAggregatedRecognitionResults.length} 题 · 全卷已汇总{" "}
@@ -1466,8 +1494,9 @@ export default function RegionMarkingCanvas({
             </div>
             <Button
               type="button"
-              variant="outline"
+              variant="ghost"
               size="sm"
+              className="text-xs"
               disabled={currentPageRecognitionCount === 0}
               onClick={clearCurrentPageRecognition}
             >
@@ -1475,9 +1504,9 @@ export default function RegionMarkingCanvas({
             </Button>
           </div>
           {currentPageAggregatedRecognitionResults.length === 0 ? (
-            <div className="px-4 py-8 text-center text-sm text-muted-foreground">
+            <div className="px-4 py-8 text-center text-muted-foreground text-xs">
               本页还没有识别结果
-              <div className="mt-1 text-xs">点击上方“识别当前页”开始识别</div>
+              <div className="mt-1">点击上方“识别当前页”开始识别</div>
             </div>
           ) : (
             <div className="divide-y">
@@ -1523,7 +1552,7 @@ export default function RegionMarkingCanvas({
               已识别 {recognizedPageCount} / {pageCount} 页
               {recognizedPageCount < pageCount
                 ? `，还需识别 ${pageCount - recognizedPageCount} 页才能进入题目确认。`
-                : "，可以复用本次结果进入题目确认，不会再次调用 Gemini。"}
+                : "，可以复用本次结果进入题目确认，不会再次调用模型。"}
             </div>
             <LoadingButton
               loading={importRecognitionMutation.isPending}
@@ -1536,11 +1565,11 @@ export default function RegionMarkingCanvas({
         </section>
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-3 rounded-md border px-4 py-3 text-left hover:bg-muted/40"
+          className="flex w-full items-center justify-between gap-3 rounded-2xl border bg-card px-4 py-3 text-left shadow-card hover:bg-muted/40"
           onClick={() => setRegionsPanelOpen((value) => !value)}
         >
           <div>
-            <div className="text-sm font-medium">题目位置区域</div>
+            <div className="text-sm font-semibold">题目位置区域</div>
             <p className="mt-1 text-xs text-muted-foreground">
               标记每道题在卷面上的位置，批改学生答卷时按框逐题裁切。
             </p>
@@ -1554,8 +1583,8 @@ export default function RegionMarkingCanvas({
         </button>
         {regionsExpanded && (
           <>
-            <div className="rounded-md border p-4">
-              <div className="mb-2 text-sm font-medium">
+            <div className="rounded-2xl border bg-card p-4 shadow-card">
+              <div className="mb-2 text-sm font-semibold">
                 手动新建区域（可选）
               </div>
               {draft ? (
@@ -1593,8 +1622,8 @@ export default function RegionMarkingCanvas({
               )}
             </div>
 
-            <div className="rounded-md border">
-              <div className="flex items-center justify-between border-b px-4 py-3 text-sm font-medium">
+            <div className="rounded-2xl border bg-card shadow-card">
+              <div className="flex items-center justify-between border-b px-4 py-3 text-sm font-semibold">
                 <span>AI 候选区域</span>
                 <div className="flex items-center gap-2">
                   {candidateDrafts.length > 0 && (
@@ -1619,13 +1648,13 @@ export default function RegionMarkingCanvas({
                     <span className="text-right text-xs font-normal text-muted-foreground">
                       {candidatesQuery.data.provider_label ||
                         candidatesQuery.data.provider ||
-                        "Gemini"}
+                        "版面分析"}
                       {(candidatesQuery.data.provider_failover_count ?? 0) > 0
                         ? ` · 已自动切换 ${candidatesQuery.data.provider_failover_count} 次`
                         : ""}
                       {" · "}
                       转正 {candidatesQuery.data.rotation ?? 0}° · 方向{" "}
-                      {candidatesQuery.data.orientation_ms ?? 0} ms · Gemini{" "}
+                      {candidatesQuery.data.orientation_ms ?? 0} ms · 版面分析{" "}
                       {candidatesQuery.data.layout_ms ?? 0} ms · 精修{" "}
                       {candidatesQuery.data.refinement_ms ?? 0} ms · 总计{" "}
                       {candidatesQuery.data.elapsed_ms} ms
@@ -1634,11 +1663,11 @@ export default function RegionMarkingCanvas({
                 </div>
               </div>
               {candidatesQuery.isFetching ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
+                <div className="px-4 py-6 text-center text-muted-foreground text-xs">
                   正在检测页面版面
                 </div>
               ) : candidateDrafts.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
+                <div className="px-4 py-6 text-center text-muted-foreground text-xs">
                   点击检测题目区域，加载 AI 建议。
                 </div>
               ) : (
@@ -1661,9 +1690,9 @@ export default function RegionMarkingCanvas({
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {isRefined
-                              ? `Gemini + 平行线精修 · ${(candidate.confidence * 100).toFixed(0)}%`
+                              ? `版面分析 + 平行线精修 · ${(candidate.confidence * 100).toFixed(0)}%`
                               : candidate.source.includes("reference-node")
-                                ? "Gemini 版面候选 · 未找到可靠分隔线"
+                                ? "版面候选 · 未找到可靠分隔线"
                                 : `${(candidate.confidence * 100).toFixed(0)}% · ${candidate.source}`}
                           </div>
                         </div>
@@ -1677,8 +1706,8 @@ export default function RegionMarkingCanvas({
               )}
             </div>
 
-            <div className="rounded-md border p-4">
-              <div className="mb-3 text-sm font-medium">当前选中区域</div>
+            <div className="rounded-2xl border bg-card p-4 shadow-card">
+              <div className="mb-3 text-sm font-semibold">当前选中区域</div>
               {selectedRegion && editingRegion ? (
                 <div className="grid gap-3">
                   <Input
@@ -1701,18 +1730,18 @@ export default function RegionMarkingCanvas({
                   </LoadingButton>
                 </div>
               ) : (
-                <div className="text-sm text-muted-foreground">
+                <div className="text-muted-foreground text-xs">
                   请选择已保存的区域，可移动、缩放或重命名。
                 </div>
               )}
             </div>
 
-            <div className="rounded-md border">
-              <div className="border-b px-4 py-3 text-sm font-medium">
+            <div className="rounded-2xl border bg-card shadow-card">
+              <div className="border-b px-4 py-3 text-sm font-semibold">
                 已保存区域
               </div>
               {pageRegions.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-muted-foreground">
+                <div className="px-4 py-6 text-center text-muted-foreground text-xs">
                   在试卷上拖动鼠标，创建第一个题目区域。
                 </div>
               ) : (

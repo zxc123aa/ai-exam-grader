@@ -58,7 +58,7 @@ export const Route = createFileRoute("/reset-password")({
   head: () => ({
     meta: [
       {
-        title: "重置密码 - 智阅卷",
+        title: "重置密码 - 点凡阅卷",
       },
     ],
   }),

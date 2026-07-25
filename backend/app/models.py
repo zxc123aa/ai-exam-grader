@@ -1,10 +1,10 @@
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Any, Literal, Optional
 
-from pydantic import EmailStr, model_validator
+from pydantic import EmailStr, field_validator, model_validator
 from sqlalchemy import Column, DateTime, Numeric, UniqueConstraint
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy.dialects.postgresql import JSONB
@@ -15,17 +15,160 @@ def get_datetime_utc() -> datetime:
     return datetime.now(UTC)
 
 
+class UserRole(StrEnum):
+    # 平台侧角色（org_id 为 NULL）
+    PLATFORM_SUPERUSER = "platform_superuser"
+    PLATFORM_SUPPORT = "platform_support"
+    # 学校侧角色（org_id 指向 Organization）
+    SCHOOL_OWNER = "school_owner"
+    SCHOOL_ADMIN = "school_admin"
+    TEACHER = "teacher"
+    STUDENT = "student"
+
+
+# 组织（学校）。平台角色用户不属于任何组织。
+class OrganizationBase(SQLModel):
+    name: str = Field(min_length=1, max_length=200)
+    code: str = Field(min_length=1, max_length=50)
+    status: str = Field(default="active", max_length=20)
+    # 教师间考试互见开关
+    exam_sharing_enabled: bool = False
+    contact_name: str | None = Field(default=None, max_length=100)
+
+
+class Organization(OrganizationBase, table=True):
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    code: str = Field(min_length=1, max_length=50, unique=True, index=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    users: list["User"] = Relationship(back_populates="organization")
+
+
+class OrganizationCreate(OrganizationBase):
+    pass
+
+
+class OrganizationUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    code: str | None = Field(default=None, min_length=1, max_length=50)
+    status: str | None = Field(default=None, max_length=20)
+    exam_sharing_enabled: bool | None = None
+    contact_name: str | None = Field(default=None, max_length=100)
+
+
+class OrganizationPublic(OrganizationBase):
+    id: uuid.UUID
+    created_at: datetime | None = None
+
+
+class OrganizationsPublic(SQLModel):
+    data: list[OrganizationPublic]
+    count: int
+
+
+# 平台管理端点 schema（/platform/orgs）
+class PlatformOrgOwnerCreate(SQLModel):
+    """新建学校时附带的首个 school_owner 账号。"""
+
+    email: EmailStr = Field(max_length=255)
+    full_name: str | None = Field(default=None, max_length=255)
+    password: str = Field(min_length=8, max_length=128)
+
+
+class PlatformOrgCreate(SQLModel):
+    name: str = Field(min_length=1, max_length=200)
+    code: str = Field(min_length=1, max_length=50)
+    contact_name: str | None = Field(default=None, max_length=100)
+    owner: PlatformOrgOwnerCreate | None = None
+
+
+class PlatformOrgUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=200)
+    code: str | None = Field(default=None, min_length=1, max_length=50)
+    status: str | None = Field(default=None, max_length=20)
+    contact_name: str | None = Field(default=None, max_length=100)
+
+    @field_validator("status")
+    @classmethod
+    def validate_status(cls, value: str | None) -> str | None:
+        if value is not None and value not in ("active", "suspended"):
+            raise ValueError("status must be 'active' or 'suspended'")
+        return value
+
+
+class PlatformOrgListItem(SQLModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    status: str
+    exam_count: int = 0
+    student_count: int = 0
+    teacher_count: int = 0
+    created_at: datetime | None = None
+
+
+class PlatformOrgsPublic(SQLModel):
+    data: list[PlatformOrgListItem]
+    count: int
+
+
+class PlatformOrgUserItem(SQLModel):
+    id: uuid.UUID
+    email: str  # 见 UserBase.email：学生占位邮箱 @school.local 过不了 EmailStr
+    full_name: str | None = None
+    role: UserRole
+    is_active: bool
+
+
+class PlatformOrgDetail(SQLModel):
+    id: uuid.UUID
+    name: str
+    code: str
+    status: str
+    exam_sharing_enabled: bool
+    contact_name: str | None = None
+    created_at: datetime | None = None
+    exam_count: int = 0
+    student_count: int = 0
+    teacher_count: int = 0
+    users: list[PlatformOrgUserItem] = Field(default_factory=list)
+
+
+# 学校设置端点 schema（/org/settings）
+class OrgSettingsPublic(SQLModel):
+    name: str
+    code: str
+    exam_sharing_enabled: bool
+    contact_name: str | None = None
+
+
+class OrgSettingsUpdate(SQLModel):
+    contact_name: str | None = Field(default=None, max_length=100)
+    exam_sharing_enabled: bool | None = None
+
+
 # Shared properties
 class UserBase(SQLModel):
-    email: EmailStr = Field(unique=True, index=True, max_length=255)
+    # 注意：学生占位账号使用 {学号}@school.local，.local 是保留域，通不过 EmailStr，
+    # 因此基类用 plain str；创建/更新入口（UserCreate/UserUpdate 等）仍用 EmailStr 校验
+    email: str = Field(unique=True, index=True, max_length=255)
     is_active: bool = True
     is_superuser: bool = False
     full_name: str | None = Field(default=None, max_length=255)
+    role: UserRole = UserRole.TEACHER
+    # 教职工工号（学校侧账号用，可选）
+    employee_no: str | None = Field(default=None, max_length=50)
 
 
 # Properties to receive via API on creation
 class UserCreate(UserBase):
+    # 覆盖基类：手工创建账号仍要求合法邮箱格式
+    email: EmailStr = Field(max_length=255)
     password: str = Field(min_length=8, max_length=128)
+    # 平台角色为 None；学校角色指向所属组织
+    org_id: uuid.UUID | None = None
 
 
 class UserRegister(SQLModel):
@@ -41,6 +184,9 @@ class UserUpdate(SQLModel):
     is_superuser: bool | None = None
     full_name: str | None = Field(default=None, max_length=255)
     password: str | None = Field(default=None, min_length=8, max_length=128)
+    role: UserRole | None = None
+    org_id: uuid.UUID | None = None
+    employee_no: str | None = Field(default=None, max_length=50)
 
 
 class UserUpdateMe(SQLModel):
@@ -57,11 +203,38 @@ class UpdatePassword(SQLModel):
 class User(UserBase, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     hashed_password: str
+    role: UserRole = Field(
+        default=UserRole.TEACHER,
+        sa_column=Column(
+            SAEnum(
+                UserRole,
+                name="userrole",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
     created_at: datetime | None = Field(
         default_factory=get_datetime_utc,
         sa_type=DateTime(timezone=True),  # type: ignore
     )
+    # 平台角色为 NULL；学校角色指向所属组织
+    org_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="organization.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+    organization: Organization | None = Relationship(back_populates="users")
+    # 任教档案：任教学科标签（字符串数组），班级关联在 TeacherClassLink
+    subjects: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
     exams: list["Exam"] = Relationship(back_populates="owner", cascade_delete=True)
+    class_groups: list["ClassGroup"] = Relationship(
+        back_populates="owner", cascade_delete=True
+    )
     files: list["StoredFile"] = Relationship(
         back_populates="uploaded_by", cascade_delete=True
     )
@@ -74,6 +247,9 @@ class User(UserBase, table=True):
 class UserPublic(UserBase):
     id: uuid.UUID
     created_at: datetime | None = None
+    org_id: uuid.UUID | None = None
+    # 非表字段：由端点根据 org_id 填充
+    org_name: str | None = None
 
 
 class UsersPublic(SQLModel):
@@ -217,20 +393,35 @@ class ExamBase(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
     grade_level: str | None = Field(default=None, max_length=100)
+    exam_date: date | None = None
+    description: str | None = Field(default=None, max_length=500)
     status: ExamStatus = ExamStatus.DRAFT
+    # 大考共享批卷：开启后按班级分配老师，未分完不能发起批改
+    shared_grading_enabled: bool = False
 
 
 class ExamCreate(SQLModel):
     title: str = Field(min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
     grade_level: str | None = Field(default=None, max_length=100)
+    exam_date: date | None = None
+    description: str | None = Field(default=None, max_length=500)
+    # 仅 schema 字段：创建时同步重建 ExamClassLink，不写入 exam 表
+    class_ids: list[uuid.UUID] | None = None
+    # 仅 schema 字段：平台角色创建考试时必须显式指定归属学校；
+    # 学校角色忽略该字段，考试一律归入本人所在学校
+    org_id: uuid.UUID | None = None
 
 
 class ExamUpdate(SQLModel):
     title: str | None = Field(default=None, min_length=1, max_length=255)
     subject: str | None = Field(default=None, max_length=100)
     grade_level: str | None = Field(default=None, max_length=100)
+    exam_date: date | None = None
+    description: str | None = Field(default=None, max_length=500)
     status: ExamStatus | None = None
+    # 仅 schema 字段：非 None 时整体重建 ExamClassLink
+    class_ids: list[uuid.UUID] | None = None
 
 
 class Exam(ExamBase, table=True):
@@ -253,6 +444,10 @@ class Exam(ExamBase, table=True):
     owner_id: uuid.UUID = Field(
         foreign_key="user.id", nullable=False, ondelete="CASCADE"
     )
+    # 考试归属的学校（多租户隔离维度），回填默认学校后 NOT NULL
+    org_id: uuid.UUID = Field(
+        foreign_key="organization.id", nullable=False, index=True
+    )
     owner: User | None = Relationship(back_populates="exams")
     documents: list["ExamDocument"] = Relationship(
         back_populates="exam", cascade_delete=True
@@ -271,7 +466,13 @@ class Exam(ExamBase, table=True):
 class ExamPublic(ExamBase):
     id: uuid.UUID
     owner_id: uuid.UUID
+    org_id: uuid.UUID
     created_at: datetime | None = None
+    # 由端点从 ExamClassLink 组装填充（非表字段）
+    class_ids: list[uuid.UUID] = Field(default_factory=list)
+    class_names: list[str] = Field(default_factory=list)
+    # 非表字段：当前用户是否是本考试的被分配批卷老师
+    is_assigned: bool = False
 
 
 class ExamsPublic(SQLModel):
@@ -529,6 +730,8 @@ class ExamQuestion(SQLModel, table=True):
     label: str = Field(min_length=1, max_length=255)
     question_text: str = Field(min_length=1, max_length=20000)
     question_type: str | None = Field(default=None, max_length=50)
+    knowledge_point: str | None = Field(default=None, max_length=100)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
     recognition_confidence: Decimal | None = Field(
         default=None,
         sa_column=Column(Numeric(5, 4), nullable=True),
@@ -650,6 +853,8 @@ class QuestionRecognitionItem(SQLModel, table=True):
     question_text: str = Field(default="", max_length=20000)
     student_answer_text: str | None = Field(default=None, max_length=12000)
     question_type: str | None = Field(default=None, max_length=50)
+    knowledge_point: str | None = Field(default=None, max_length=100)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
     confidence: Decimal | None = Field(
         default=None, sa_column=Column(Numeric(5, 4), nullable=True)
     )
@@ -697,6 +902,8 @@ class ExamQuestionPublic(SQLModel):
     label: str
     question_text: str
     question_type: str | None = None
+    knowledge_point: str | None = None
+    difficulty: int | None = None
     recognition_confidence: float | None = None
     status: ExamQuestionStatus
     region_ids: list[uuid.UUID] = Field(default_factory=list)
@@ -709,6 +916,29 @@ class ExamQuestionPublic(SQLModel):
 class ExamQuestionsPublic(SQLModel):
     data: list[ExamQuestionPublic]
     count: int
+
+
+class QuestionBankEntryPublic(SQLModel):
+    question_id: uuid.UUID
+    exam_id: uuid.UUID
+    exam_title: str
+    question_key: str
+    label: str
+    question_text: str
+    question_type: str | None = None
+    knowledge_point: str | None = None
+    difficulty: int | None = None
+    max_score: float | None = None
+
+
+class QuestionBankPublic(SQLModel):
+    data: list[QuestionBankEntryPublic]
+    count: int
+
+
+class ExamComposeRequest(SQLModel):
+    title: str = Field(min_length=1, max_length=255)
+    question_ids: list[uuid.UUID] = Field(min_length=1)
 
 
 class QuestionRecognitionRunCreate(SQLModel):
@@ -756,6 +986,8 @@ class QuestionRecognitionItemPublic(SQLModel):
     question_text: str
     student_answer_text: str | None = None
     question_type: str | None = None
+    knowledge_point: str | None = None
+    difficulty: int | None = None
     confidence: float | None = None
     notes: str | None = None
     region_ids: list[str]
@@ -772,6 +1004,8 @@ class QuestionRecognitionItemUpdate(SQLModel):
     question_text: str | None = Field(default=None, max_length=20000)
     student_answer_text: str | None = Field(default=None, max_length=12000)
     question_type: str | None = Field(default=None, max_length=50)
+    knowledge_point: str | None = Field(default=None, max_length=100)
+    difficulty: int | None = Field(default=None, ge=1, le=5)
     confidence: float | None = Field(default=None, ge=0, le=1)
     notes: str | None = Field(default=None, max_length=4000)
     region_ids: list[uuid.UUID] | None = None
@@ -881,8 +1115,9 @@ class StandardAnswer(StandardAnswerBase, table=True):
     exam_id: uuid.UUID = Field(
         foreign_key="exam.id", nullable=False, ondelete="CASCADE"
     )
-    exam_region_id: uuid.UUID = Field(
-        foreign_key="examregion.id", nullable=False, ondelete="CASCADE"
+    # 数字卷（重新组卷）没有扫描区域，允许为空。
+    exam_region_id: uuid.UUID | None = Field(
+        default=None, foreign_key="examregion.id", nullable=True, ondelete="CASCADE"
     )
     question_id: uuid.UUID | None = Field(
         default=None,
@@ -904,7 +1139,7 @@ class StandardAnswer(StandardAnswerBase, table=True):
 class StandardAnswerPublic(StandardAnswerBase):
     id: uuid.UUID
     exam_id: uuid.UUID
-    exam_region_id: uuid.UUID
+    exam_region_id: uuid.UUID | None = None
     question_id: uuid.UUID | None = None
     current_revision_id: uuid.UUID | None = None
     version: int = 1
@@ -1271,6 +1506,14 @@ class StudentSubmission(StudentSubmissionBase, table=True):
     original_stored_file_id: uuid.UUID | None = Field(
         default=None, foreign_key="storedfile.id", nullable=True, ondelete="SET NULL"
     )
+    student_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="student.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=True,
+    )
+    student: Optional["Student"] = Relationship()
     exam: Exam | None = Relationship(back_populates="submissions")
     stored_file: StoredFile | None = Relationship(
         back_populates="student_submissions",
@@ -1288,6 +1531,7 @@ class StudentSubmissionPublic(StudentSubmissionBase):
     stored_file: StoredFilePublic
     page_count: int = 1
     original_stored_file_id: uuid.UUID | None = None
+    student_id: uuid.UUID | None = None
     registration_homography: dict | None = None
     registered_at: datetime | None = None
     created_at: datetime | None = None
@@ -1330,6 +1574,14 @@ class ExamScoreSummaryRow(SQLModel):
 class ExamScoreSummaryPublic(SQLModel):
     data: list[ExamScoreSummaryRow]
     count: int
+
+
+class ExamAnalysisReportPublic(SQLModel):
+    overall: str
+    weak: str
+    polar: str
+    advice: str
+    generated_at: datetime
 
 
 class SubmissionAnnotationBase(SQLModel):
@@ -1519,8 +1771,11 @@ class GradingRunCreate(SQLModel):
     model: str | None = Field(default=None, max_length=200)
     fallback_models: list[str] = Field(default_factory=list)
     submission_ids: list[uuid.UUID] = Field(default_factory=list)
-    review_threshold: float = Field(default=0.8, ge=0, le=1)
-    max_concurrency: int = Field(default=8, ge=1, le=8)
+    # None = 未显式指定，创建 run 时回落系统设置（services/system_config）
+    review_threshold: float | None = Field(default=None, ge=0, le=1)
+    max_concurrency: int | None = Field(default=None, ge=1, le=8)
+    max_parallel_submissions: int | None = Field(default=None, ge=1, le=8)
+    max_concurrency_per_submission: int | None = Field(default=None, ge=1, le=8)
     recognition_run_id: uuid.UUID | None = None
 
 
@@ -1794,3 +2049,359 @@ class TokenPayload(SQLModel):
 class NewPassword(SQLModel):
     token: str
     new_password: str = Field(min_length=8, max_length=128)
+
+
+# ---------------------------------------------------------------------------
+# 班级 / 学生实体（整改计划阶段 2）
+# ---------------------------------------------------------------------------
+class ClassGroupBase(SQLModel):
+    name: str = Field(min_length=1, max_length=100)
+    grade_level: str | None = Field(default=None, max_length=100)
+
+
+class ClassGroupCreate(ClassGroupBase):
+    # 仅 schema 字段：平台角色创建班级时必须显式指定归属学校；
+    # 学校角色忽略该字段，班级一律归入本人所在学校
+    org_id: uuid.UUID | None = None
+
+
+class ClassGroupUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    grade_level: str | None = Field(default=None, max_length=100)
+
+
+class ClassGroup(ClassGroupBase, table=True):
+    __table_args__ = (
+        # 班级名学校内唯一；跨校允许同名班
+        UniqueConstraint("org_id", "name", name="uq_classgroup_org_name"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    owner_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, ondelete="CASCADE"
+    )
+    # 班级归属的学校（学校内共享，跨校不可见），回填默认学校后 NOT NULL
+    org_id: uuid.UUID = Field(
+        foreign_key="organization.id", nullable=False, index=True
+    )
+    owner: User | None = Relationship(back_populates="class_groups")
+    students: list["Student"] = Relationship(
+        back_populates="class_group", cascade_delete=True
+    )
+    exam_links: list["ExamClassLink"] = Relationship(
+        back_populates="class_group", cascade_delete=True
+    )
+
+
+class ClassGroupPublic(ClassGroupBase):
+    id: uuid.UUID
+    owner_id: uuid.UUID
+    org_id: uuid.UUID
+    created_at: datetime | None = None
+    student_count: int = 0
+
+
+class ClassGroupsPublic(SQLModel):
+    data: list[ClassGroupPublic]
+    count: int
+
+
+class StudentBase(SQLModel):
+    name: str = Field(min_length=1, max_length=100)
+    student_no: str | None = Field(default=None, max_length=50)
+
+
+class StudentCreate(StudentBase):
+    pass
+
+
+class StudentUpdate(SQLModel):
+    name: str | None = Field(default=None, min_length=1, max_length=100)
+    student_no: str | None = Field(default=None, max_length=50)
+
+
+class Student(StudentBase, table=True):
+    __table_args__ = (
+        UniqueConstraint("class_id", "name", name="uq_student_class_name"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    class_id: uuid.UUID = Field(
+        foreign_key="classgroup.id", nullable=False, ondelete="CASCADE"
+    )
+    user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    class_group: ClassGroup | None = Relationship(back_populates="students")
+    submissions: list["StudentSubmission"] = Relationship(
+        back_populates="student",
+        sa_relationship_kwargs={"foreign_keys": "StudentSubmission.student_id"},
+    )
+
+
+class StudentPublic(StudentBase):
+    id: uuid.UUID
+    class_id: uuid.UUID
+    user_id: uuid.UUID | None = None
+    created_at: datetime | None = None
+
+
+class StudentsPublic(SQLModel):
+    data: list[StudentPublic]
+    count: int
+
+
+class StudentBatchRow(SQLModel):
+    """花名册批量导入的单行（前端把 CSV/粘贴文本解析成 rows 传入）。"""
+
+    name: str = Field(max_length=100)
+    student_no: str | None = Field(default=None, max_length=50)
+
+
+class StudentBatchCreate(SQLModel):
+    rows: list[StudentBatchRow] = Field(min_length=1)
+    # 同时为学生创建登录账号（学号@school.local），需学校管理角色
+    create_accounts: bool = False
+    # 预览模式：只校验不落库
+    dry_run: bool = False
+
+
+class StudentBatchRowResult(SQLModel):
+    name: str
+    student_no: str | None = None
+    # create=将创建/已创建；skip_exists=同名已存在跳过；error=校验失败
+    action: str
+    message: str | None = None
+
+
+class StudentBatchResult(SQLModel):
+    created: int = 0
+    skipped: int = 0
+    accounts_created: int = 0
+    rows: list[StudentBatchRowResult] = Field(default_factory=list)
+    errors: list[StudentBatchRowResult] = Field(default_factory=list)
+
+
+class StudentBindAccount(SQLModel):
+    user_id: uuid.UUID
+
+
+class ExamClassLink(SQLModel, table=True):
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", primary_key=True, ondelete="CASCADE"
+    )
+    class_id: uuid.UUID = Field(
+        foreign_key="classgroup.id", primary_key=True, ondelete="CASCADE"
+    )
+    class_group: ClassGroup | None = Relationship(back_populates="exam_links")
+
+
+# ---------------------------------------------------------------------------
+# 任教档案（教师 ↔ 班级/学科）与共享批卷分配
+# ---------------------------------------------------------------------------
+class TeacherClassLink(SQLModel, table=True):
+    """任教档案：教师任教的班级（联合主键去重）。"""
+
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", primary_key=True, ondelete="CASCADE"
+    )
+    class_id: uuid.UUID = Field(
+        foreign_key="classgroup.id", primary_key=True, ondelete="CASCADE"
+    )
+
+
+class TeachingProfilePublic(SQLModel):
+    class_ids: list[uuid.UUID] = Field(default_factory=list)
+    class_names: list[str] = Field(default_factory=list)
+    subjects: list[str] = Field(default_factory=list)
+
+
+class TeachingProfileUpdate(SQLModel):
+    class_ids: list[uuid.UUID] = Field(default_factory=list)
+    subjects: list[str] = Field(default_factory=list, max_length=20)
+
+
+# ---------------------------------------------------------------------------
+# 老师批量导入（花名册）
+# ---------------------------------------------------------------------------
+class TeacherBatchRow(SQLModel):
+    # name/email 逻辑上必填，但校验放在端点里逐行报错，避免整单 422
+    name: str | None = Field(default=None, max_length=255)
+    employee_no: str | None = Field(default=None, max_length=50)
+    email: str | None = Field(default=None, max_length=255)
+    # 逗号分隔的学科标签，落库时拆分存 User.subjects
+    subjects: str | None = None
+    # 逗号分隔的班级名，逐个匹配本校班级建 TeacherClassLink
+    class_names: str | None = None
+
+
+class TeacherBatchCreate(SQLModel):
+    rows: list[TeacherBatchRow] = Field(min_length=1)
+    dry_run: bool = False
+
+
+class TeacherBatchRowResult(SQLModel):
+    name: str | None = None
+    email: str | None = None
+    action: str  # create | skip_exists | error
+    message: str | None = None
+
+
+class TeacherBatchResult(SQLModel):
+    created: int = 0
+    skipped: int = 0
+    rows: list[TeacherBatchRowResult] = Field(default_factory=list)
+    errors: list[TeacherBatchRowResult] = Field(default_factory=list)
+
+
+class GradingAssignment(SQLModel, table=True):
+    """共享批卷分配：考试内按班级指派批卷老师，exam_id+class_id 唯一。"""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "exam_id", "class_id", name="uq_gradingassignment_exam_class"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID = Field(
+        foreign_key="exam.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    class_id: uuid.UUID = Field(
+        foreign_key="classgroup.id", nullable=False, ondelete="CASCADE"
+    )
+    user_id: uuid.UUID = Field(foreign_key="user.id", nullable=False)
+    created_at: datetime | None = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class GradingAssignmentItemPublic(SQLModel):
+    class_id: uuid.UUID
+    class_name: str
+    user_id: uuid.UUID
+    user_name: str | None = None
+
+
+class GradingAssignmentClassPublic(SQLModel):
+    class_id: uuid.UUID
+    class_name: str
+
+
+class GradingAssignmentsPublic(SQLModel):
+    enabled: bool
+    assignments: list[GradingAssignmentItemPublic] = Field(default_factory=list)
+    # 有答卷但尚未分配老师的班级
+    unassigned: list[GradingAssignmentClassPublic] = Field(default_factory=list)
+
+
+class GradingAssignmentEntry(SQLModel):
+    class_id: uuid.UUID
+    user_id: uuid.UUID
+
+
+class GradingAssignmentsUpdate(SQLModel):
+    enabled: bool
+    assignments: list[GradingAssignmentEntry] = Field(default_factory=list)
+
+
+# 学生端只读视图模型（/students/me/*）
+
+
+class StudentExamListItemPublic(SQLModel):
+    exam_id: uuid.UUID
+    title: str
+    subject: str | None = None
+    grade_level: str | None = None
+    exam_date: date | None = None
+    class_name: str | None = None
+    total_score: float | None = None
+    total_max_score: float | None = None
+    class_rank: int | None = None
+    class_size: int = 0
+    question_count: int = 0
+    pending_review_count: int = 0
+
+
+class StudentExamListPublic(SQLModel):
+    data: list[StudentExamListItemPublic]
+    count: int
+
+
+class StudentExamReportQuestion(SQLModel):
+    label: str
+    score: float | None = None
+    max_score: float | None = None
+    # "final" = 教师复核后的最终分，"ai_suggested" = AI 建议分
+    score_source: str | None = None
+    comment: str | None = None
+    suggested_comment: str | None = None
+
+
+class StudentExamReportPublic(SQLModel):
+    exam_id: uuid.UUID
+    title: str
+    subject: str | None = None
+    grade_level: str | None = None
+    exam_date: date | None = None
+    class_name: str | None = None
+    student_name: str | None = None
+    total_score: float | None = None
+    total_max_score: float | None = None
+    class_rank: int | None = None
+    class_size: int = 0
+    questions: list[StudentExamReportQuestion] = Field(default_factory=list)
+
+
+# 平台级系统配置（仅 platform_superuser 可写）：模型与批改默认值，
+# DB 无记录时回落到 env 设置（见 services/system_config.py）。
+class SystemConfig(SQLModel, table=True):
+    key: str = Field(primary_key=True, max_length=100)
+    value: Any = Field(default=None, sa_column=Column(JSONB, nullable=False))
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ProviderStatus(SQLModel):
+    name: str
+    configured: bool
+
+
+class SystemConfigPublic(SQLModel):
+    vision_provider: str
+    vision_model: str
+    grading_provider: str
+    grading_model: str
+    region_provider: str
+    region_model: str
+    recognition_provider: str
+    recognition_model: str
+    fallback_models: list[str]
+    review_threshold: float
+    max_concurrency: int
+    providers: list[ProviderStatus]
+
+
+class SystemConfigUpdate(SQLModel):
+    vision_provider: str | None = Field(default=None, max_length=100)
+    vision_model: str | None = Field(default=None, max_length=200)
+    grading_provider: str | None = Field(default=None, max_length=100)
+    grading_model: str | None = Field(default=None, max_length=200)
+    region_provider: str | None = Field(default=None, max_length=100)
+    region_model: str | None = Field(default=None, max_length=200)
+    recognition_provider: str | None = Field(default=None, max_length=100)
+    recognition_model: str | None = Field(default=None, max_length=200)
+    fallback_models: list[str] | None = None
+    review_threshold: float | None = Field(default=None, ge=0, le=1)
+    max_concurrency: int | None = Field(default=None, ge=1, le=8)

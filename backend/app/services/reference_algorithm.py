@@ -99,10 +99,15 @@ def _process_pages(
     *,
     pages: list[dict],
     verification_mode: str = "fast",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
+    # 未显式传入时回落 env 默认（系统设置未接入的调用方保持原行为）
+    provider = provider or settings.VISION_DEFAULT_PROVIDER
+    model = model or settings.VISION_DEFAULT_MODEL
     client_payload = {
-        "provider": settings.VISION_DEFAULT_PROVIDER,
-        "model": settings.VISION_DEFAULT_MODEL,
+        "provider": provider,
+        "model": model,
         "pages": [
             {
                 "id": page["id"],
@@ -148,8 +153,8 @@ def _process_pages(
                     **region,
                     "id": f"{page_id}::{region_id}",
                     "layoutRegionId": region_id,
-                    "provider": settings.VISION_DEFAULT_PROVIDER,
-                    "model": settings.VISION_DEFAULT_MODEL,
+                    "provider": provider,
+                    "model": model,
                     "pageId": page_id,
                     "paperKey": paper_key,
                     "studentKey": layout.get("studentKey") or "",
@@ -187,8 +192,8 @@ def _process_pages(
         recognize_response = client.post(
             f"{settings.REFERENCE_ALGORITHM_URL.rstrip('/')}/api/recognize",
             json={
-                "provider": settings.VISION_DEFAULT_PROVIDER,
-                "model": settings.VISION_DEFAULT_MODEL,
+                "provider": provider,
+                "model": model,
                 "blocks": blocks,
             },
         )
@@ -224,7 +229,13 @@ def _process_pages(
     )
 
 
-def process_stored_file(*, stored_file, verification_mode: str = "fast") -> dict:
+def process_stored_file(
+    *,
+    stored_file,
+    verification_mode: str = "fast",
+    provider: str | None = None,
+    model: str | None = None,
+) -> dict:
     pages = []
     for index, contents in enumerate(
         _page_images(get_stored_file_path(stored_file), stored_file.content_type),
@@ -238,7 +249,12 @@ def process_stored_file(*, stored_file, verification_mode: str = "fast") -> dict
                 "contents": contents,
             }
         )
-    return _process_pages(pages=pages, verification_mode=verification_mode)
+    return _process_pages(
+        pages=pages,
+        verification_mode=verification_mode,
+        provider=provider,
+        model=model,
+    )
 
 
 def _stored_file_page_image(*, stored_file: Any, page_number: int) -> tuple[bytes, str]:
@@ -260,6 +276,8 @@ def process_stored_file_pages(
     stored_file: Any,
     page_numbers: list[int],
     verification_mode: str = "fast",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Run the unchanged Node reference pipeline on selected pages only."""
     pages = []
@@ -276,7 +294,12 @@ def process_stored_file_pages(
                 "contents": contents,
             }
         )
-    return _process_pages(pages=pages, verification_mode=verification_mode)
+    return _process_pages(
+        pages=pages,
+        verification_mode=verification_mode,
+        provider=provider,
+        model=model,
+    )
 
 
 def process_stored_file_page_context(
@@ -286,6 +309,8 @@ def process_stored_file_page_context(
     target_page_number: int,
     context_radius: int = 1,
     verification_mode: str = "fast",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Recognize a page together with adjacent paper pages across file boundaries."""
     ordered_pages: list[tuple[Any, Any, int]] = []
@@ -337,7 +362,12 @@ def process_stored_file_page_context(
             }
         )
 
-    payload = _process_pages(pages=pages, verification_mode=verification_mode)
+    payload = _process_pages(
+        pages=pages,
+        verification_mode=verification_mode,
+        provider=provider,
+        model=model,
+    )
     requested_page_id = f"{target_document_id}:page:{target_page_number}"
     block_page_by_id = {
         str(block.get("id")): str(block.get("pageId"))
@@ -375,7 +405,11 @@ def process_stored_file_page_context(
 
 
 def process_stored_files(
-    *, documents: list[tuple[Any, Any]], verification_mode: str = "fast"
+    *,
+    documents: list[tuple[Any, Any]],
+    verification_mode: str = "fast",
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
     """Send multiple exam documents to the unchanged Node reference pipeline."""
     pages = []
@@ -392,7 +426,12 @@ def process_stored_files(
                     "contents": contents,
                 }
             )
-    return _process_pages(pages=pages, verification_mode=verification_mode)
+    return _process_pages(
+        pages=pages,
+        verification_mode=verification_mode,
+        provider=provider,
+        model=model,
+    )
 
 
 def stored_file_page_data_urls(*, stored_file) -> list[str]:
@@ -405,7 +444,12 @@ def stored_file_page_data_urls(*, stored_file) -> list[str]:
 
 
 def layout_stored_file(
-    *, stored_file, page_numbers: list[int] | None = None, assume_upright: bool = False
+    *,
+    stored_file,
+    page_numbers: list[int] | None = None,
+    assume_upright: bool = False,
+    provider: str | None = None,
+    model: str | None = None,
 ) -> dict:
     pages = []
     path = get_stored_file_path(stored_file)
@@ -432,7 +476,11 @@ def layout_stored_file(
         )
     response = httpx.post(
         f"{settings.REFERENCE_ALGORITHM_URL.rstrip('/')}/api/layout",
-        json={"pages": pages},
+        json={
+            "provider": provider or settings.VISION_DEFAULT_PROVIDER,
+            "model": model or settings.VISION_DEFAULT_MODEL,
+            "pages": pages,
+        },
         timeout=settings.VISION_TIMEOUT_SECONDS,
     )
     response.raise_for_status()

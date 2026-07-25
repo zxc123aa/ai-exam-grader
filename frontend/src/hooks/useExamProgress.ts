@@ -43,8 +43,8 @@ type AnswerRevision = {
 }
 
 /**
- * 聚合考试各环节的现有查询，推导工作区六个步骤（导入 → 区域校正 →
- * 识别内容 → 标准答案 → 批量批改 → 成绩）的完成状态与当前应做步骤。
+ * 聚合考试各环节的现有查询，推导工作区六个步骤（导入模板卷 → 框选题目 →
+ * 确认题目 → 标准答案 → 批改批次 → 成绩）的完成状态与当前应做步骤。
  * 只复用各页面已有的接口与 queryKey，不新增后端 API。
  */
 export function useExamProgress(examId: string) {
@@ -108,19 +108,19 @@ export function useExamProgress(examId: string) {
   const steps: ExamStep[] = [
     {
       key: "import",
-      label: "导入",
+      label: "导入模板卷",
       to: "/exams/$examId/marking",
       done: hasPaper,
     },
     {
       key: "marking",
-      label: "区域校正",
+      label: "框选题目",
       to: "/exams/$examId/marking",
       done: hasRegions,
     },
     {
       key: "questions",
-      label: "识别内容",
+      label: "确认题目",
       to: "/exams/$examId/questions",
       done: questionsConfirmed,
     },
@@ -132,7 +132,7 @@ export function useExamProgress(examId: string) {
     },
     {
       key: "grading",
-      label: "批量批改",
+      label: "批改批次",
       to: "/exams/$examId/grading",
       done: gradingFinished,
     },

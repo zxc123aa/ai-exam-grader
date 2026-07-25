@@ -16,10 +16,13 @@ from app.models import (
     GradingRun,
     QuestionRecognitionItem,
     QuestionRecognitionRun,
+    SystemConfig,
     WorkflowRunStatus,
     get_datetime_utc,
 )
 from app.services import grading_workflow
+
+DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
 
 def _png() -> bytes:
@@ -36,7 +39,7 @@ def test_import_complete_marking_recognition_without_model_call(
     exam = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Marking handoff exam", "subject": "物理"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Marking handoff exam", "subject": "物理"},
     ).json()
     document_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/files",
@@ -120,7 +123,7 @@ def test_confirm_prepare_and_publish_immutable_revision(
     exam_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
-        json={"title": "Workflow integration exam", "subject": "物理"},
+        json={"org_id": DEFAULT_ORG_ID, "title": "Workflow integration exam", "subject": "物理"},
     )
     assert exam_response.status_code == 200
     exam_id = exam_response.json()["id"]
@@ -349,3 +352,67 @@ def test_confirm_prepare_and_publish_immutable_revision(
         ).one()
         assert str(grading_item.question_id) == question["id"]
         assert str(grading_item.answer_revision_id) == published_revision_id
+
+
+def _clear_system_config(db: Session) -> None:
+    for row in db.exec(select(SystemConfig)).all():
+        db.delete(row)
+    db.commit()
+
+
+def test_question_recognition_run_uses_system_config(
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+    monkeypatch,
+) -> None:
+    """创建识别 run 的 provider/model 来自系统设置 recognition_*，缺键回落 vision 默认。"""
+    _clear_system_config(db)
+    monkeypatch.setattr(
+        questions_answers, "execute_question_recognition", lambda _run_id: None
+    )
+    exam = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=superuser_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "识别配置考试", "subject": "物理"},
+    ).json()
+    document_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam['id']}/files",
+        headers=superuser_token_headers,
+        files={"file": ("paper.png", _png(), "image/png")},
+        data={"document_type": "blank_exam"},
+    )
+    assert document_response.status_code == 200
+    document_id = document_response.json()["id"]
+
+    try:
+        # 缺键回落：recognition_* → vision 默认
+        fallback_response = client.post(
+            f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs",
+            headers=superuser_token_headers,
+            json={"document_ids": [document_id]},
+        )
+        assert fallback_response.status_code == 200
+        assert fallback_response.json()["provider"] == settings.VISION_DEFAULT_PROVIDER
+        assert fallback_response.json()["model"] == settings.VISION_DEFAULT_MODEL
+
+        patch_response = client.patch(
+            f"{settings.API_V1_STR}/platform/system-config",
+            headers=superuser_token_headers,
+            json={
+                "recognition_provider": "pomoai",
+                "recognition_model": "gpt-5.5",
+            },
+        )
+        assert patch_response.status_code == 200, patch_response.text
+
+        run_response = client.post(
+            f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs",
+            headers=superuser_token_headers,
+            json={"document_ids": [document_id]},
+        )
+        assert run_response.status_code == 200
+        assert run_response.json()["provider"] == "pomoai"
+        assert run_response.json()["model"] == "gpt-5.5"
+    finally:
+        _clear_system_config(db)

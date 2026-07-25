@@ -5,9 +5,10 @@ import {
   Outlet,
   useRouterState,
 } from "@tanstack/react-router"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Upload } from "lucide-react"
 
 import { ExamsService } from "@/client"
+import { PageHead } from "@/components/Common/PageHead"
 import { ExamWorkspaceNav } from "@/components/Exams/ExamWorkspaceNav"
 import { Button } from "@/components/ui/button"
 
@@ -30,21 +31,35 @@ function ExamWorkspaceLayout() {
     return <Outlet />
   }
 
+  // 批卷工作台 / 改卷报告 / 班级分析是顶层视图（侧栏直达），
+  // 不叠加「导入 → 区域校正 → …」的步骤条——步骤条只属于试卷设置流程。
+  const isTopLevelView = ["/workbench", "/report", "/scores"].some((suffix) =>
+    pathname.endsWith(suffix),
+  )
+
   return (
     <div className="grid gap-6">
       <header className="grid gap-4">
-        <div>
-          <Button variant="ghost" size="sm" asChild className="-ml-3 mb-2">
-            <Link to="/exams">
-              <ArrowLeft />
-              考试管理
-            </Link>
-          </Button>
-          <h1 className="text-2xl font-bold tracking-tight">
-            {exam.data?.title ?? "考试工作区"}
-          </h1>
-        </div>
-        <ExamWorkspaceNav examId={examId} />
+        <PageHead
+          title={exam.data?.title ?? "考试工作区"}
+          actions={
+            <>
+              <Button variant="ghost" size="sm" asChild>
+                <Link to="/exams">
+                  <ArrowLeft />
+                  考试管理
+                </Link>
+              </Button>
+              <Button variant="outline" size="sm" asChild>
+                <Link to="/exams/$examId" params={{ examId }}>
+                  <Upload />
+                  导入试卷
+                </Link>
+              </Button>
+            </>
+          }
+        />
+        {!isTopLevelView && <ExamWorkspaceNav examId={examId} />}
       </header>
       <Outlet />
     </div>

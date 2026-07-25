@@ -9,13 +9,17 @@ import {
 import { type ChangeEvent, useMemo, useRef, useState } from "react"
 
 import { ExamsService } from "@/client"
-import { Badge } from "@/components/ui/badge"
+import { ProgressBar } from "@/components/Common/ProgressBar"
+import { Tag } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import useCustomToast from "@/hooks/useCustomToast"
-import { cn } from "@/lib/utils"
 
-const SUPPORTED_FILE_PATTERN = /\.(pdf|jpe?g|png)$/i
+const SUPPORTED_FILE_PATTERN = /\.(pdf|jpe?g|png|zip)$/i
+const ZIP_FILE_PATTERN = /\.zip$/i
+// 页照片名几乎都是编号（1.jpg、0_0.jpg），学生姓名不会以数字/下划线开头；
+// 用于区分「学生/页.pdf」与「班级/姓名.pdf」两种三层路径
+const PAGE_LIKE_STEM_PATTERN = /^[\d_]/
 const UPLOAD_CONCURRENCY = 3
 const pathCollator = new Intl.Collator("zh-Hans-CN", { numeric: true })
 
@@ -23,6 +27,14 @@ function isPdfFile(file: File) {
   return (
     file.type === "application/pdf" || file.name.toLowerCase().endsWith(".pdf")
   )
+}
+
+function isZipFile(file: File) {
+  return file.type === "application/zip" || ZIP_FILE_PATTERN.test(file.name)
+}
+
+function fileStem(name: string) {
+  return name.replace(/\.[^.]+$/, "") || name
 }
 
 type GroupStatus = "pending" | "uploading" | "done" | "failed"
@@ -46,11 +58,15 @@ interface UngroupedFile {
 
 /**
  * 解析 webkitdirectory 选中的文件列表。
- * webkitRelativePath 第一段始终是所选根文件夹名，因此：
+ * webkitRelativePath 第一段始终是所选根文件夹名，支持的目录形态：
  * - 4 段及以上：根/班级/学生/文件 → 倒数第二段 = 学生姓名，倒数第三段 = 班级名
- * - 3 段：根/学生/文件（只有两层）→ 学生姓名取倒数第二段，班级为空
+ * - 3 段「根/班级-姓名/文件」或「根/考试-班级-姓名/文件」→ 文件夹名按 `-`
+ *   分段：两段 = 班级/姓名；三段及以上 = 倒数第二段班级、最后一段姓名
+ * - 3 段「根/班级/学生.zip」（一生一 zip）→ 整个 zip 是一份答卷，学生名 = zip 文件名
+ * - 3 段「根/班级/学生.pdf」（一生一 PDF，文件名不是页编号）→ 同上
+ * - 3 段「根/学生/文件」（只有两层）→ 学生姓名取倒数第二段，班级为空
  * - 2 段：文件直接位于所选根目录 → 无法归组，交给用户决定
- * 非 PDF/JPG/PNG 文件直接忽略并计数。
+ * 非 PDF/JPG/PNG/ZIP 文件直接忽略并计数。
  */
 function parseFolderFiles(files: File[]) {
   const groupMap = new Map<string, StudentUploadGroup>()
@@ -67,8 +83,31 @@ function parseFolderFiles(files: File[]) {
       ungrouped.push({ file, relativePath })
       continue
     }
-    const studentName = segments[segments.length - 2]
-    const className = segments.length >= 4 ? segments[segments.length - 3] : ""
+    let studentName: string
+    let className: string
+    if (segments.length >= 4) {
+      studentName = segments[segments.length - 2]
+      className = segments[segments.length - 3]
+    } else {
+      const parent = segments[segments.length - 2]
+      const stem = fileStem(file.name)
+      const flatParts = parent.split("-").filter(Boolean)
+      if (flatParts.length >= 2) {
+        // 平铺命名：班级-姓名 / 考试-班级-姓名
+        studentName = flatParts[flatParts.length - 1]
+        className = flatParts[flatParts.length - 2]
+      } else if (
+        isZipFile(file) ||
+        (isPdfFile(file) && !PAGE_LIKE_STEM_PATTERN.test(stem))
+      ) {
+        // 一生一 zip / 一生一 PDF：文件名即学生姓名
+        studentName = stem
+        className = parent
+      } else {
+        studentName = parent
+        className = ""
+      }
+    }
     const key = `${className}/${studentName}`
     const existing = groupMap.get(key)
     if (existing) {
@@ -97,7 +136,7 @@ function parseFolderFiles(files: File[]) {
 }
 
 function fileNameAsStudentName(file: File) {
-  return file.name.replace(/\.[^.]+$/, "") || file.name
+  return fileStem(file.name)
 }
 
 function groupLabel(group: StudentUploadGroup) {
@@ -170,7 +209,7 @@ export function FolderBatchUpload({
     // 允许再次选择同一文件夹时重新触发 change
     event.target.value = ""
     if (parsed.groups.length === 0 && parsed.ungrouped.length === 0) {
-      showErrorToast("所选文件夹中没有可上传的 PDF/JPG/PNG 文件")
+      showErrorToast("所选文件夹中没有可上传的 PDF/JPG/PNG/ZIP 文件")
       return
     }
     setGroups(parsed.groups)
@@ -191,25 +230,26 @@ export function FolderBatchUpload({
       const file = group.files[index]
       try {
         if (index === 0 && !submissionId) {
-          // 第一个文件：PDF 直接导入，照片先自动校正，创建答卷
-          const submission = isPdfFile(file)
-            ? await ExamsService.uploadStudentSubmission({
-                examId,
-                formData: {
-                  file: file as unknown as string,
-                  student_name: group.studentName,
-                  class_name: group.className || undefined,
-                  preprocess: "auto",
-                },
-              })
-            : await ExamsService.preprocessStudentSubmissionPhoto({
-                examId,
-                formData: {
-                  file: file as unknown as string,
-                  student_name: group.studentName,
-                  class_name: group.className || undefined,
-                },
-              })
+          // 第一个文件：PDF/zip 直接导入（zip 由后端解包），照片先自动校正，创建答卷
+          const submission =
+            isPdfFile(file) || isZipFile(file)
+              ? await ExamsService.uploadStudentSubmission({
+                  examId,
+                  formData: {
+                    file: file as unknown as string,
+                    student_name: group.studentName,
+                    class_name: group.className || undefined,
+                    preprocess: "auto",
+                  },
+                })
+              : await ExamsService.preprocessStudentSubmissionPhoto({
+                  examId,
+                  formData: {
+                    file: file as unknown as string,
+                    student_name: group.studentName,
+                    class_name: group.className || undefined,
+                  },
+                })
           submissionId = submission.id
           updateGroup(group.id, { submissionId })
         } else {
@@ -298,14 +338,15 @@ export function FolderBatchUpload({
     totalFiles > 0 ? Math.round((uploadedFiles / totalFiles) * 100) : 0
 
   return (
-    <div className="grid gap-3 rounded-md border p-4">
+    <div className="grid gap-3 rounded-xl border p-4">
       <div>
-        <div className="text-sm font-medium">按文件夹批量上传</div>
+        <div className="font-medium text-sm">按文件夹批量上传</div>
         <p className="mt-1 text-xs text-muted-foreground">
-          按「班级 / 学生姓名 / 照片或 PDF」组织目录，例如
-          001班/张三/1.jpg；只有「学生/文件」两层时按未分班处理。同一学生的所有
-          照片/PDF
-          会合并为一份答卷：第一个文件创建答卷，其余文件追加为后续页面。
+          三种收卷方式都支持，混放也可以：① 照片文件夹「班级/学生姓名/照片」；②
+          一生一 zip「班级/李坤清.zip」，zip 内照片自动解包合并；③ 一生一
+          PDF「班级/李思远.pdf」。也支持「班级-姓名/照片」平铺命名；只有「学生/文件」
+          两层时按未分班处理。同一学生的所有文件合并为一份答卷：第一个文件创建答卷，
+          其余文件追加为后续页面，组内按文件名编号顺序（1、2、…、10）排列。
         </p>
       </div>
 
@@ -326,7 +367,7 @@ export function FolderBatchUpload({
           data-testid="folder-batch-picker"
           type="button"
           onClick={() => inputRef.current?.click()}
-          className="flex flex-col items-center gap-2 rounded-md border border-dashed px-4 py-8 text-sm text-muted-foreground transition-colors hover:border-primary/60 hover:text-foreground"
+          className="flex flex-col items-center gap-2 rounded-xl border border-dashed px-4 py-8 text-muted-foreground text-sm transition-colors hover:border-primary/60 hover:text-foreground"
         >
           <FolderUp className="size-6" />
           选择班级文件夹批量上传
@@ -338,13 +379,13 @@ export function FolderBatchUpload({
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-sm">解析结果</span>
             {classSummaries.map(([className, summary]) => (
-              <Badge key={className} variant="outline">
+              <Tag key={className} variant="indigo">
                 {className}（{summary.students} 人）
-              </Badge>
+              </Tag>
             ))}
-            <Badge variant="secondary">{totalFiles} 个文件</Badge>
+            <Tag variant="sky">{totalFiles} 个文件</Tag>
           </div>
-          <div className="max-h-48 divide-y overflow-y-auto rounded-md border">
+          <div className="max-h-48 divide-y overflow-y-auto rounded-xl border">
             {groups.map((group) => (
               <div
                 key={group.id}
@@ -359,7 +400,7 @@ export function FolderBatchUpload({
           </div>
           {skippedCount > 0 && (
             <p className="text-xs text-muted-foreground">
-              已忽略 {skippedCount} 个不支持的文件（仅支持 PDF/JPG/PNG）。
+              已忽略 {skippedCount} 个不支持的文件（仅支持 PDF/JPG/PNG/ZIP）。
             </p>
           )}
           {ungrouped.length > 0 && (
@@ -410,17 +451,11 @@ export function FolderBatchUpload({
               {uploadedFiles}/{totalFiles} 个文件
             </span>
           </div>
-          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-            <div
-              className={cn(
-                "h-full transition-all",
-                !isUploading && failedCount > 0
-                  ? "bg-destructive"
-                  : "bg-primary",
-              )}
-              style={{ width: `${progressPercent}%` }}
-            />
-          </div>
+          <ProgressBar
+            value={progressPercent}
+            striped={isUploading}
+            tone={!isUploading && failedCount > 0 ? "amber" : "indigo"}
+          />
           {isUploading && activeGroups.length > 0 && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="size-3.5 animate-spin" />
@@ -445,7 +480,7 @@ export function FolderBatchUpload({
               上传完成前请勿关闭本对话框。
             </p>
           )}
-          <div className="max-h-56 divide-y overflow-y-auto rounded-md border">
+          <div className="max-h-56 divide-y overflow-y-auto rounded-xl border">
             {groups.map((group) => (
               <div
                 key={group.id}

@@ -44,7 +44,7 @@ export const Route = createFileRoute("/login")({
   head: () => ({
     meta: [
       {
-        title: "登录 - 智阅卷",
+        title: "登录 - 点凡阅卷",
       },
     ],
   }),
@@ -75,7 +75,7 @@ function Login() {
           className="flex flex-col gap-6"
         >
           <div className="flex flex-col items-center gap-2 text-center">
-            <h1 className="text-2xl font-bold">登录智阅卷</h1>
+            <h1 className="text-2xl font-bold">登录点凡阅卷</h1>
             <p className="text-sm text-muted-foreground">
               欢迎回来，继续处理尚未完成的阅卷任务。
             </p>
@@ -130,13 +130,6 @@ function Login() {
             <LoadingButton type="submit" loading={loginMutation.isPending}>
               登录
             </LoadingButton>
-          </div>
-
-          <div className="text-center text-sm">
-            还没有账号？{" "}
-            <RouterLink to="/signup" className="underline underline-offset-4">
-              注册
-            </RouterLink>
           </div>
         </form>
       </Form>

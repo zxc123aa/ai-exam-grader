@@ -31,14 +31,23 @@ def _generate_one(answer_id: uuid.UUID) -> dict:
                 "error": "标准答案不存在",
             }
         region = session.get(ExamRegion, answer.exam_region_id)
-        row = session.exec(
-            select(ExamDocument, StoredFile)
-            .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
-            .where(
-                ExamDocument.exam_id == answer.exam_id,
-                ExamDocument.document_type == ExamDocumentType.BLANK_EXAM,
-            )
-        ).first()
+        # 必须按题区所属文档取源文件：多文件拼成的整卷里，
+        # 错用第一个文档会把其他题的页面裁进来
+        if region and region.exam_document_id:
+            row = session.exec(
+                select(ExamDocument, StoredFile)
+                .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
+                .where(ExamDocument.id == region.exam_document_id)
+            ).first()
+        else:
+            row = session.exec(
+                select(ExamDocument, StoredFile)
+                .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
+                .where(
+                    ExamDocument.exam_id == answer.exam_id,
+                    ExamDocument.document_type == ExamDocumentType.BLANK_EXAM,
+                )
+            ).first()
         if not region or not row:
             return {
                 "answer_id": str(answer_id),
@@ -47,10 +56,16 @@ def _generate_one(answer_id: uuid.UUID) -> dict:
             }
         _document, stored_file = row
         try:
+            from app.services.system_config import get_grading_defaults
+
+            defaults = get_grading_defaults(session)
             generated = generate_and_validate_rubric(
                 image_bytes=crop_region_png(stored_file=stored_file, region=region),
                 answer=answer,
                 question_label=region.label,
+                vision_provider=str(defaults["recognition_provider"]),
+                vision_model=str(defaults["recognition_model"]),
+                fallback_models=[str(item) for item in defaults["fallback_models"]],
             )
             session.add(generated)
             session.commit()

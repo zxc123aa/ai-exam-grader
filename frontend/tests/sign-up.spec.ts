@@ -1,159 +1,33 @@
-import { expect, type Page, test } from "@playwright/test"
-
-import { randomEmail, randomPassword } from "./utils/random"
+import { expect, test } from "@playwright/test"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
-const fillForm = async (
-  page: Page,
-  full_name: string,
-  email: string,
-  password: string,
-  confirm_password: string,
-) => {
-  await page.getByTestId("full-name-input").fill(full_name)
-  await page.getByTestId("email-input").fill(email)
-  await page.getByTestId("password-input").fill(password)
-  await page.getByTestId("confirm-password-input").fill(confirm_password)
-}
-
-const verifyInput = async (page: Page, testId: string) => {
-  const input = page.getByTestId(testId)
-  await expect(input).toBeVisible()
-  await expect(input).toHaveText("")
-  await expect(input).toBeEditable()
-}
-
-test("Inputs are visible, empty and editable", async ({ page }) => {
+test("公开注册已关闭提示可见", async ({ page }) => {
   await page.goto("/signup")
-
-  await verifyInput(page, "full-name-input")
-  await verifyInput(page, "email-input")
-  await verifyInput(page, "password-input")
-  await verifyInput(page, "confirm-password-input")
-})
-
-test("Sign Up button is visible", async ({ page }) => {
-  await page.goto("/signup")
-
-  await expect(page.getByRole("button", { name: "Sign Up" })).toBeVisible()
-})
-
-test("Log In link is visible", async ({ page }) => {
-  await page.goto("/signup")
-
-  await expect(page.getByRole("link", { name: /登录|Log In/ })).toBeVisible()
-})
-
-test("Sign up with valid name, email, and password", async ({ page }) => {
-  const full_name = "Test User"
-  const email = randomEmail()
-  const password = randomPassword()
-
-  await page.goto("/signup")
-  await fillForm(page, full_name, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-})
-
-test("Sign up with invalid email", async ({ page }) => {
-  await page.goto("/signup")
-
-  await fillForm(
-    page,
-    "Playwright Test",
-    "invalid-email",
-    "changethis",
-    "changethis",
-  )
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await expect(page.getByText("Invalid email address")).toBeVisible()
-})
-
-test("Sign up with existing email", async ({ page }) => {
-  const fullName = "Test User"
-  const email = randomEmail()
-  const password = randomPassword()
-
-  await page.goto("/signup")
-
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await page.goto("/signup")
-
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await page
-    .getByText("The user with this email already exists in the system")
-    .click()
-})
-
-test("Sign up with weak password", async ({ page }) => {
-  const fullName = "Test User"
-  const email = randomEmail()
-  const password = "weak"
-
-  await page.goto("/signup")
-
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
 
   await expect(
-    page.getByText("Password must be at least 8 characters"),
+    page.getByRole("heading", { name: "公开注册已关闭" }),
+  ).toBeVisible()
+  await expect(
+    page.getByText("请联系你所在学校的管理员获取账号"),
   ).toBeVisible()
 })
 
-test("Sign up with mismatched passwords", async ({ page }) => {
-  const fullName = "Test User"
-  const email = randomEmail()
-  const password = randomPassword()
-  const password2 = randomPassword()
-
+test("注册表单不再存在", async ({ page }) => {
   await page.goto("/signup")
 
-  await fillForm(page, fullName, email, password, password2)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await expect(page.getByText("The passwords don't match")).toBeVisible()
+  await expect(page.getByTestId("full-name-input")).toHaveCount(0)
+  await expect(page.getByTestId("email-input")).toHaveCount(0)
+  await expect(page.getByTestId("password-input")).toHaveCount(0)
+  await expect(page.getByTestId("confirm-password-input")).toHaveCount(0)
 })
 
-test("Sign up with missing full name", async ({ page }) => {
-  const fullName = ""
-  const email = randomEmail()
-  const password = randomPassword()
-
+test("返回登录按钮跳转到 /login", async ({ page }) => {
   await page.goto("/signup")
 
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
+  const backLink = page.getByRole("link", { name: "返回登录" })
+  await expect(backLink).toBeVisible()
+  await backLink.click()
 
-  await expect(page.getByText("Full Name is required")).toBeVisible()
-})
-
-test("Sign up with missing email", async ({ page }) => {
-  const fullName = "Test User"
-  const email = ""
-  const password = randomPassword()
-
-  await page.goto("/signup")
-
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await expect(page.getByText("Invalid email address")).toBeVisible()
-})
-
-test("Sign up with missing password", async ({ page }) => {
-  const fullName = ""
-  const email = randomEmail()
-  const password = ""
-
-  await page.goto("/signup")
-
-  await fillForm(page, fullName, email, password, password)
-  await page.getByRole("button", { name: "Sign Up" }).click()
-
-  await expect(page.getByText("Password is required")).toBeVisible()
+  await expect(page).toHaveURL(/\/login$/)
 })

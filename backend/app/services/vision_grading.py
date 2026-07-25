@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import threading
 import time
 from dataclasses import dataclass
 from io import BytesIO
@@ -16,6 +17,17 @@ from app.models import StandardAnswer
 
 class VisionGradingError(RuntimeError):
     pass
+
+
+@dataclass(frozen=True)
+class ModelTarget:
+    provider: str
+    model: str
+
+
+_PROVIDER_PREFERENCE = ("pomoai", "kimi", "fluxnode_gemini", "fluxnode_grok")
+_PROVIDER_COOLDOWNS: dict[str, tuple[float, str]] = {}
+_PROVIDER_COOLDOWNS_LOCK = threading.Lock()
 
 
 @dataclass
@@ -120,6 +132,112 @@ def provider_config(provider: str) -> tuple[str, str]:
     return base_url.rstrip("/"), api_key
 
 
+
+
+def _temperature_for(provider: str) -> float:
+    """Kimi 系列模型只接受 temperature=1（其余值 400），其他 provider 用低温求稳。"""
+    return 1.0 if provider == "kimi" else 0.1
+
+
+def _configured(provider: str) -> bool:
+    try:
+        provider_config(provider)
+    except VisionGradingError:
+        return False
+    return True
+
+
+def _resolve_target(primary_provider: str, value: str) -> ModelTarget:
+    """Resolve legacy model names and explicit ``provider/model`` targets."""
+    raw = value.strip()
+    for separator in ("/", ":"):
+        if separator in raw:
+            provider, model = raw.split(separator, 1)
+            if provider and model:
+                return ModelTarget(provider.strip(), model.strip())
+
+    # Import lazily so the low-level model client stays usable in isolation.
+    from app.services.system_config import PROVIDER_MODELS
+
+    if raw in PROVIDER_MODELS.get(primary_provider, []):
+        return ModelTarget(primary_provider, raw)
+    providers = [
+        provider
+        for provider in _PROVIDER_PREFERENCE
+        if raw in PROVIDER_MODELS.get(provider, []) and _configured(provider)
+    ]
+    return ModelTarget(providers[0] if providers else primary_provider, raw)
+
+
+def _candidate_targets(
+    provider: str, model: str, fallback_models: list[str]
+) -> list[ModelTarget]:
+    targets = [ModelTarget(provider, model)]
+    targets.extend(_resolve_target(provider, item) for item in fallback_models if item.strip())
+    return list(dict.fromkeys(targets))
+
+
+def _provider_cooldown_reason(provider: str) -> str | None:
+    now = time.monotonic()
+    with _PROVIDER_COOLDOWNS_LOCK:
+        blocked = _PROVIDER_COOLDOWNS.get(provider)
+        if not blocked:
+            return None
+        expires_at, reason = blocked
+        if expires_at <= now:
+            _PROVIDER_COOLDOWNS.pop(provider, None)
+            return None
+        return reason
+
+
+def _cool_down_provider(provider: str, seconds: int, reason: str) -> None:
+    with _PROVIDER_COOLDOWNS_LOCK:
+        _PROVIDER_COOLDOWNS[provider] = (time.monotonic() + seconds, reason)
+
+
+def reset_provider_cooldowns() -> None:
+    """Clear process-local provider health state (primarily for tests/admin probes)."""
+    with _PROVIDER_COOLDOWNS_LOCK:
+        _PROVIDER_COOLDOWNS.clear()
+
+
+def _response_message(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except (ValueError, TypeError):
+        return response.text[:500]
+    error = payload.get("error") if isinstance(payload, dict) else None
+    if isinstance(error, dict):
+        return str(error.get("message") or error.get("type") or "")[:500]
+    return str(error or payload)[:500]
+
+
+def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
+    if response.status_code < 400:
+        return
+    detail = _response_message(response)
+    normalized = detail.lower()
+    if response.status_code == 403 and any(
+        token in normalized
+        for token in ("usage limit", "quota", "billing cycle", "purchase extra")
+    ):
+        reason = "当前模型额度已用完，系统将尝试备用通道"
+        _cool_down_provider(provider, 15 * 60, reason)
+        raise VisionGradingError(reason)
+    if response.status_code in {401, 403}:
+        reason = "当前模型服务暂不可用，系统将尝试备用通道"
+        _cool_down_provider(provider, 5 * 60, reason)
+        raise VisionGradingError(reason)
+    if response.status_code == 429:
+        reason = "当前模型请求较多，系统将尝试备用通道"
+        _cool_down_provider(provider, 60, reason)
+        raise VisionGradingError(reason)
+    if response.status_code >= 500:
+        reason = "模型服务暂时异常，系统将尝试备用通道"
+        _cool_down_provider(provider, 30, reason)
+        raise VisionGradingError(reason)
+    raise VisionGradingError(f"模型请求未被接受（HTTP {response.status_code}）")
+
 def _parse_json(text: str) -> dict:
     cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.I)
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.I)
@@ -148,7 +266,7 @@ def _endpoint(base_url: str) -> str:
 def _call_model(
     *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
 ) -> tuple[dict, str, int]:
-    parsed, used_model, elapsed_ms, _usage = _call_model_with_metadata(
+    parsed, _used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
         provider=provider,
         model=model,
         messages=messages,
@@ -160,26 +278,43 @@ def _call_model(
 def _call_model_with_metadata(
     *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
 ) -> tuple[dict, str, int, dict]:
-    base_url, api_key = provider_config(provider)
-    candidates = [model, *[item for item in fallback_models if item != model]]
+    parsed, used_provider, used_model, elapsed_ms, usage = _call_model_with_route(
+        provider=provider,
+        model=model,
+        messages=messages,
+        fallback_models=fallback_models,
+    )
+    if used_provider != provider:
+        usage = {**usage, "_used_provider": used_provider}
+    return parsed, used_model, elapsed_ms, usage
+
+
+def _call_model_with_route(
+    *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
+) -> tuple[dict, str, str, int, dict]:
+    candidates = _candidate_targets(provider, model, fallback_models)
     last_error: Exception | None = None
     for candidate in candidates:
         started = time.perf_counter()
         try:
+            cooldown_reason = _provider_cooldown_reason(candidate.provider)
+            if cooldown_reason:
+                raise VisionGradingError(cooldown_reason)
+            base_url, api_key = provider_config(candidate.provider)
             response = httpx.post(
                 _endpoint(base_url),
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={"model": candidate, "temperature": 0.1, "messages": messages},
+                json={
+                    "model": candidate.model,
+                    "temperature": _temperature_for(candidate.provider),
+                    "messages": messages,
+                },
                 timeout=settings.VISION_TIMEOUT_SECONDS,
             )
-            if response.status_code == 429 or response.status_code >= 500:
-                raise VisionGradingError(
-                    f"模型服务暂不可用（HTTP {response.status_code}）"
-                )
-            response.raise_for_status()
+            _raise_for_model_response(response, candidate.provider)
             payload = response.json()
             parsed = _parse_json(
                 payload.get("choices", [{}])[0].get("message", {}).get("content", "")
@@ -187,7 +322,8 @@ def _call_model_with_metadata(
             usage = payload.get("usage")
             return (
                 parsed,
-                candidate,
+                candidate.provider,
+                candidate.model,
                 round((time.perf_counter() - started) * 1000),
                 usage if isinstance(usage, dict) else {},
             )
@@ -200,7 +336,7 @@ def _call_model_with_metadata(
             VisionGradingError,
         ) as exc:
             last_error = exc
-    raise VisionGradingError(f"主模型和备用模型均失败：{last_error}")
+    raise VisionGradingError(f"可用模型均未完成请求：{last_error}")
 
 
 def call_json_model(
@@ -233,14 +369,36 @@ def call_json_model_with_metadata(
     )
 
 
+def call_json_model_with_route(
+    *,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    fallback_models: list[str] | None = None,
+) -> tuple[dict, str, str, int, dict]:
+    """Return payload plus the provider/model that actually completed the call."""
+    return _call_model_with_route(
+        provider=provider,
+        model=model,
+        messages=messages,
+        fallback_models=fallback_models or [],
+    )
+
+
 def extract_answer_image(
-    *, image_bytes: bytes, provider: str, model: str, question_label: str
+    *,
+    image_bytes: bytes,
+    provider: str,
+    model: str,
+    question_label: str,
+    fallback_models: list[str] | None = None,
 ) -> VisionExtraction:
     return extract_answer_images(
         image_bytes_list=[image_bytes],
         provider=provider,
         model=model,
         question_label=question_label,
+        fallback_models=fallback_models,
     )
 
 
@@ -250,6 +408,7 @@ def extract_answer_images(
     provider: str,
     model: str,
     question_label: str,
+    fallback_models: list[str] | None = None,
 ) -> VisionExtraction:
     if not image_bytes_list:
         raise VisionGradingError("题目没有可识别的区域图片")
@@ -271,10 +430,10 @@ def extract_answer_images(
                 },
             ]
         )
-    parsed, used_model, elapsed_ms = _call_model(
+    parsed, used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
         provider=provider,
         model=model,
-        fallback_models=[],
+        fallback_models=fallback_models or [],
         messages=[
             {
                 "role": "user",
@@ -292,7 +451,7 @@ def extract_answer_images(
         answer_type=str(parsed.get("answerType", "未知")),
         confidence=confidence,
         notes=notes,
-        provider=provider,
+        provider=used_provider,
         model=used_model,
         elapsed_ms=elapsed_ms,
     )
@@ -313,7 +472,7 @@ def grade_answer_text(
 评分细则：{standard_answer.rubric_text or "按答案正确程度给分"}
 评分点：{json.dumps(standard_answer.scoring_points, ensure_ascii=False)}
 只返回 JSON：{{"score":0,"confidence":0.0,"comment":"中文评语","evidence":[{{"point":"评分点","matched":true,"points":0,"reason":"依据"}}]}}。score 必须在 0 到满分之间；confidence 为 0 到 1。"""
-    parsed, used_model, elapsed_ms = _call_model(
+    parsed, used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
         provider=provider,
         model=model,
         fallback_models=fallback_models,
@@ -328,7 +487,7 @@ def grade_answer_text(
         confidence=confidence,
         comment=str(parsed.get("comment", ""))[:2000],
         evidence=evidence if isinstance(evidence, list) else [],
-        provider=provider,
+        provider=used_provider,
         model=used_model,
         elapsed_ms=elapsed_ms,
     )
@@ -342,7 +501,6 @@ def grade_answer_image(
     model: str,
     fallback_models: list[str],
 ) -> VisionGrade:
-    base_url, api_key = provider_config(provider)
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = f"""你是严谨的中文试卷阅卷教师。读取图片中的学生作答，根据标准答案和评分点给分。
 标准答案：{standard_answer.answer_text}
@@ -351,67 +509,33 @@ def grade_answer_image(
 评分点：{json.dumps(standard_answer.scoring_points, ensure_ascii=False)}
 只返回 JSON：{{"student_answer":"识别出的作答","score":0,"confidence":0.0,"comment":"中文评语","evidence":[{{"point":"评分点","matched":true,"points":0,"reason":"依据"}}]}}
 score 必须在 0 到满分之间；confidence 为 0 到 1。看不清时降低 confidence，不能臆测。"""
-    candidates = [model, *[item for item in fallback_models if item != model]]
-    last_error: Exception | None = None
-    for candidate in candidates:
-        started = time.perf_counter()
-        try:
-            response = httpx.post(
-                _endpoint(base_url),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": candidate,
-                    "temperature": 0.1,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/png;base64,{image}"
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                },
-                timeout=settings.VISION_TIMEOUT_SECONDS,
-            )
-            if response.status_code == 429 or response.status_code >= 500:
-                raise VisionGradingError(
-                    f"模型服务暂不可用（HTTP {response.status_code}）"
-                )
-            response.raise_for_status()
-            payload = response.json()
-            parsed = _parse_json(
-                payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
-            score = min(max(float(parsed["score"]), 0), standard_answer.max_score)
-            confidence = min(max(float(parsed["confidence"]), 0), 1)
-            evidence = parsed.get("evidence", [])
-            return VisionGrade(
-                student_answer=str(parsed.get("student_answer", ""))[:8000],
-                score=score,
-                confidence=confidence,
-                comment=str(parsed.get("comment", ""))[:2000],
-                evidence=evidence if isinstance(evidence, list) else [],
-                provider=provider,
-                model=candidate,
-                elapsed_ms=round((time.perf_counter() - started) * 1000),
-            )
-        except (
-            httpx.TimeoutException,
-            httpx.HTTPError,
-            KeyError,
-            TypeError,
-            ValueError,
-            VisionGradingError,
-        ) as exc:
-            last_error = exc
-            continue
-    raise VisionGradingError(f"主模型和备用模型均失败：{last_error}")
+    parsed, used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
+        provider=provider,
+        model=model,
+        fallback_models=fallback_models,
+        messages=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image}"},
+                    },
+                ],
+            }
+        ],
+    )
+    score = min(max(float(parsed["score"]), 0), standard_answer.max_score)
+    confidence = min(max(float(parsed["confidence"]), 0), 1)
+    evidence = parsed.get("evidence", [])
+    return VisionGrade(
+        student_answer=str(parsed.get("student_answer", ""))[:8000],
+        score=score,
+        confidence=confidence,
+        comment=str(parsed.get("comment", ""))[:2000],
+        evidence=evidence if isinstance(evidence, list) else [],
+        provider=used_provider,
+        model=used_model,
+        elapsed_ms=elapsed_ms,
+    )

@@ -20,7 +20,16 @@ OpenAPI.TOKEN = async () => {
 }
 
 const handleApiError = (error: Error) => {
-  if (error instanceof ApiError && [401, 403].includes(error.status)) {
+  if (!(error instanceof ApiError)) return
+  // 401 = 凭证失效（token 过期/用户被删），一律登出；
+  // 403 只在「凭证无法校验」时登出——角色权限不足（403 业务响应）不能踢登录，
+  // 否则教师访问 admin 专属接口会被误踢到登录页。
+  const isAuthFailure =
+    error.status === 401 ||
+    (error.status === 403 &&
+      (error.body as { detail?: string } | undefined)?.detail ===
+        "Could not validate credentials")
+  if (isAuthFailure) {
     localStorage.removeItem("access_token")
     window.location.href = "/login"
   }

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { visionProviderConfigured } from "./config.ts"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -6,6 +7,10 @@ test("new UI renders the reference Node layout response without rewriting it", a
   page,
 }) => {
   test.setTimeout(180_000)
+  test.skip(
+    !visionProviderConfigured,
+    "外部 Gemini 提供者未配置 API key，版面检测不可用",
+  )
   const login = await page.request.post(
     "http://localhost:8000/api/v1/login/access-token",
     {

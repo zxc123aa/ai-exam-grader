@@ -28,8 +28,17 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
+import { assignableRoles, ROLE_LABELS } from "./roleMeta"
 
 const formSchema = z
   .object({
@@ -42,7 +51,14 @@ const formSchema = z
     confirm_password: z
       .string()
       .min(1, { message: "Please confirm your password" }),
-    is_superuser: z.boolean(),
+    role: z.enum([
+      "platform_superuser",
+      "platform_support",
+      "school_owner",
+      "school_admin",
+      "teacher",
+      "student",
+    ]),
     is_active: z.boolean(),
   })
   .refine((data) => data.password === data.confirm_password, {
@@ -56,6 +72,8 @@ const AddUser = () => {
   const [isOpen, setIsOpen] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
+  const { user: currentUser } = useAuth()
+  const roleOptions = assignableRoles(currentUser)
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -66,8 +84,8 @@ const AddUser = () => {
       full_name: "",
       password: "",
       confirm_password: "",
-      is_superuser: false,
-      is_active: false,
+      role: "teacher",
+      is_active: true,
     },
   })
 
@@ -186,18 +204,27 @@ const AddUser = () => {
 
               <FormField
                 control={form.control}
-                name="is_superuser"
+                name="role"
                 render={({ field }) => (
-                  <FormItem className="flex items-center gap-3 space-y-0">
-                    <FormControl>
-                      <Checkbox
-                        checked={field.value}
-                        onCheckedChange={field.onChange}
-                      />
-                    </FormControl>
-                    <FormLabel className="font-normal">
-                      设为超级管理员
+                  <FormItem>
+                    <FormLabel>
+                      角色 <span className="text-destructive">*</span>
                     </FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue placeholder="请选择角色" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {roleOptions.map((role) => (
+                          <SelectItem key={role} value={role}>
+                            {ROLE_LABELS[role]}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
                   </FormItem>
                 )}
               />

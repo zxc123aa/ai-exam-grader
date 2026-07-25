@@ -11,10 +11,8 @@ import {
 import { useEffect, useMemo, useState } from "react"
 
 import {
-  ApiError,
   type ExamRegionPublic,
   ExamsService,
-  OpenAPI,
   type ProcessingTaskPublic,
   type StandardAnswerPublic,
   type StudentSubmissionPublic,
@@ -22,7 +20,9 @@ import {
   type SubmissionAnnotationStatus,
   TasksService,
 } from "@/client"
-import { Badge } from "@/components/ui/badge"
+import { ConfBadge } from "@/components/Common/ConfBadge"
+import { PageHead } from "@/components/Common/PageHead"
+import { Tag, type TagVariant } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -35,6 +35,11 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import useCustomToast from "@/hooks/useCustomToast"
+import {
+  fetchSubmissionAnnotationCropBlob,
+  fetchSubmissionPageImageBlob,
+  fetchSubmissionRegionCropBlob,
+} from "@/lib/submission-media"
 import { cn } from "@/lib/utils"
 import { handleError } from "@/utils"
 
@@ -45,7 +50,7 @@ export const Route = createFileRoute(
   head: () => ({
     meta: [
       {
-        title: "答卷复核 - 智阅卷",
+        title: "答卷复核 - 点凡阅卷",
       },
     ],
   }),
@@ -58,102 +63,6 @@ type AnnotationForm = {
   status: SubmissionAnnotationStatus
 }
 
-async function fetchSubmissionPageImageBlob(
-  examId: string,
-  submissionId: string,
-  pageNumber: number,
-) {
-  const token = localStorage.getItem("access_token")
-  const base = OpenAPI.BASE || ""
-  const response = await fetch(
-    `${base}/api/v1/exams/${examId}/submissions/${submissionId}/pages/${pageNumber}/image`,
-    {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    },
-  )
-  if (!response.ok) {
-    throw new ApiError(
-      {
-        method: "GET",
-        url: "/api/v1/exams/{exam_id}/submissions/{submission_id}/pages/{page_number}/image",
-      },
-      {
-        url: response.url,
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        body: await response.text(),
-      },
-      "Failed to load student submission preview",
-    )
-  }
-  return response.blob()
-}
-
-async function fetchSubmissionAnnotationCropBlob(
-  examId: string,
-  submissionId: string,
-  annotationId: string,
-) {
-  const token = localStorage.getItem("access_token")
-  const base = OpenAPI.BASE || ""
-  const response = await fetch(
-    `${base}/api/v1/exams/${examId}/submissions/${submissionId}/annotations/${annotationId}/crop`,
-    {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    },
-  )
-  if (!response.ok) {
-    throw new ApiError(
-      {
-        method: "GET",
-        url: "/api/v1/exams/{exam_id}/submissions/{submission_id}/annotations/{annotation_id}/crop",
-      },
-      {
-        url: response.url,
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        body: await response.text(),
-      },
-      "Failed to load annotation crop",
-    )
-  }
-  return response.blob()
-}
-
-async function fetchSubmissionRegionCropBlob(
-  examId: string,
-  submissionId: string,
-  regionId: string,
-) {
-  const token = localStorage.getItem("access_token")
-  const base = OpenAPI.BASE || ""
-  const response = await fetch(
-    `${base}/api/v1/exams/${examId}/submissions/${submissionId}/regions/${regionId}/crop`,
-    {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    },
-  )
-  if (!response.ok) {
-    throw new ApiError(
-      {
-        method: "GET",
-        url: "/api/v1/exams/{exam_id}/submissions/{submission_id}/regions/{region_id}/crop",
-      },
-      {
-        url: response.url,
-        ok: response.ok,
-        status: response.status,
-        statusText: response.statusText,
-        body: await response.text(),
-      },
-      "Failed to load region crop",
-    )
-  }
-  return response.blob()
-}
-
 function formatStatus(status?: string | null) {
   const value = status || "needs_review"
   const labels: Record<string, string> = {
@@ -164,6 +73,8 @@ function formatStatus(status?: string | null) {
     queued: "排队中",
     running: "处理中",
     completed: "已完成",
+    succeeded: "已完成",
+    ready: "已就绪",
     failed: "失败",
     registration_pending: "等待配准",
     manual_confirmed: "人工确认",
@@ -183,6 +94,25 @@ function formatOcrStatus(status?: string | null) {
     failed: "失败",
   }
   return labels[value] || value
+}
+
+/** 状态 → Tag 颜色：成功绿 / 待处理黄 / 进行中蓝 / 人工粉 / 失败红 */
+function statusTagVariant(status?: string | null): TagVariant {
+  const value = status || "needs_review"
+  if (value === "manual_confirmed") return "pink"
+  if (
+    ["accepted", "completed", "succeeded", "ready", "auto_confirmed"].includes(
+      value,
+    )
+  ) {
+    return "mint"
+  }
+  if (["failed", "rejected"].includes(value)) return "red"
+  if (["queued", "running"].includes(value)) return "sky"
+  if (["needs_review", "pending", "registration_pending"].includes(value)) {
+    return "amber"
+  }
+  return "indigo"
 }
 
 function formatTaskProgress(task?: ProcessingTaskPublic | null) {
@@ -518,7 +448,7 @@ function AnnotationOcrDraft({
   if (!annotation) {
     return (
       <div className="rounded-md border p-3 text-xs text-muted-foreground">
-        请先运行自动处理，生成 OCR 识别草稿。
+        请先运行自动处理，生成识别结果。
       </div>
     )
   }
@@ -527,20 +457,13 @@ function AnnotationOcrDraft({
   return (
     <div className="grid gap-2 rounded-md border p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">OCR 识别草稿</div>
-        <Badge
-          variant={hasText ? "secondary" : "outline"}
-          className="capitalize"
-          data-testid="annotation-ocr-status"
-        >
-          {formatOcrStatus(annotation.ocr_status)}
-        </Badge>
+        <div className="text-xs font-medium">识别结果</div>
+        <span data-testid="annotation-ocr-status">
+          <Tag variant={statusTagVariant(annotation.ocr_status)}>
+            {formatOcrStatus(annotation.ocr_status)}
+          </Tag>
+        </span>
       </div>
-      {annotation.ocr_engine && (
-        <div className="text-xs text-muted-foreground">
-          识别引擎：{annotation.ocr_engine}
-        </div>
-      )}
       {hasText ? (
         <div
           className="max-h-36 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/50 p-2 text-xs"
@@ -549,15 +472,10 @@ function AnnotationOcrDraft({
           {annotation.ocr_text}
         </div>
       ) : (
-        <div className="text-xs text-muted-foreground">暂无 OCR 识别文本。</div>
+        <div className="text-xs text-muted-foreground">暂无识别文本。</div>
       )}
     </div>
   )
-}
-
-function formatConfidence(value?: number | null) {
-  if (value == null) return "n/a"
-  return `${Math.round(value * 100)}%`
 }
 
 function StandardAnswerReference({
@@ -583,9 +501,9 @@ function StandardAnswerReference({
     >
       <div className="flex items-center justify-between gap-2">
         <div className="text-xs font-medium">标准答案</div>
-        <Badge variant={answer.status === "ready" ? "secondary" : "outline"}>
+        <Tag variant={statusTagVariant(answer.status)}>
           {formatStatus(answer.status)}
-        </Badge>
+        </Tag>
       </div>
       <div className="max-h-28 overflow-auto whitespace-pre-wrap rounded-sm bg-muted/50 p-2 text-xs">
         {answer.answer_text}
@@ -628,14 +546,10 @@ function GradingDraft({
       data-testid="review-grading-draft"
     >
       <div className="flex items-center justify-between gap-2">
-        <div className="text-xs font-medium">AI 评分草稿</div>
-        <Badge
-          variant={
-            annotation.grading_status === "succeeded" ? "secondary" : "outline"
-          }
-        >
+        <div className="text-xs font-medium">评分草稿</div>
+        <Tag variant={statusTagVariant(annotation.grading_status)}>
           {formatStatus(annotation.grading_status)}
-        </Badge>
+        </Tag>
       </div>
       {hasSuggestion ? (
         <div className="grid gap-2">
@@ -644,9 +558,11 @@ function GradingDraft({
               建议得分 {annotation.suggested_score}
               {annotation.max_score != null ? ` / ${annotation.max_score}` : ""}
             </span>
-            <span className="text-muted-foreground">
-              {formatConfidence(annotation.grading_confidence)}
-            </span>
+            {annotation.grading_confidence != null ? (
+              <ConfBadge value={annotation.grading_confidence * 100} />
+            ) : (
+              <span className="text-muted-foreground">n/a</span>
+            )}
           </div>
           {annotation.suggested_comment && (
             <div className="whitespace-pre-wrap text-xs text-muted-foreground">
@@ -848,25 +764,31 @@ function SubmissionReview() {
             考试管理
           </Link>
         </Button>
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight">
-              {examQuery.data?.title ?? "答卷复核"}
-            </h1>
-            <p className="text-muted-foreground">
-              {submission?.student_name || "未命名学生"} ·{" "}
-              {submission?.student_identifier || "无学号"}
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="outline" className="capitalize">
-              {formatStatus(submission?.status ?? "registration_pending")}
-            </Badge>
-            <Badge variant="secondary" className="capitalize">
-              {formatStatus(submission?.registration_status ?? "pending")}
-            </Badge>
-          </div>
-        </div>
+        <PageHead
+          className="mb-0"
+          title={examQuery.data?.title ?? "答卷复核"}
+          subtitle={`${submission?.student_name || "未命名学生"} · ${
+            submission?.student_identifier || "无学号"
+          }`}
+          actions={
+            <>
+              <Tag
+                variant={statusTagVariant(
+                  submission?.status ?? "registration_pending",
+                )}
+              >
+                {formatStatus(submission?.status ?? "registration_pending")}
+              </Tag>
+              <Tag
+                variant={statusTagVariant(
+                  submission?.registration_status ?? "pending",
+                )}
+              >
+                {formatStatus(submission?.registration_status ?? "pending")}
+              </Tag>
+            </>
+          }
+        />
       </div>
 
       {isLoading || !submission ? (
@@ -892,7 +814,7 @@ function SubmissionReview() {
           />
 
           <aside className="grid content-start gap-4">
-            <div className="grid gap-3 rounded-md border p-4">
+            <div className="grid gap-3 rounded-2xl border bg-card p-4 shadow-card">
               <div className="flex items-start justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">自动处理流程</div>
@@ -922,16 +844,16 @@ function SubmissionReview() {
               </LoadingButton>
             </div>
 
-            <div className="rounded-md border">
+            <div className="rounded-2xl border bg-card shadow-card">
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <span className="text-sm font-medium">模板题目区域</span>
-                <Badge variant="secondary">
+                <Tag variant="indigo">
                   {
                     regions.filter(
                       (region) => region.region_role !== "continuation",
                     ).length
                   }
-                </Badge>
+                </Tag>
               </div>
               {regions.length === 0 ? (
                 <div className="px-4 py-8 text-sm text-muted-foreground">
@@ -974,11 +896,11 @@ function SubmissionReview() {
                           </span>
                         </span>
                         {annotation ? (
-                          <Badge variant="secondary" className="capitalize">
+                          <Tag variant={statusTagVariant(annotation.status)}>
                             {formatStatus(annotation.status)}
-                          </Badge>
+                          </Tag>
                         ) : (
-                          <Badge variant="outline">未批注</Badge>
+                          <Tag variant="indigo">未批注</Tag>
                         )}
                       </button>
                     )
@@ -987,7 +909,7 @@ function SubmissionReview() {
               )}
             </div>
 
-            <div className="grid gap-4 rounded-md border p-4">
+            <div className="grid gap-4 rounded-2xl border bg-card p-4 shadow-card">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <div className="text-sm font-medium">
@@ -1127,6 +1049,7 @@ function SubmissionReview() {
                 loading={saveMutation.isPending}
                 disabled={!selectedRegion}
                 onClick={() => saveMutation.mutate()}
+                className="bg-gradient-primary text-white hover:opacity-90"
               >
                 <MessageSquareText />
                 保存批注

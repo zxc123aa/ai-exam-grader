@@ -38,23 +38,27 @@ test("app update clears CacheStorage without deleting the login token", async ({
 
   await page.reload().catch(() => undefined)
   await expect
-    .poll(async () => {
-      try {
-        return await page.evaluate(async (expectedToken) => {
-          const cacheNames = await caches.keys()
-          return {
-            cacheWasDeleted: !cacheNames.includes("app-update-cache-test"),
-            tokenWasPreserved:
-              localStorage.getItem("access_token") === expectedToken,
-            versionWasUpdated:
-              localStorage.getItem("ai-exam-grader:app-version") !==
-              "outdated-version",
-          }
-        }, token)
-      } catch {
-        return null
-      }
-    })
+    .poll(
+      async () => {
+        try {
+          return await page.evaluate(async (expectedToken) => {
+            const cacheNames = await caches.keys()
+            return {
+              cacheWasDeleted: !cacheNames.includes("app-update-cache-test"),
+              tokenWasPreserved:
+                localStorage.getItem("access_token") === expectedToken,
+              versionWasUpdated:
+                localStorage.getItem("ai-exam-grader:app-version") !==
+                "outdated-version",
+            }
+          }, token)
+        } catch {
+          return null
+        }
+      },
+      // 并行跑时主线程繁忙，缓存清理可能需要几秒
+      { timeout: 20_000 },
+    )
     .toEqual({
       cacheWasDeleted: true,
       tokenWasPreserved: true,

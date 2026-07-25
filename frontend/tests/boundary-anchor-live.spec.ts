@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { visionProviderConfigured } from "./config.ts"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -6,6 +7,10 @@ test("page 2 keeps the complete answer for question 21 above question 22", async
   page,
 }) => {
   test.setTimeout(180_000)
+  test.skip(
+    !visionProviderConfigured,
+    "外部 Gemini 提供者未配置 API key，版面检测不可用",
+  )
   const login = await page.request.post(
     "http://localhost:8000/api/v1/login/access-token",
     {
@@ -62,7 +67,7 @@ test("page 2 keeps the complete answer for question 21 above question 22", async
   expect(found).toBeTruthy()
 
   await page.goto(`/exams/${exam.id}/marking`)
-  await expect(page.getByRole("button", { name: "试卷页面" })).toBeVisible()
+  await expect(page.getByRole("button", { name: "导入试卷" })).toBeVisible()
   for (let pageNumber = 1; pageNumber < targetPageNumber; pageNumber += 1) {
     await page.getByRole("button", { name: "下一页" }).click()
   }

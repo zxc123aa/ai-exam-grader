@@ -11,11 +11,25 @@ from app.core.config import settings
 from app.models import StoredFile, User
 
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
+MAX_ZIP_UPLOAD_BYTES = 100 * 1024 * 1024
 UPLOAD_CHUNK_SIZE = 1024 * 1024
-EXAM_FILE_CONTENT_TYPES = {"application/pdf", "image/jpeg", "image/png"}
-EXAM_FILE_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png"}
+ZIP_CONTENT_TYPES = {"application/zip", "application/x-zip-compressed"}
+EXAM_FILE_CONTENT_TYPES = {
+    "application/pdf",
+    "image/jpeg",
+    "image/png",
+    *ZIP_CONTENT_TYPES,
+}
+EXAM_FILE_EXTENSIONS = {".pdf", ".jpg", ".jpeg", ".png", ".zip"}
 SCAN_PHOTO_CONTENT_TYPES = {"image/jpeg", "image/png"}
 SCAN_PHOTO_EXTENSIONS = {".jpg", ".jpeg", ".png"}
+
+
+def is_zip_upload(*, filename: str | None, content_type: str | None) -> bool:
+    """按扩展名或 content_type 判断上传载体是否为 zip 答卷包。"""
+    if content_type in ZIP_CONTENT_TYPES:
+        return True
+    return bool(filename) and Path(filename).suffix.lower() == ".zip"
 
 
 def get_stored_file_path(stored_file: StoredFile) -> Path:
@@ -36,12 +50,12 @@ def validate_exam_upload_file(file: UploadFile) -> None:
     if extension not in EXAM_FILE_EXTENSIONS:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF, JPG, and PNG files are supported",
+            detail="Only PDF, JPG, PNG, and ZIP files are supported",
         )
     if file.content_type not in EXAM_FILE_CONTENT_TYPES:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF, JPG, and PNG files are supported",
+            detail="Only PDF, JPG, PNG, and ZIP files are supported",
         )
 
 
@@ -69,6 +83,8 @@ def assert_allowed_signature(
         return
     if content_type == "image/jpeg" and contents_start.startswith(b"\xff\xd8\xff"):
         return
+    if content_type in ZIP_CONTENT_TYPES and contents_start.startswith(b"PK"):
+        return
 
     if content_type in allowed_content_types:
         raise HTTPException(
@@ -78,7 +94,10 @@ def assert_allowed_signature(
 
 
 async def read_upload_file_bytes(
-    *, file: UploadFile, max_bytes: int = MAX_UPLOAD_BYTES
+    *,
+    file: UploadFile,
+    max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_status: int = status.HTTP_413_CONTENT_TOO_LARGE,
 ) -> bytes:
     size = 0
     buffer = BytesIO()
@@ -86,7 +105,7 @@ async def read_upload_file_bytes(
         size += len(chunk)
         if size > max_bytes:
             raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                status_code=too_large_status,
                 detail="Uploaded file is too large",
             )
         buffer.write(chunk)
@@ -102,6 +121,7 @@ async def store_upload_file(
     commit: bool = True,
     validate_exam_file: bool = False,
     max_bytes: int = MAX_UPLOAD_BYTES,
+    too_large_status: int = status.HTTP_413_CONTENT_TOO_LARGE,
 ) -> StoredFile:
     if validate_exam_file:
         validate_exam_upload_file(file)
@@ -122,7 +142,7 @@ async def store_upload_file(
                 size += len(chunk)
                 if size > max_bytes:
                     raise HTTPException(
-                        status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                        status_code=too_large_status,
                         detail="Uploaded file is too large",
                     )
                 if len(contents_start) < 16:

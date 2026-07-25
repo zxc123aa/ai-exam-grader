@@ -1,7 +1,7 @@
 import { Link as RouterLink } from "@tanstack/react-router"
 import { ChevronsUpDown, LogOut, Settings } from "lucide-react"
-
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { ROLE_LABELS, resolveRole } from "@/components/Admin/roleMeta"
+import { AvatarGradient } from "@/components/Common/AvatarGradient"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,23 +17,26 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar"
 import useAuth from "@/hooks/useAuth"
-import { getInitials } from "@/utils"
 
 interface UserInfoProps {
   fullName?: string
   email?: string
+  roleLabel?: string
 }
 
-function UserInfo({ fullName, email }: UserInfoProps) {
+function UserInfo({ fullName, email, roleLabel }: UserInfoProps) {
   return (
     <div className="flex items-center gap-2.5 w-full min-w-0">
-      <Avatar className="size-8">
-        <AvatarFallback className="bg-zinc-600 text-white">
-          {getInitials(fullName || "用户")}
-        </AvatarFallback>
-      </Avatar>
+      <AvatarGradient name={fullName || "用户"} size={32} />
       <div className="flex flex-col items-start min-w-0">
-        <p className="text-sm font-medium truncate w-full">{fullName}</p>
+        <p className="text-sm font-medium truncate w-full">
+          {fullName}
+          {roleLabel && (
+            <span className="ml-1.5 font-normal text-muted-foreground text-xs">
+              {roleLabel}
+            </span>
+          )}
+        </p>
         <p className="text-xs text-muted-foreground truncate w-full">{email}</p>
       </div>
     </div>
@@ -65,7 +68,11 @@ export function User({ user }: { user: any }) {
               className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
               data-testid="user-menu"
             >
-              <UserInfo fullName={user?.full_name} email={user?.email} />
+              <UserInfo
+                fullName={user?.full_name}
+                email={user?.email}
+                roleLabel={ROLE_LABELS[resolveRole(user)]}
+              />
               <ChevronsUpDown className="ml-auto size-4 text-muted-foreground" />
             </SidebarMenuButton>
           </DropdownMenuTrigger>
@@ -76,7 +83,11 @@ export function User({ user }: { user: any }) {
             sideOffset={4}
           >
             <DropdownMenuLabel className="p-0 font-normal">
-              <UserInfo fullName={user?.full_name} email={user?.email} />
+              <UserInfo
+                fullName={user?.full_name}
+                email={user?.email}
+                roleLabel={ROLE_LABELS[resolveRole(user)]}
+              />
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <RouterLink to="/settings" onClick={handleMenuClick}>

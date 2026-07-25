@@ -27,8 +27,9 @@ import {
   OpenAPI,
   type StudentSubmissionPublic,
 } from "@/client"
+import { EmptyState } from "@/components/Common/EmptyState"
+import { Tag, type TagVariant } from "@/components/Common/Tag"
 import { FolderBatchUpload } from "@/components/Exams/FolderBatchUpload"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -71,6 +72,22 @@ function formatQuality(quality?: number | null) {
   return `${Math.round(quality * 100)}%`
 }
 
+/** 状态 → Tag 颜色：成功绿 / 待处理黄 / 进行中蓝 / 人工粉 / 失败红 */
+function statusTagVariant(status?: string | null): TagVariant {
+  const value = status || "registration_pending"
+  if (value === "manual_confirmed") return "pink"
+  if (
+    ["processed", "completed", "auto_registered", "auto_confirmed"].includes(
+      value,
+    )
+  ) {
+    return "mint"
+  }
+  if (value === "failed") return "red"
+  if (["queued", "running"].includes(value)) return "sky"
+  return "amber"
+}
+
 function readSubmissionScanMetadata(submission: StudentSubmissionPublic) {
   const metadata = submission.registration_homography
   if (!metadata || typeof metadata !== "object") {
@@ -93,7 +110,7 @@ function readSubmissionScanMetadata(submission: StudentSubmissionPublic) {
     low_sharpness: "图片清晰度偏低",
     low_gutter_confidence: "双页中缝置信度偏低",
     split_half_page_fallback: "使用了左右页回退分割",
-    vision_page_polygon_rejected: "Gemini 页面边界未通过几何校验",
+    vision_page_polygon_rejected: "页面边界未通过几何校验",
     doc_unwarping_unavailable: "文档方向/曲面展开服务暂不可用",
     doc_unwarping_quality_rejected: "曲面展开结果退化，已保留透视校正页",
   }
@@ -208,7 +225,7 @@ function SubmissionPreview({
   }, [pageCount])
 
   return (
-    <div className="grid gap-3 rounded-md border p-4">
+    <div className="grid gap-3 rounded-2xl border bg-card p-4 shadow-card">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate text-sm font-medium">
@@ -297,6 +314,12 @@ function isSubmissionPdf(file: File) {
   )
 }
 
+function isSubmissionZip(file: File) {
+  return (
+    file.type === "application/zip" || file.name.toLowerCase().endsWith(".zip")
+  )
+}
+
 export function StudentSubmissionsContent({
   exam,
   active = true,
@@ -325,7 +348,7 @@ export function StudentSubmissionsContent({
     enabled: active,
   })
 
-  // 单个上传控件按文件类型分流：PDF 直接作为答卷导入，
+  // 单个上传控件按文件类型分流：PDF/zip 直接作为答卷导入（zip 由后端解包合并），
   // JPG/PNG 照片走 preprocess-photo 接口先校正再转成答卷。
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
@@ -338,7 +361,7 @@ export function StudentSubmissionsContent({
       const failed: string[] = []
       for (const file of files) {
         try {
-          if (isSubmissionPdf(file)) {
+          if (isSubmissionPdf(file) || isSubmissionZip(file)) {
             await ExamsService.uploadStudentSubmission({
               examId: exam.id,
               formData: {
@@ -476,12 +499,12 @@ export function StudentSubmissionsContent({
 
   return (
     <div className="grid gap-5">
-      <div className="grid gap-3 rounded-md border p-4">
+      <div className="grid gap-3 rounded-2xl border bg-card p-5 shadow-card">
         <div>
           <div className="text-sm font-medium">上传学生答卷</div>
           <p className="mt-1 text-xs text-muted-foreground">
             一次多选会为每个文件各创建一份答卷，适合「不同学生各传一份」的场景；同一学生有多个文件请用下方文件夹批量上传，或先传一份再用列表里的「追加页面」。PDF
-            直接导入，照片（JPG/PNG）会先自动校正再转成答卷。姓名/学号可留空，仅单份上传时支持预填。
+            直接导入，zip（内装照片）自动解包合并，照片（JPG/PNG）会先自动校正再转成答卷。姓名/学号可留空，仅单份上传时支持预填。
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -489,7 +512,7 @@ export function StudentSubmissionsContent({
             key={inputKey}
             data-testid="submission-file-input"
             type="file"
-            accept=".pdf,.jpg,.jpeg,.png,image/png,image/jpeg"
+            accept=".pdf,.jpg,.jpeg,.png,.zip,image/png,image/jpeg,application/zip"
             multiple
             onChange={(event) =>
               setSelectedFiles(Array.from(event.target.files ?? []))
@@ -501,7 +524,7 @@ export function StudentSubmissionsContent({
             loading={uploadMutation.isPending}
             disabled={selectedFiles.length === 0}
             onClick={() => uploadMutation.mutate(selectedFiles)}
-            className="sm:w-36"
+            className="sm:w-36 bg-gradient-primary text-white hover:opacity-90"
           >
             <FileUp />
             上传 {selectedFiles.length || ""}
@@ -530,18 +553,18 @@ export function StudentSubmissionsContent({
         onUploadingChange={onUploadingChange}
       />
 
-      <div className="rounded-md border">
+      <div className="rounded-2xl border bg-card shadow-card">
         <input
           ref={appendInputRef}
           data-testid="submission-append-input"
           type="file"
-          accept=".pdf,.jpg,.jpeg,.png,image/png,image/jpeg"
+          accept=".pdf,.jpg,.jpeg,.png,.zip,image/png,image/jpeg,application/zip"
           className="hidden"
           onChange={handleAppendFileChange}
         />
         <div className="flex items-center justify-between border-b px-4 py-3">
           <span className="text-sm font-medium">学生答卷</span>
-          <Badge variant="secondary">{submissions.length}</Badge>
+          <Tag variant="indigo">{submissions.length}</Tag>
         </div>
         {isLoading ? (
           <div className="flex items-center gap-2 px-4 py-8 text-sm text-muted-foreground">
@@ -549,9 +572,12 @@ export function StudentSubmissionsContent({
             正在加载答卷
           </div>
         ) : submissions.length === 0 ? (
-          <div className="px-4 py-8 text-sm text-muted-foreground">
-            这场考试还没有上传学生答卷。
-          </div>
+          <EmptyState
+            className="border-0 py-10"
+            icon={FileUp}
+            title="还没有学生答卷"
+            description="上传 PDF 或照片后，在这里与试卷模板配准并预览"
+          />
         ) : (
           <div className="divide-y">
             {submissions.map((submission) => {
@@ -573,29 +599,27 @@ export function StudentSubmissionsContent({
                     </div>
                     {submission.original_stored_file_id && (
                       <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                        <Badge variant="outline">已保留原图</Badge>
+                        <Tag variant="indigo">已保留原图</Tag>
                         {scanMetadata.status && (
-                          <Badge
+                          <Tag
                             variant={
-                              scanMetadata.status === "pass"
-                                ? "secondary"
-                                : "destructive"
+                              scanMetadata.status === "pass" ? "mint" : "amber"
                             }
                           >
                             {scanMetadata.status === "pass"
                               ? "扫描通过"
                               : "扫描需复核"}
-                          </Badge>
+                          </Tag>
                         )}
                         {scanMetadata.totalMs != null && (
-                          <Badge variant="outline">
+                          <Tag variant="sky">
                             扫描 {(scanMetadata.totalMs / 1000).toFixed(1)} 秒
-                          </Badge>
+                          </Tag>
                         )}
                       </div>
                     )}
                     {scanMetadata.warnings.length > 0 && (
-                      <div className="mt-2 rounded-md bg-destructive/5 px-3 py-2 text-xs text-destructive">
+                      <div className="mt-2 rounded-lg bg-amber-500/10 px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
                         {scanMetadata.warnings.slice(0, 2).join("；")}
                         {scanMetadata.warnings.length > 2
                           ? `；另有 ${scanMetadata.warnings.length - 2} 项提示`
@@ -604,15 +628,17 @@ export function StudentSubmissionsContent({
                     )}
                   </div>
                   <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                    <Badge variant="outline" className="capitalize">
+                    <Tag variant={statusTagVariant(submission.status)}>
                       {formatStatus(submission.status)}
-                    </Badge>
-                    <Badge variant="secondary" className="capitalize">
+                    </Tag>
+                    <Tag
+                      variant={statusTagVariant(submission.registration_status)}
+                    >
                       {formatStatus(submission.registration_status)}
                       {formatQuality(submission.registration_quality)
                         ? ` · ${formatQuality(submission.registration_quality)}`
                         : ""}
-                    </Badge>
+                    </Tag>
                     <Button
                       data-testid={`confirm-registration-${submission.id}`}
                       variant="outline"
@@ -667,11 +693,9 @@ export function StudentSubmissionsContent({
                     </Button>
                     <Button variant="outline" size="sm" asChild>
                       <Link
-                        to="/exams/$examId/submissions/$submissionId/review"
-                        params={{
-                          examId: exam.id,
-                          submissionId: submission.id,
-                        }}
+                        to="/exams/$examId/workbench"
+                        params={{ examId: exam.id }}
+                        search={{ student: submission.student_name ?? "" }}
                       >
                         <SquarePen />
                         复核
