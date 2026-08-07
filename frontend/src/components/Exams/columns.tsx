@@ -31,7 +31,7 @@ function ExamRowActions({ exam }: { exam: ExamPublic }) {
     <div className="flex justify-end gap-2">
       <Button size="sm" asChild>
         <Link to={target} params={{ examId: exam.id }}>
-          进入
+          {allDone ? "进入批卷" : `继续：${currentStep.label}`}
         </Link>
       </Button>
       <DropdownMenu>

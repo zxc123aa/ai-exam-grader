@@ -1,8 +1,10 @@
 import re
 import uuid
+from collections.abc import Callable
 
 import dramatiq
 from dramatiq.brokers.redis import RedisBroker
+from sqlalchemy import text
 from sqlmodel import Session, select
 
 from app.core.config import settings
@@ -20,6 +22,7 @@ from app.models import (
     SubmissionAnnotationStatus,
     get_datetime_utc,
 )
+from app.services.object_storage import materialize_storage_key
 from app.services.ocr import extract_ocr_draft
 from app.services.submission_crops import (
     resolve_exam_region_paper_page,
@@ -28,6 +31,185 @@ from app.services.submission_crops import (
 
 redis_broker = RedisBroker(url=settings.REDIS_URL)
 dramatiq.set_broker(redis_broker)
+
+SCAN_PREPROCESSING_LOCK_ID = "00000000-0000-0000-0000-000000005ca0"
+
+
+def _run_once(resource_id: str, callback: Callable[..., None], *args: str) -> bool:
+    """Hold a PostgreSQL advisory lock for the full worker operation."""
+    lock_key = uuid.UUID(resource_id).int & 0x7FFF_FFFF_FFFF_FFFF
+    with Session(engine) as lock_session:
+        locked = lock_session.exec(
+            text("SELECT pg_try_advisory_lock(:key)").bindparams(key=lock_key)
+        ).one()[0]
+        if not locked:
+            return False
+        try:
+            callback(*args)
+        finally:
+            lock_session.exec(
+                text("SELECT pg_advisory_unlock(:key)").bindparams(key=lock_key)
+            )
+        return True
+
+
+def _run_org_job_once(
+    resource_id: str,
+    org_id: uuid.UUID,
+    task_type: str,
+    callback: Callable[..., None],
+    *args: str,
+) -> bool:
+    from app.services.job_control import organization_job_slot
+
+    with organization_job_slot(
+        org_id=org_id, task_type=task_type, resource_id=resource_id
+    ) as acquired:
+        if not acquired:
+            return False
+        _run_once(resource_id, callback, *args)
+        return True
+
+
+@dramatiq.actor(max_retries=0)
+def process_grading_run(run_id: str) -> None:
+    from app.models import Exam, GradingRun, GradingRunStatus
+    from app.services.grading_workflow import execute_grading_run
+
+    with Session(engine) as session:
+        run = session.get(GradingRun, uuid.UUID(run_id))
+        if not run or run.status in {
+            GradingRunStatus.RUNNING,
+            GradingRunStatus.COMPLETED,
+        }:
+            return
+        exam = session.get(Exam, run.exam_id)
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        run_id, exam.org_id, "grading", execute_grading_run, run_id
+    ):
+        process_grading_run.send_with_options(args=(run_id,), delay=5000)
+
+
+@dramatiq.actor(max_retries=0)
+def process_recognition_run(run_id: str) -> None:
+    from app.models import Exam, GradingRun, GradingRunStatus
+    from app.services.recognition_workflow import execute_recognition_run
+
+    with Session(engine) as session:
+        run = session.get(GradingRun, uuid.UUID(run_id))
+        if not run or run.status in {
+            GradingRunStatus.RUNNING,
+            GradingRunStatus.COMPLETED,
+        }:
+            return
+        exam = session.get(Exam, run.exam_id)
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        run_id, exam.org_id, "recognition", execute_recognition_run, run_id
+    ):
+        process_recognition_run.send_with_options(args=(run_id,), delay=5000)
+
+
+@dramatiq.actor(max_retries=0)
+def process_rubric_generation(task_id: str, exam_id: str) -> None:
+    from app.models import Exam, ProcessingTask, ProcessingTaskStatus
+    from app.services.rubric_workflow import execute_rubric_generation
+
+    with Session(engine) as session:
+        task = session.get(ProcessingTask, uuid.UUID(task_id))
+        if not task or task.status in {
+            ProcessingTaskStatus.RUNNING,
+            ProcessingTaskStatus.SUCCEEDED,
+        }:
+            return
+        exam = session.get(Exam, uuid.UUID(exam_id))
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        task_id,
+        exam.org_id,
+        "rubric_generation",
+        execute_rubric_generation,
+        task_id,
+        exam_id,
+    ):
+        process_rubric_generation.send_with_options(args=(task_id, exam_id), delay=5000)
+
+
+@dramatiq.actor(max_retries=0)
+def process_question_recognition_run(run_id: str) -> None:
+    from app.models import Exam, QuestionRecognitionRun, WorkflowRunStatus
+    from app.services.question_answer_workflow import execute_question_recognition
+
+    with Session(engine) as session:
+        run = session.get(QuestionRecognitionRun, uuid.UUID(run_id))
+        if not run or run.status in {
+            WorkflowRunStatus.RUNNING,
+            WorkflowRunStatus.COMPLETED,
+        }:
+            return
+        exam = session.get(Exam, run.exam_id)
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        run_id,
+        exam.org_id,
+        "question_recognition",
+        execute_question_recognition,
+        run_id,
+    ):
+        process_question_recognition_run.send_with_options(args=(run_id,), delay=5000)
+
+
+@dramatiq.actor(max_retries=0)
+def process_answer_preparation_run(run_id: str) -> None:
+    from app.models import AnswerPreparationRun, Exam, WorkflowRunStatus
+    from app.services.question_answer_workflow import execute_answer_preparation
+
+    with Session(engine) as session:
+        run = session.get(AnswerPreparationRun, uuid.UUID(run_id))
+        if not run or run.status in {
+            WorkflowRunStatus.RUNNING,
+            WorkflowRunStatus.COMPLETED,
+        }:
+            return
+        exam = session.get(Exam, run.exam_id)
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        run_id,
+        exam.org_id,
+        "answer_preparation",
+        execute_answer_preparation,
+        run_id,
+    ):
+        process_answer_preparation_run.send_with_options(args=(run_id,), delay=5000)
+
+
+@dramatiq.actor(max_retries=0)
+def reconcile_billing_reservations() -> None:
+    from app.services.billing import reconcile_stale_reservations
+
+    with Session(engine) as session:
+        reconcile_stale_reservations(session)
+        session.commit()
+
+
+@dramatiq.actor(max_retries=5, min_backoff=5_000, max_backoff=300_000)
+def dispatch_outbox_events() -> None:
+    from app.services.outbox import dispatch_pending_events
+
+    with Session(engine) as session:
+        dispatch_pending_events(session)
+        session.commit()
 
 
 def tokenize_for_grading(text: str) -> set[str]:
@@ -64,7 +246,9 @@ def build_grading_draft(
 
     if annotation.ocr_status != "succeeded":
         annotation.suggested_score = None
-        annotation.suggested_comment = "OCR draft is not available for automatic scoring."
+        annotation.suggested_comment = (
+            "OCR draft is not available for automatic scoring."
+        )
         annotation.grading_confidence = 0
         annotation.grading_reasons = [
             {
@@ -86,7 +270,9 @@ def build_grading_draft(
 
     if annotation.ocr_confidence is not None and annotation.ocr_confidence < 0.9:
         annotation.suggested_score = None
-        annotation.suggested_comment = "OCR confidence is low; teacher review is required."
+        annotation.suggested_comment = (
+            "OCR confidence is low; teacher review is required."
+        )
         annotation.grading_confidence = annotation.ocr_confidence
         annotation.grading_reasons = [
             {
@@ -151,6 +337,72 @@ def process_test_task(task_id: str) -> None:
 @dramatiq.actor
 def process_submission_processing_task(task_id: str) -> None:
     run_submission_processing_task(task_id)
+
+
+@dramatiq.actor(max_retries=0)
+def process_exam_document_preprocessing(document_id: str) -> None:
+    if not _run_once(
+        SCAN_PREPROCESSING_LOCK_ID,
+        run_exam_document_preprocessing,
+        document_id,
+    ):
+        process_exam_document_preprocessing.send_with_options(
+            args=(document_id,), delay=5000
+        )
+
+
+def run_exam_document_preprocessing(document_id: str) -> None:
+    from app.api.routes.exams import auto_rectify_exam_document_record
+    from app.models import ExamDocument
+
+    with Session(engine) as session:
+        document = session.get(ExamDocument, uuid.UUID(document_id))
+        if not document or document.preprocessing_status in {"ready", "review"}:
+            return
+        if document.preprocessing_status not in {"queued", "running"}:
+            return
+        stored_file = session.get(StoredFile, document.stored_file_id)
+        if not stored_file:
+            document.preprocessing_status = "failed"
+            document.preprocessing_quality = 0.0
+            document.preprocessing_metadata = {
+                "source": "async_scan_preprocessing_v1",
+                "error": {
+                    "code": "source_file_missing",
+                    "message": "Original uploaded file was not found",
+                },
+            }
+            session.add(document)
+            session.commit()
+            return
+
+        document.preprocessing_status = "running"
+        session.add(document)
+        session.commit()
+        try:
+            auto_rectify_exam_document_record(
+                session=session,
+                exam_document=document,
+                stored_file=stored_file,
+            )
+            session.commit()
+        except Exception as exc:
+            session.rollback()
+            document = session.get(ExamDocument, uuid.UUID(document_id))
+            if not document:
+                return
+            document.preprocessing_status = "failed"
+            document.preprocessing_quality = 0.0
+            document.preprocessing_metadata = {
+                "source": "async_scan_preprocessing_v1",
+                "scan_engine": settings.SCAN_ENGINE,
+                "error": {
+                    "code": "preprocessing_failed",
+                    "message": (str(exc).strip() or exc.__class__.__name__)[:500],
+                },
+            }
+            session.add(document)
+            session.commit()
 
 
 def set_task_state(
@@ -253,12 +505,11 @@ def run_submission_processing_task(task_id: str) -> None:
                     region=region,
                     owner_id=stored_file.uploaded_by_id,
                     submission_id=submission.id,
-                    upload_dir=settings.LOCAL_UPLOAD_DIR,
                     page_number=resolve_exam_region_paper_page(session, region),
                 )
                 region_crops.append(crop)
                 ocr_draft = extract_ocr_draft(
-                    settings.LOCAL_UPLOAD_DIR / crop["storage_key"]
+                    materialize_storage_key(crop["storage_key"])
                 )
                 ocr_results.append(
                     {

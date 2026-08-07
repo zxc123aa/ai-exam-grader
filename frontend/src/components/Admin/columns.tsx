@@ -42,17 +42,18 @@ export const columns: ColumnDef<UserTableData>[] = [
     accessorKey: "full_name",
     header: "姓名",
     cell: ({ row }) => {
-      const fullName = row.original.full_name
+      const fullName = row.original.full_name?.trim()
+      const displayName = fullName || row.original.email.split("@")[0]
       return (
         <div className="flex items-center gap-2">
           <span
             className={cn("font-medium", !fullName && "text-muted-foreground")}
           >
-            {fullName || "未填写"}
+            {displayName}
           </span>
           {row.original.isCurrentUser && (
             <Badge variant="outline" className="text-xs">
-              You
+              当前账号
             </Badge>
           )}
         </div>
@@ -80,7 +81,7 @@ export const columns: ColumnDef<UserTableData>[] = [
     header: "学校",
     cell: ({ row }) => (
       <span className="text-muted-foreground text-sm">
-        {row.original.org_name ?? "—"}
+        {row.original.org_name ?? "点凡平台"}
       </span>
     ),
   },

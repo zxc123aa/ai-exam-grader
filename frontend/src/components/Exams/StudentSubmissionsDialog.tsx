@@ -108,11 +108,11 @@ function readSubmissionScanMetadata(submission: StudentSubmissionPublic) {
   const qualityRecord = quality as Record<string, unknown>
   const warningLabels: Record<string, string> = {
     low_sharpness: "图片清晰度偏低",
-    low_gutter_confidence: "双页中缝置信度偏低",
+    low_gutter_confidence: "双页中缝位置可能不准",
     split_half_page_fallback: "使用了左右页回退分割",
     vision_page_polygon_rejected: "页面边界未通过几何校验",
-    doc_unwarping_unavailable: "文档方向/曲面展开服务暂不可用",
-    doc_unwarping_quality_rejected: "曲面展开结果退化，已保留透视校正页",
+    doc_unwarping_unavailable: "请检查页面方向和纸张弯曲处",
+    doc_unwarping_quality_rejected: "请检查纸张弯曲处是否影响文字",
   }
   const warnings = Array.isArray(qualityRecord.warnings)
     ? qualityRecord.warnings

@@ -72,7 +72,11 @@ def test_create_user_new_email(
     ):
         username = random_email()
         password = random_lower_string()
-        data = {"email": username, "password": password}
+        data = {
+            "email": username,
+            "password": password,
+            "role": "platform_support",
+        }
         r = client.post(
             f"{settings.API_V1_STR}/users/",
             headers=superuser_token_headers,
@@ -90,7 +94,9 @@ def test_get_existing_user_as_superuser(
 ) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(
+        email=username, password=password, role=UserRole.PLATFORM_SUPPORT
+    )
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
     r = client.get(
@@ -118,7 +124,9 @@ def test_get_non_existing_user_as_superuser(
 def test_get_existing_user_current_user(client: TestClient, db: Session) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(
+        email=username, password=password, role=UserRole.PLATFORM_SUPPORT
+    )
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
 
@@ -179,7 +187,11 @@ def test_create_user_existing_username(
     password = random_lower_string()
     user_in = UserCreate(email=username, password=password)
     crud.create_user(session=db, user_create=user_in)
-    data = {"email": username, "password": password}
+    data = {
+        "email": username,
+        "password": password,
+        "role": "platform_support",
+    }
     r = client.post(
         f"{settings.API_V1_STR}/users/",
         headers=superuser_token_headers,
@@ -345,17 +357,23 @@ def test_update_password_me_same_password_error(
 
 
 def test_register_user(client: TestClient, db: Session) -> None:
-    # 公开注册已关闭（多租户阶段 3），账号由学校管理员/平台创建
+    # 默认开关关闭时，完整注册请求也不能创建租户。
     username = random_email()
     password = random_lower_string()
-    full_name = random_lower_string()
-    data = {"email": username, "password": password, "full_name": full_name}
+    data = {
+        "organization_type": "school",
+        "organization_name": "暂未开放学校",
+        "contact_name": random_lower_string(),
+        "email": username,
+        "password": password,
+        "turnstile_token": "local-testing-token",
+    }
     r = client.post(
         f"{settings.API_V1_STR}/users/signup",
         json=data,
     )
     assert r.status_code == 403
-    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
+    assert r.json()["detail"] == "学校注册暂未开放"
 
     user_query = select(User).where(User.email == username)
     user_db = db.exec(user_query).first()
@@ -364,18 +382,20 @@ def test_register_user(client: TestClient, db: Session) -> None:
 
 def test_register_user_already_exists_error(client: TestClient) -> None:
     password = random_lower_string()
-    full_name = random_lower_string()
     data = {
+        "organization_type": "school",
+        "organization_name": "暂未开放学校",
+        "contact_name": "负责人",
         "email": settings.FIRST_SUPERUSER,
         "password": password,
-        "full_name": full_name,
+        "turnstile_token": "local-testing-token",
     }
     r = client.post(
         f"{settings.API_V1_STR}/users/signup",
         json=data,
     )
     assert r.status_code == 403
-    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
+    assert r.json()["detail"] == "学校注册暂未开放"
 
 
 def test_update_user(
@@ -383,7 +403,9 @@ def test_update_user(
 ) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(
+        email=username, password=password, role=UserRole.PLATFORM_SUPPORT
+    )
     user = crud.create_user(session=db, user_create=user_in)
 
     data = {"full_name": "Updated_full_name"}
@@ -422,12 +444,16 @@ def test_update_user_email_exists(
 ) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(
+        email=username, password=password, role=UserRole.PLATFORM_SUPPORT
+    )
     user = crud.create_user(session=db, user_create=user_in)
 
     username2 = random_email()
     password2 = random_lower_string()
-    user_in2 = UserCreate(email=username2, password=password2)
+    user_in2 = UserCreate(
+        email=username2, password=password2, role=UserRole.PLATFORM_ADMIN
+    )
     user2 = crud.create_user(session=db, user_create=user_in2)
 
     data = {"email": user2.email}
@@ -484,7 +510,9 @@ def test_delete_user_super_user(
 ) -> None:
     username = random_email()
     password = random_lower_string()
-    user_in = UserCreate(email=username, password=password)
+    user_in = UserCreate(
+        email=username, password=password, role=UserRole.PLATFORM_SUPPORT
+    )
     user = crud.create_user(session=db, user_create=user_in)
     user_id = user.id
     r = client.delete(
@@ -493,9 +521,11 @@ def test_delete_user_super_user(
     )
     assert r.status_code == 200
     deleted_user = r.json()
-    assert deleted_user["message"] == "User deleted successfully"
+    assert deleted_user["message"] == "User deactivated; historical data was preserved"
+    db.refresh(user)
+    assert user.is_active is False
     result = db.exec(select(User).where(User.id == user_id)).first()
-    assert result is None
+    assert result is not None
 
 
 def test_delete_user_not_found(

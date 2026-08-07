@@ -55,7 +55,7 @@ function ClassesPage() {
           <Skeleton className="h-64 w-full rounded-2xl" />
         </div>
       ) : (
-        <div className="grid items-start gap-4 lg:grid-cols-[320px_1fr]">
+        <div className="grid min-w-0 items-start gap-4 lg:grid-cols-[320px_minmax(0,1fr)]">
           <ClassList
             classes={classes}
             selectedId={selectedId}

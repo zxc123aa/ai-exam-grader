@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ClassesReadClassesResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesUpdateClassData, ClassesUpdateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesReadStudentsData, ClassesReadStudentsResponse, ClassesCreateStudentData, ClassesCreateStudentResponse, ClassesCreateStudentsBatchData, ClassesCreateStudentsBatchResponse, ClassesUpdateStudentData, ClassesUpdateStudentResponse, ClassesDeleteStudentData, ClassesDeleteStudentResponse, ClassesBindStudentAccountData, ClassesBindStudentAccountResponse, ClassesUnbindStudentAccountData, ClassesUnbindStudentAccountResponse, ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadQuestionBankData, ExamsReadQuestionBankResponse, ExamsComposeExamData, ExamsComposeExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsReadGradingAssignmentsData, ExamsReadGradingAssignmentsResponse, ExamsUpdateGradingAssignmentsData, ExamsUpdateGradingAssignmentsResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsCreateExamAnalysisReportData, ExamsCreateExamAnalysisReportResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, OrgReadOrgSettingsResponse, OrgUpdateOrgSettingsData, OrgUpdateOrgSettingsResponse, PlatformListOrgsResponse, PlatformCreateOrgData, PlatformCreateOrgResponse, PlatformReadOrgData, PlatformReadOrgResponse, PlatformUpdateOrgData, PlatformUpdateOrgResponse, PlatformAddOrgOwnerData, PlatformAddOrgOwnerResponse, PlatformReadSystemConfigResponse, PlatformUpdateSystemConfigData, PlatformUpdateSystemConfigResponse, PrivateCreateUserData, PrivateCreateUserResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, StudentsReadMyExamsResponse, StudentsReadMyExamReportData, StudentsReadMyExamReportResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersCreateTeachersBatchData, UsersCreateTeachersBatchResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterUserData, UsersRegisterUserResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersReadTeachingProfileData, UsersReadTeachingProfileResponse, UsersUpdateTeachingProfileData, UsersUpdateTeachingProfileResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse } from './types.gen';
+import type { ClassesReadClassesResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesUpdateClassData, ClassesUpdateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesReadStudentsData, ClassesReadStudentsResponse, ClassesCreateStudentData, ClassesCreateStudentResponse, ClassesCreateStudentsBatchData, ClassesCreateStudentsBatchResponse, ClassesUpdateStudentData, ClassesUpdateStudentResponse, ClassesDeleteStudentData, ClassesDeleteStudentResponse, ClassesBindStudentAccountData, ClassesBindStudentAccountResponse, ClassesUnbindStudentAccountData, ClassesUnbindStudentAccountResponse, CommerceCatalogResponse, CommerceListPlansResponse, CommerceCreatePlanData, CommerceCreatePlanResponse, CommerceListAddonsResponse, CommerceCreateAddonData, CommerceCreateAddonResponse, CommerceUpdatePlanPublicationData, CommerceUpdatePlanPublicationResponse, CommerceUpdateAddonPublicationData, CommerceUpdateAddonPublicationResponse, CommerceListOrdersResponse, CommerceCreateOrderData, CommerceCreateOrderResponse, CommerceReadOrderData, CommerceReadOrderResponse, CommerceStartWechatPayData, CommerceStartWechatPayResponse, CommerceConfirmBankTransferData, CommerceConfirmBankTransferResponse, CommerceApplyInvoiceData, CommerceApplyInvoiceResponse, CommerceListInvoicesResponse, CommerceReviewInvoiceData, CommerceReviewInvoiceResponse, CommerceRequestRefundData, CommerceRequestRefundResponse, CommerceListRefundsResponse, CommerceReviewRefundData, CommerceReviewRefundResponse, CommerceOrgBillingResponse, CommerceWechatWebhookData, CommerceWechatWebhookResponse, ExamsReadExamWorkflowSummaryData, ExamsReadExamWorkflowSummaryResponse, ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadQuestionBankData, ExamsReadQuestionBankResponse, ExamsComposeExamData, ExamsComposeExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsReadGradingAssignmentsData, ExamsReadGradingAssignmentsResponse, ExamsUpdateGradingAssignmentsData, ExamsUpdateGradingAssignmentsResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsCreateExamAnalysisReportData, ExamsCreateExamAnalysisReportResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, GradingPublishExamScoresData, GradingPublishExamScoresResponse, GradingGetCurrentScoreReleaseData, GradingGetCurrentScoreReleaseResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, ModelOfferingsListModelOfferingsResponse, ModelOfferingsCreateModelOfferingData, ModelOfferingsCreateModelOfferingResponse, ModelOfferingsUpdateModelOfferingData, ModelOfferingsUpdateModelOfferingResponse, ModelOfferingsListOfferingRatesData, ModelOfferingsListOfferingRatesResponse, ModelOfferingsCreateOfferingRateData, ModelOfferingsCreateOfferingRateResponse, OrgReadOrgSettingsResponse, OrgUpdateOrgSettingsData, OrgUpdateOrgSettingsResponse, OrgReadOrgOnboardingResponse, OrgReadOrgModelSettingsResponse, OrgUpdateOrgModelSettingData, OrgUpdateOrgModelSettingResponse, OrgReadBillingEntitlementResponse, OrgReadBillingSummaryResponse, OrgReadBillingUsageData, OrgReadBillingUsageResponse, OrgReadBillingLedgerData, OrgReadBillingLedgerResponse, PlatformReadModelUsageOverviewData, PlatformReadModelUsageOverviewResponse, PlatformListModelUsageEventsData, PlatformListModelUsageEventsResponse, PlatformReadPlatformDirectoryData, PlatformReadPlatformDirectoryResponse, PlatformListOrgsResponse, PlatformCreateOrgData, PlatformCreateOrgResponse, PlatformReadOrgData, PlatformReadOrgResponse, PlatformUpdateOrgData, PlatformUpdateOrgResponse, PlatformAddOrgOwnerData, PlatformAddOrgOwnerResponse, PlatformReadSystemConfigResponse, PlatformUpdateSystemConfigData, PlatformUpdateSystemConfigResponse, PlatformListBillingRatesResponse, PlatformCreateBillingRateData, PlatformCreateBillingRateResponse, PlatformUpsertOrgSubscriptionData, PlatformUpsertOrgSubscriptionResponse, PlatformGrantOrgCreditsData, PlatformGrantOrgCreditsResponse, PlatformGrantOrgAnswerQuotaData, PlatformGrantOrgAnswerQuotaResponse, PlatformReadOrgBillingData, PlatformReadOrgBillingResponse, PlatformReadOrgBillingLedgerData, PlatformReadOrgBillingLedgerResponse, PlatformReadOrgUsagePolicyData, PlatformReadOrgUsagePolicyResponse, PlatformUpdateOrgUsagePolicyData, PlatformUpdateOrgUsagePolicyResponse, PrivateCreateUserData, PrivateCreateUserResponse, ProviderChannelsListChannelsResponse, ProviderChannelsCreateChannelData, ProviderChannelsCreateChannelResponse, ProviderChannelsImportEnvironmentChannelsResponse, ProviderChannelsUpdateChannelData, ProviderChannelsUpdateChannelResponse, ProviderChannelsRotateCredentialData, ProviderChannelsRotateCredentialResponse, ProviderChannelsRotateBillingCredentialData, ProviderChannelsRotateBillingCredentialResponse, ProviderChannelsListModelMappingsData, ProviderChannelsListModelMappingsResponse, ProviderChannelsCreateModelMappingData, ProviderChannelsCreateModelMappingResponse, ProviderChannelsDiscoverUpstreamModelsData, ProviderChannelsDiscoverUpstreamModelsResponse, ProviderChannelsUpdateModelMappingData, ProviderChannelsUpdateModelMappingResponse, ProviderChannelsListRoutePoliciesData, ProviderChannelsListRoutePoliciesResponse, ProviderChannelsListFunctionModelDefaultsResponse, ProviderChannelsUpdateFunctionModelDefaultData, ProviderChannelsUpdateFunctionModelDefaultResponse, ProviderChannelsAddRouteTargetData, ProviderChannelsAddRouteTargetResponse, ProviderChannelsReadRoutePolicyData, ProviderChannelsReadRoutePolicyResponse, ProviderChannelsUpsertRoutePolicyData, ProviderChannelsUpsertRoutePolicyResponse, ProviderChannelsListRouteVersionsData, ProviderChannelsListRouteVersionsResponse, ProviderChannelsPublishRouteVersionData, ProviderChannelsPublishRouteVersionResponse, ProviderChannelsListInternalRatesData, ProviderChannelsListInternalRatesResponse, ProviderChannelsCreateInternalRateData, ProviderChannelsCreateInternalRateResponse, ProviderChannelsTestChannelData, ProviderChannelsTestChannelResponse, ProviderChannelsResetChannelHealthData, ProviderChannelsResetChannelHealthResponse, ProviderChannelsListReconciliationsData, ProviderChannelsListReconciliationsResponse, ProviderChannelsImportReconciliationData, ProviderChannelsImportReconciliationResponse, ProviderChannelsSyncNewApiReconciliationData, ProviderChannelsSyncNewApiReconciliationResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, StudentsReadMyExamsResponse, StudentsReadMyExamReportData, StudentsReadMyExamReportResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersCreateTeachersBatchData, UsersCreateTeachersBatchResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterOrganizationData, UsersRegisterOrganizationResponse, UsersResendOrganizationSignupData, UsersResendOrganizationSignupResponse, UsersVerifyOrganizationSignupData, UsersVerifyOrganizationSignupResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersReadTeachingProfileData, UsersReadTeachingProfileResponse, UsersUpdateTeachingProfileData, UsersUpdateTeachingProfileResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse, UtilsLivenessResponse, UtilsReadinessResponse } from './types.gen';
 
 export class ClassesService {
     /**
@@ -234,7 +234,388 @@ export class ClassesService {
     }
 }
 
+export class CommerceService {
+    /**
+     * Catalog
+     * @returns CommerceCatalogPublic Successful Response
+     * @throws ApiError
+     */
+    public static catalog(): CancelablePromise<CommerceCatalogResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/catalog'
+        });
+    }
+
+    /**
+     * List Plans
+     * @returns PlanVersion Successful Response
+     * @throws ApiError
+     */
+    public static listPlans(): CancelablePromise<CommerceListPlansResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/admin/plans'
+        });
+    }
+
+    /**
+     * Create Plan
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PlanVersion Successful Response
+     * @throws ApiError
+     */
+    public static createPlan(data: CommerceCreatePlanData): CancelablePromise<CommerceCreatePlanResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/admin/plans',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Addons
+     * @returns AddonSku Successful Response
+     * @throws ApiError
+     */
+    public static listAddons(): CancelablePromise<CommerceListAddonsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/admin/addons'
+        });
+    }
+
+    /**
+     * Create Addon
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns AddonSku Successful Response
+     * @throws ApiError
+     */
+    public static createAddon(data: CommerceCreateAddonData): CancelablePromise<CommerceCreateAddonResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/admin/addons',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Plan Publication
+     * @param data The data for the request.
+     * @param data.planId
+     * @param data.requestBody
+     * @returns PlanVersion Successful Response
+     * @throws ApiError
+     */
+    public static updatePlanPublication(data: CommerceUpdatePlanPublicationData): CancelablePromise<CommerceUpdatePlanPublicationResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/commerce/admin/plans/{plan_id}/publication',
+            path: {
+                plan_id: data.planId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Addon Publication
+     * @param data The data for the request.
+     * @param data.addonId
+     * @param data.requestBody
+     * @returns AddonSku Successful Response
+     * @throws ApiError
+     */
+    public static updateAddonPublication(data: CommerceUpdateAddonPublicationData): CancelablePromise<CommerceUpdateAddonPublicationResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/commerce/admin/addons/{addon_id}/publication',
+            path: {
+                addon_id: data.addonId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Orders
+     * @returns AdminCommerceOrderPublic Successful Response
+     * @throws ApiError
+     */
+    public static listOrders(): CancelablePromise<CommerceListOrdersResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/admin/orders'
+        });
+    }
+
+    /**
+     * Create Order
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns CommerceOrderPublic Successful Response
+     * @throws ApiError
+     */
+    public static createOrder(data: CommerceCreateOrderData): CancelablePromise<CommerceCreateOrderResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/orders',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Order
+     * @param data The data for the request.
+     * @param data.orderId
+     * @returns CommerceOrderPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrder(data: CommerceReadOrderData): CancelablePromise<CommerceReadOrderResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/orders/{order_id}',
+            path: {
+                order_id: data.orderId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Start Wechat Pay
+     * @param data The data for the request.
+     * @param data.orderId
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static startWechatPay(data: CommerceStartWechatPayData): CancelablePromise<CommerceStartWechatPayResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/orders/{order_id}/wechat-pay',
+            path: {
+                order_id: data.orderId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Confirm Bank Transfer
+     * @param data The data for the request.
+     * @param data.orderId
+     * @param data.requestBody
+     * @returns CommerceOrderPublic Successful Response
+     * @throws ApiError
+     */
+    public static confirmBankTransfer(data: CommerceConfirmBankTransferData): CancelablePromise<CommerceConfirmBankTransferResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/orders/{order_id}/bank-transfer',
+            path: {
+                order_id: data.orderId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Apply Invoice
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns InvoiceApplicationPublic Successful Response
+     * @throws ApiError
+     */
+    public static applyInvoice(data: CommerceApplyInvoiceData): CancelablePromise<CommerceApplyInvoiceResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/invoices',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Invoices
+     * @returns InvoiceApplicationPublic Successful Response
+     * @throws ApiError
+     */
+    public static listInvoices(): CancelablePromise<CommerceListInvoicesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/admin/invoices'
+        });
+    }
+
+    /**
+     * Review Invoice
+     * @param data The data for the request.
+     * @param data.applicationId
+     * @param data.requestBody
+     * @returns InvoiceApplicationPublic Successful Response
+     * @throws ApiError
+     */
+    public static reviewInvoice(data: CommerceReviewInvoiceData): CancelablePromise<CommerceReviewInvoiceResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/commerce/admin/invoices/{application_id}',
+            path: {
+                application_id: data.applicationId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Request Refund
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns RefundRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static requestRefund(data: CommerceRequestRefundData): CancelablePromise<CommerceRequestRefundResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/refunds',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Refunds
+     * @returns RefundRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static listRefunds(): CancelablePromise<CommerceListRefundsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/admin/refunds'
+        });
+    }
+
+    /**
+     * Review Refund
+     * @param data The data for the request.
+     * @param data.refundId
+     * @param data.requestBody
+     * @returns RefundRequestPublic Successful Response
+     * @throws ApiError
+     */
+    public static reviewRefund(data: CommerceReviewRefundData): CancelablePromise<CommerceReviewRefundResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/commerce/admin/refunds/{refund_id}',
+            path: {
+                refund_id: data.refundId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Org Billing
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static orgBilling(): CancelablePromise<CommerceOrgBillingResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/commerce/org/billing'
+        });
+    }
+
+    /**
+     * Wechat Webhook
+     * @param data The data for the request.
+     * @param data.wechatpayTimestamp
+     * @param data.wechatpayNonce
+     * @param data.wechatpaySignature
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static wechatWebhook(data: CommerceWechatWebhookData): CancelablePromise<CommerceWechatWebhookResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/commerce/webhooks/wechat',
+            headers: {
+                'Wechatpay-Timestamp': data.wechatpayTimestamp,
+                'Wechatpay-Nonce': data.wechatpayNonce,
+                'Wechatpay-Signature': data.wechatpaySignature
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
 export class ExamsService {
+    /**
+     * Read Exam Workflow Summary
+     * Return one teacher-facing next action without exposing model internals.
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns ExamWorkflowSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static readExamWorkflowSummary(data: ExamsReadExamWorkflowSummaryData): CancelablePromise<ExamsReadExamWorkflowSummaryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/exams/{exam_id}/workflow-summary',
+            path: {
+                exam_id: data.examId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * Read Exams
      * @param data The data for the request.
@@ -1750,6 +2131,51 @@ export class GradingService {
             }
         });
     }
+
+    /**
+     * Publish Exam Scores
+     * Freeze the current reviewed score draft as the student-visible version.
+     * @param data The data for the request.
+     * @param data.examId
+     * @param data.requestBody
+     * @returns ScoreReleasePublic Successful Response
+     * @throws ApiError
+     */
+    public static publishExamScores(data: GradingPublishExamScoresData): CancelablePromise<GradingPublishExamScoresResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/grading/exams/{exam_id}/score-releases',
+            path: {
+                exam_id: data.examId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Get Current Score Release
+     * Return the version currently visible to students, if one exists.
+     * @param data The data for the request.
+     * @param data.examId
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static getCurrentScoreRelease(data: GradingGetCurrentScoreReleaseData): CancelablePromise<GradingGetCurrentScoreReleaseResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/grading/exams/{exam_id}/score-releases/current',
+            path: {
+                exam_id: data.examId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
 }
 
 export class LoginService {
@@ -1849,6 +2275,105 @@ export class LoginService {
     }
 }
 
+export class ModelOfferingsService {
+    /**
+     * List Model Offerings
+     * @returns PlatformModelOfferingsPublic Successful Response
+     * @throws ApiError
+     */
+    public static listModelOfferings(): CancelablePromise<ModelOfferingsListModelOfferingsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/model-offerings'
+        });
+    }
+
+    /**
+     * Create Model Offering
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns PlatformModelOfferingPublic Successful Response
+     * @throws ApiError
+     */
+    public static createModelOffering(data: ModelOfferingsCreateModelOfferingData): CancelablePromise<ModelOfferingsCreateModelOfferingResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/model-offerings',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Model Offering
+     * @param data The data for the request.
+     * @param data.offeringId
+     * @param data.requestBody
+     * @returns PlatformModelOfferingPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateModelOffering(data: ModelOfferingsUpdateModelOfferingData): CancelablePromise<ModelOfferingsUpdateModelOfferingResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/platform/model-offerings/{offering_id}',
+            path: {
+                offering_id: data.offeringId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Offering Rates
+     * @param data The data for the request.
+     * @param data.offeringId
+     * @returns OfferingRateVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static listOfferingRates(data: ModelOfferingsListOfferingRatesData): CancelablePromise<ModelOfferingsListOfferingRatesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/model-offerings/{offering_id}/rates',
+            path: {
+                offering_id: data.offeringId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Offering Rate
+     * @param data The data for the request.
+     * @param data.offeringId
+     * @param data.requestBody
+     * @returns OfferingRateVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static createOfferingRate(data: ModelOfferingsCreateOfferingRateData): CancelablePromise<ModelOfferingsCreateOfferingRateResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/model-offerings/{offering_id}/rates',
+            path: {
+                offering_id: data.offeringId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
 export class OrgService {
     /**
      * Read Org Settings
@@ -1882,9 +2407,210 @@ export class OrgService {
             }
         });
     }
+
+    /**
+     * Read Org Onboarding
+     * 首次开通引导使用的学校真实进度。
+     * @returns OrgOnboardingPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgOnboarding(): CancelablePromise<OrgReadOrgOnboardingResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/onboarding'
+        });
+    }
+
+    /**
+     * Read Org Model Settings
+     * @returns SchoolModelSettingsPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgModelSettings(): CancelablePromise<OrgReadOrgModelSettingsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/model-settings'
+        });
+    }
+
+    /**
+     * Update Org Model Setting
+     * @param data The data for the request.
+     * @param data.scope
+     * @param data.requestBody
+     * @returns SchoolModelSettingsPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateOrgModelSetting(data: OrgUpdateOrgModelSettingData): CancelablePromise<OrgUpdateOrgModelSettingResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/org/model-settings/{scope}',
+            path: {
+                scope: data.scope
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Billing Entitlement
+     * @returns BillingEntitlementPublic Successful Response
+     * @throws ApiError
+     */
+    public static readBillingEntitlement(): CancelablePromise<OrgReadBillingEntitlementResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/billing/entitlement'
+        });
+    }
+
+    /**
+     * Read Billing Summary
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static readBillingSummary(): CancelablePromise<OrgReadBillingSummaryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/billing'
+        });
+    }
+
+    /**
+     * Read Billing Usage
+     * @param data The data for the request.
+     * @param data.offset
+     * @param data.limit
+     * @returns BillingUsagePublic Successful Response
+     * @throws ApiError
+     */
+    public static readBillingUsage(data: OrgReadBillingUsageData = {}): CancelablePromise<OrgReadBillingUsageResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/billing/usage',
+            query: {
+                offset: data.offset,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Billing Ledger
+     * @param data The data for the request.
+     * @param data.offset
+     * @param data.limit
+     * @returns CreditLedgerPublic Successful Response
+     * @throws ApiError
+     */
+    public static readBillingLedger(data: OrgReadBillingLedgerData = {}): CancelablePromise<OrgReadBillingLedgerResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/org/billing/ledger',
+            query: {
+                offset: data.offset,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
 }
 
 export class PlatformService {
+    /**
+     * Read Model Usage Overview
+     * 平台模型调用总览；可收窄到单个学校。
+     * @param data The data for the request.
+     * @param data.days
+     * @param data.orgId
+     * @returns PlatformModelUsageOverviewPublic Successful Response
+     * @throws ApiError
+     */
+    public static readModelUsageOverview(data: PlatformReadModelUsageOverviewData = {}): CancelablePromise<PlatformReadModelUsageOverviewResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/model-usage/overview',
+            query: {
+                days: data.days,
+                org_id: data.orgId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Model Usage Events
+     * 跨学校调用明细，供运营排障和成本核对。
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.purpose
+     * @param data.status
+     * @param data.days
+     * @param data.offset
+     * @param data.limit
+     * @returns PlatformModelUsageEventsPublic Successful Response
+     * @throws ApiError
+     */
+    public static listModelUsageEvents(data: PlatformListModelUsageEventsData = {}): CancelablePromise<PlatformListModelUsageEventsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/model-usage',
+            query: {
+                org_id: data.orgId,
+                purpose: data.purpose,
+                status: data.status,
+                days: data.days,
+                offset: data.offset,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Platform Directory
+     * 跨学校人员目录，统一返回教职工账号、学生名册和绑定状态。
+     * @param data The data for the request.
+     * @param data.q
+     * @param data.orgId
+     * @param data.classId
+     * @param data.category
+     * @param data.offset
+     * @param data.limit
+     * @returns PlatformDirectoryPublic Successful Response
+     * @throws ApiError
+     */
+    public static readPlatformDirectory(data: PlatformReadPlatformDirectoryData = {}): CancelablePromise<PlatformReadPlatformDirectoryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/directory',
+            query: {
+                q: data.q,
+                org_id: data.orgId,
+                class_id: data.classId,
+                category: data.category,
+                offset: data.offset,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
     /**
      * List Orgs
      * 学校列表（含考试 / 学生 / 老师数）。运营角色只读可用。
@@ -1941,7 +2667,7 @@ export class PlatformService {
 
     /**
      * Update Org
-     * 修改学校信息 / 状态（active / suspended）。
+     * 修改学校信息和服务状态。
      * @param data The data for the request.
      * @param data.orgId
      * @param data.requestBody
@@ -2019,6 +2745,195 @@ export class PlatformService {
             }
         });
     }
+
+    /**
+     * List Billing Rates
+     * @returns BillingRateVersion Successful Response
+     * @throws ApiError
+     */
+    public static listBillingRates(): CancelablePromise<PlatformListBillingRatesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/billing/rates'
+        });
+    }
+
+    /**
+     * Create Billing Rate
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns BillingRateVersion Successful Response
+     * @throws ApiError
+     */
+    public static createBillingRate(data: PlatformCreateBillingRateData): CancelablePromise<PlatformCreateBillingRateResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/billing/rates',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Upsert Org Subscription
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static upsertOrgSubscription(data: PlatformUpsertOrgSubscriptionData): CancelablePromise<PlatformUpsertOrgSubscriptionResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/orgs/{org_id}/subscription',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Grant Org Credits
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static grantOrgCredits(data: PlatformGrantOrgCreditsData): CancelablePromise<PlatformGrantOrgCreditsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/orgs/{org_id}/credits',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Grant Org Answer Quota
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static grantOrgAnswerQuota(data: PlatformGrantOrgAnswerQuotaData): CancelablePromise<PlatformGrantOrgAnswerQuotaResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/orgs/{org_id}/answer-quota',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Org Billing
+     * @param data The data for the request.
+     * @param data.orgId
+     * @returns BillingSummaryPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgBilling(data: PlatformReadOrgBillingData): CancelablePromise<PlatformReadOrgBillingResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/orgs/{org_id}/billing',
+            path: {
+                org_id: data.orgId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Org Billing Ledger
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.offset
+     * @param data.limit
+     * @returns CreditLedgerPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgBillingLedger(data: PlatformReadOrgBillingLedgerData): CancelablePromise<PlatformReadOrgBillingLedgerResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/orgs/{org_id}/billing/ledger',
+            path: {
+                org_id: data.orgId
+            },
+            query: {
+                offset: data.offset,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Org Usage Policy
+     * @param data The data for the request.
+     * @param data.orgId
+     * @returns OrganizationUsagePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static readOrgUsagePolicy(data: PlatformReadOrgUsagePolicyData): CancelablePromise<PlatformReadOrgUsagePolicyResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/orgs/{org_id}/usage-policy',
+            path: {
+                org_id: data.orgId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Org Usage Policy
+     * @param data The data for the request.
+     * @param data.orgId
+     * @param data.requestBody
+     * @returns OrganizationUsagePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateOrgUsagePolicy(data: PlatformUpdateOrgUsagePolicyData): CancelablePromise<PlatformUpdateOrgUsagePolicyResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/orgs/{org_id}/usage-policy',
+            path: {
+                org_id: data.orgId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
 }
 
 export class PrivateService {
@@ -2036,6 +2951,534 @@ export class PrivateService {
             url: '/api/v1/private/users/',
             body: data.requestBody,
             mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+}
+
+export class ProviderChannelsService {
+    /**
+     * List Channels
+     * @returns ProviderChannelsPublic Successful Response
+     * @throws ApiError
+     */
+    public static listChannels(): CancelablePromise<ProviderChannelsListChannelsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels'
+        });
+    }
+
+    /**
+     * Create Channel
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns ProviderChannelPublic Successful Response
+     * @throws ApiError
+     */
+    public static createChannel(data: ProviderChannelsCreateChannelData): CancelablePromise<ProviderChannelsCreateChannelResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Import Environment Channels
+     * 把旧环境变量中的 URL、Key 和模型清单纳入数据库通道管理。
+     * @returns ProviderChannelsPublic Successful Response
+     * @throws ApiError
+     */
+    public static importEnvironmentChannels(): CancelablePromise<ProviderChannelsImportEnvironmentChannelsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/import-environment'
+        });
+    }
+
+    /**
+     * Update Channel
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderChannelPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateChannel(data: ProviderChannelsUpdateChannelData): CancelablePromise<ProviderChannelsUpdateChannelResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/platform/provider-channels/{channel_id}',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Rotate Credential
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderChannelPublic Successful Response
+     * @throws ApiError
+     */
+    public static rotateCredential(data: ProviderChannelsRotateCredentialData): CancelablePromise<ProviderChannelsRotateCredentialResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/provider-channels/{channel_id}/credential',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Rotate Billing Credential
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderChannelPublic Successful Response
+     * @throws ApiError
+     */
+    public static rotateBillingCredential(data: ProviderChannelsRotateBillingCredentialData): CancelablePromise<ProviderChannelsRotateBillingCredentialResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/provider-channels/{channel_id}/billing-credential',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Model Mappings
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns ProviderModelMappingPublic Successful Response
+     * @throws ApiError
+     */
+    public static listModelMappings(data: ProviderChannelsListModelMappingsData): CancelablePromise<ProviderChannelsListModelMappingsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/{channel_id}/models',
+            path: {
+                channel_id: data.channelId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Model Mapping
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderModelMappingPublic Successful Response
+     * @throws ApiError
+     */
+    public static createModelMapping(data: ProviderChannelsCreateModelMappingData): CancelablePromise<ProviderChannelsCreateModelMappingResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/models',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Discover Upstream Models
+     * 使用服务端保存的凭据读取 OpenAI 兼容中转的模型目录。
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns ProviderModelDiscoveryResult Successful Response
+     * @throws ApiError
+     */
+    public static discoverUpstreamModels(data: ProviderChannelsDiscoverUpstreamModelsData): CancelablePromise<ProviderChannelsDiscoverUpstreamModelsResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/models/discover',
+            path: {
+                channel_id: data.channelId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Update Model Mapping
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.mappingId
+     * @param data.requestBody
+     * @returns ProviderModelMappingPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateModelMapping(data: ProviderChannelsUpdateModelMappingData): CancelablePromise<ProviderChannelsUpdateModelMappingResponse> {
+        return __request(OpenAPI, {
+            method: 'PATCH',
+            url: '/api/v1/platform/provider-channels/{channel_id}/models/{mapping_id}',
+            path: {
+                channel_id: data.channelId,
+                mapping_id: data.mappingId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Route Policies
+     * @param data The data for the request.
+     * @param data.purpose
+     * @returns ModelRoutePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static listRoutePolicies(data: ProviderChannelsListRoutePoliciesData = {}): CancelablePromise<ProviderChannelsListRoutePoliciesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/routes',
+            query: {
+                purpose: data.purpose
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Function Model Defaults
+     * @returns FunctionModelAssignmentPublic Successful Response
+     * @throws ApiError
+     */
+    public static listFunctionModelDefaults(): CancelablePromise<ProviderChannelsListFunctionModelDefaultsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/routes/defaults'
+        });
+    }
+
+    /**
+     * Update Function Model Default
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.requestBody
+     * @returns FunctionModelAssignmentPublic Successful Response
+     * @throws ApiError
+     */
+    public static updateFunctionModelDefault(data: ProviderChannelsUpdateFunctionModelDefaultData): CancelablePromise<ProviderChannelsUpdateFunctionModelDefaultResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}/default',
+            path: {
+                purpose: data.purpose
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Add Route Target
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.canonicalModel
+     * @param data.requestBody
+     * @returns ModelRoutePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static addRouteTarget(data: ProviderChannelsAddRouteTargetData): CancelablePromise<ProviderChannelsAddRouteTargetResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}/targets',
+            path: {
+                purpose: data.purpose
+            },
+            query: {
+                canonical_model: data.canonicalModel
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Read Route Policy
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.canonicalModel
+     * @returns ModelRoutePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static readRoutePolicy(data: ProviderChannelsReadRoutePolicyData): CancelablePromise<ProviderChannelsReadRoutePolicyResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}',
+            path: {
+                purpose: data.purpose
+            },
+            query: {
+                canonical_model: data.canonicalModel
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Upsert Route Policy
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.requestBody
+     * @returns ModelRoutePolicyPublic Successful Response
+     * @throws ApiError
+     */
+    public static upsertRoutePolicy(data: ProviderChannelsUpsertRoutePolicyData): CancelablePromise<ProviderChannelsUpsertRoutePolicyResponse> {
+        return __request(OpenAPI, {
+            method: 'PUT',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}',
+            path: {
+                purpose: data.purpose
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Route Versions
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.canonicalModel
+     * @returns ModelRouteVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static listRouteVersions(data: ProviderChannelsListRouteVersionsData): CancelablePromise<ProviderChannelsListRouteVersionsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}/versions',
+            path: {
+                purpose: data.purpose
+            },
+            query: {
+                canonical_model: data.canonicalModel
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Publish Route Version
+     * @param data The data for the request.
+     * @param data.purpose
+     * @param data.versionId
+     * @returns ModelRouteVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static publishRouteVersion(data: ProviderChannelsPublishRouteVersionData): CancelablePromise<ProviderChannelsPublishRouteVersionResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/routes/{purpose}/versions/{version_id}/publish',
+            path: {
+                purpose: data.purpose,
+                version_id: data.versionId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Internal Rates
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns ProviderInternalRateVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static listInternalRates(data: ProviderChannelsListInternalRatesData): CancelablePromise<ProviderChannelsListInternalRatesResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/{channel_id}/internal-rates',
+            path: {
+                channel_id: data.channelId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Create Internal Rate
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderInternalRateVersionPublic Successful Response
+     * @throws ApiError
+     */
+    public static createInternalRate(data: ProviderChannelsCreateInternalRateData): CancelablePromise<ProviderChannelsCreateInternalRateResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/internal-rates',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Test Channel
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ProviderChannelTestResult Successful Response
+     * @throws ApiError
+     */
+    public static testChannel(data: ProviderChannelsTestChannelData): CancelablePromise<ProviderChannelsTestChannelResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/test',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Reset Channel Health
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns ProviderChannelPublic Successful Response
+     * @throws ApiError
+     */
+    public static resetChannelHealth(data: ProviderChannelsResetChannelHealthData): CancelablePromise<ProviderChannelsResetChannelHealthResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/health/reset',
+            path: {
+                channel_id: data.channelId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * List Reconciliations
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns ReconciliationBatchPublic Successful Response
+     * @throws ApiError
+     */
+    public static listReconciliations(data: ProviderChannelsListReconciliationsData): CancelablePromise<ProviderChannelsListReconciliationsResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/platform/provider-channels/{channel_id}/reconciliations',
+            path: {
+                channel_id: data.channelId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Import Reconciliation
+     * @param data The data for the request.
+     * @param data.channelId
+     * @param data.requestBody
+     * @returns ReconciliationBatchPublic Successful Response
+     * @throws ApiError
+     */
+    public static importReconciliation(data: ProviderChannelsImportReconciliationData): CancelablePromise<ProviderChannelsImportReconciliationResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/reconciliations',
+            path: {
+                channel_id: data.channelId
+            },
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Sync New Api Reconciliation
+     * @param data The data for the request.
+     * @param data.channelId
+     * @returns NewApiBillingSyncPublic Successful Response
+     * @throws ApiError
+     */
+    public static syncNewApiReconciliation(data: ProviderChannelsSyncNewApiReconciliationData): CancelablePromise<ProviderChannelsSyncNewApiReconciliationResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/platform/provider-channels/{channel_id}/reconciliations/sync-new-api',
+            path: {
+                channel_id: data.channelId
+            },
             errors: {
                 422: 'Validation Error'
             }
@@ -2477,7 +3920,7 @@ export class TasksService {
 export class UsersService {
     /**
      * Read Users
-     * Retrieve users. 平台角色看全部，学校角色只看本校用户。
+     * Retrieve users. 平台超管看平台账号，学校角色只看本校用户。
      * @param data The data for the request.
      * @param data.skip
      * @param data.limit
@@ -2608,17 +4051,56 @@ export class UsersService {
     }
 
     /**
-     * Register User
-     * 公开注册已关闭：账号一律由学校管理员或平台创建。
+     * Register Organization
+     * 提交学校注册；邮箱验证前不创建正式租户。
      * @param data The data for the request.
      * @param data.requestBody
-     * @returns unknown Successful Response
+     * @returns OrganizationSignupRequested Successful Response
      * @throws ApiError
      */
-    public static registerUser(data: UsersRegisterUserData): CancelablePromise<UsersRegisterUserResponse> {
+    public static registerOrganization(data: UsersRegisterOrganizationData): CancelablePromise<UsersRegisterOrganizationResponse> {
         return __request(OpenAPI, {
             method: 'POST',
             url: '/api/v1/users/signup',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Resend Organization Signup
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns OrganizationSignupRequested Successful Response
+     * @throws ApiError
+     */
+    public static resendOrganizationSignup(data: UsersResendOrganizationSignupData): CancelablePromise<UsersResendOrganizationSignupResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/users/signup/resend',
+            body: data.requestBody,
+            mediaType: 'application/json',
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+
+    /**
+     * Verify Organization Signup
+     * 验证邮箱并原子开通学校、负责人账号和试用额度。
+     * @param data The data for the request.
+     * @param data.requestBody
+     * @returns OrganizationSignupCompleted Successful Response
+     * @throws ApiError
+     */
+    public static verifyOrganizationSignup(data: UsersVerifyOrganizationSignupData): CancelablePromise<UsersVerifyOrganizationSignupResponse> {
+        return __request(OpenAPI, {
+            method: 'POST',
+            url: '/api/v1/users/signup/verify',
             body: data.requestBody,
             mediaType: 'application/json',
             errors: {
@@ -2674,7 +4156,7 @@ export class UsersService {
 
     /**
      * Delete User
-     * Delete a user.
+     * Deactivate a user. Historical school data must never follow an account deletion.
      * @param data The data for the request.
      * @param data.userId
      * @returns Message Successful Response
@@ -2716,7 +4198,7 @@ export class UsersService {
 
     /**
      * Update Teaching Profile
-     * 整体覆盖任教档案：school_owner/school_admin（限本校）或平台超管；
+     * 整体覆盖任教档案：school_owner/school_admin（限本校）；
      * 目标用户角色必须是 teacher/school_admin；班级必须与目标用户同校（跨校 400）。
      * @param data The data for the request.
      * @param data.userId
@@ -2764,7 +4246,7 @@ export class UtilsService {
 
     /**
      * Health Check
-     * @returns boolean Successful Response
+     * @returns unknown Successful Response
      * @throws ApiError
      */
     public static healthCheck(): CancelablePromise<UtilsHealthCheckResponse> {
@@ -2783,6 +4265,30 @@ export class UtilsService {
         return __request(OpenAPI, {
             method: 'GET',
             url: '/api/v1/utils/health'
+        });
+    }
+
+    /**
+     * Liveness
+     * @returns string Successful Response
+     * @throws ApiError
+     */
+    public static liveness(): CancelablePromise<UtilsLivenessResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/utils/health/live'
+        });
+    }
+
+    /**
+     * Readiness
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readiness(): CancelablePromise<UtilsReadinessResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/utils/health/ready'
         });
     }
 }

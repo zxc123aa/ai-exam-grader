@@ -19,6 +19,7 @@ from app.models import (
     AnswerPreparationItemStatus,
     AnswerPreparationRun,
     AnswerPreparationSource,
+    Exam,
     ExamDocument,
     ExamQuestion,
     ExamQuestionRegion,
@@ -31,6 +32,9 @@ from app.models import (
     WorkflowRunStatus,
     get_datetime_utc,
 )
+from app.services import billing as billing_service
+from app.services.billing import ModelCallContext
+from app.services.model_concurrency import distributed_model_slot
 from app.services.reference_algorithm import (
     process_stored_files,
     stored_file_page_data_urls,
@@ -279,6 +283,11 @@ def execute_question_recognition(run_id: str) -> None:
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = get_datetime_utc()
         run.error_message = None
+        reservation_id = (
+            uuid.UUID(str(run.raw_output["billing_reservation_id"]))
+            if (run.raw_output or {}).get("billing_reservation_id")
+            else None
+        )
         session.add(run)
         session.commit()
         try:
@@ -298,11 +307,39 @@ def execute_question_recognition(run_id: str) -> None:
             if len(documents) != len(requested_ids):
                 raise RuntimeError("部分试卷文件不存在或不属于当前考试")
 
-            payload = process_stored_files(
-                documents=documents,
-                provider=run.provider,
-                model=run.model,
-            )
+            exam = session.get(Exam, run.exam_id)
+            if not exam:
+                raise RuntimeError("考试不存在")
+            with distributed_model_slot(org_id=exam.org_id, org_limit=8):
+                payload = process_stored_files(
+                    documents=documents,
+                    provider=run.provider,
+                    model=run.model,
+                )
+            if exam:
+                billing_service.record_model_attempt(
+                    ModelCallContext(
+                        org_id=exam.org_id,
+                        exam_id=run.exam_id,
+                        reservation_id=reservation_id,
+                        workflow_purpose="question_recognition",
+                        resource_id=str(run.id),
+                        billing_key=(
+                            f"{exam.org_id}:question_recognition:{run.id}:pipeline-v2"
+                        ),
+                    ),
+                    requested_provider=run.provider,
+                    requested_model=run.model,
+                    actual_provider=str(payload.get("provider") or run.provider),
+                    actual_model=str(payload.get("model") or run.model),
+                    usage=(
+                        payload.get("usage")
+                        if isinstance(payload.get("usage"), dict)
+                        else None
+                    ),
+                    latency_ms=round((time.perf_counter() - started) * 1000),
+                    attempt=1,
+                )
             persist_question_recognition_payload(
                 session=session,
                 run=run,
@@ -310,6 +347,8 @@ def execute_question_recognition(run_id: str) -> None:
                 requested_ids=requested_ids,
                 started=started,
             )
+            if reservation_id:
+                billing_service.settle_reservation(session, reservation_id)
             session.commit()
         except Exception as exc:
             session.rollback()
@@ -408,11 +447,13 @@ _SECTION_KIND_PATTERNS: tuple[tuple[str, tuple[str, ...]], ...] = (
 _CANONICAL_QUESTION_TYPES = {kind for kind, _ in _SECTION_KIND_PATTERNS}
 _SECTION_POINTS_RE = re.compile(r"每\s*(?:小)?题\s*(\d+(?:\.\d+)?)\s*分")
 _SECTION_COUNT_RE = re.compile(r"(?:本题)?共\s*(\d+)\s*(?:小)?题")
-_SECTION_LINE_HINT_RE = re.compile(r"(?:共\s*\d+\s*(?:小)?题|选择|填空|实验|计算|判断|作图)")
-_EVIDENCE_START_RE = re.compile(r"[一二三四五六七八九十]+[、.．]|本题共|每\s*(?:小)?题\s*\d")
-_EVIDENCE_ANSWER_RE = re.compile(
-    r"正确选项|正确答案|答案为|答案是|本题选|故选|应选"
+_SECTION_LINE_HINT_RE = re.compile(
+    r"(?:共\s*\d+\s*(?:小)?题|选择|填空|实验|计算|判断|作图)"
 )
+_EVIDENCE_START_RE = re.compile(
+    r"[一二三四五六七八九十]+[、.．]|本题共|每\s*(?:小)?题\s*\d"
+)
+_EVIDENCE_ANSWER_RE = re.compile(r"正确选项|正确答案|答案为|答案是|本题选|故选|应选")
 _EVIDENCE_ZERO_POINTS_RE = re.compile(r"得\s*0\s*分")
 _EVIDENCE_GRADING_SENTENCE_RE = re.compile(
     r"得\s*\d+(?:\.\d+)?\s*分|少选|选对|选错|错选"
@@ -437,13 +478,13 @@ def _trim_score_rule_evidence(line: str) -> str:
         for match in _EVIDENCE_START_RE.finditer(text)
         if match.start() <= points_match.start()
     ]
-    segment = text[min(starts) if starts else points_match.start():]
+    segment = text[min(starts) if starts else points_match.start() :]
     answer_match = _EVIDENCE_ANSWER_RE.search(segment)
     if answer_match:
         segment = segment[: answer_match.start()]
     zero_match = _EVIDENCE_ZERO_POINTS_RE.search(segment)
     if zero_match:
-        tail = segment[zero_match.end():]
+        tail = segment[zero_match.end() :]
         segment = segment[: zero_match.end()] + ("。" if tail.startswith("。") else "")
     else:
         # Keep the score sentence plus the grading-rule sentences that
@@ -518,9 +559,7 @@ def _section_score_rules_from_question_texts(questions: list[dict]) -> list[dict
                 # The section heading sits at the top of its first question's
                 # crop, so the anchor question is treated as the section start.
                 "anchor_question_key": anchor_key,
-                "question_count": (
-                    int(count_match.group(1)) if count_match else None
-                ),
+                "question_count": (int(count_match.group(1)) if count_match else None),
                 "source": "question_text_section_rule",
             }
             signature = (
@@ -605,9 +644,7 @@ def _propagate_section_score_rules(
                 for rule in rules
                 if rule["section_type"] != "unknown"
                 and rule["section_type"] == question_kind
-                and not (
-                    rule.get("anchor_question_key") and rule.get("question_count")
-                )
+                and not (rule.get("anchor_question_key") and rule.get("question_count"))
             ]
         distinct_scores = {rule["points_each"] for rule in pool}
         if not pool or len(distinct_scores) != 1:
@@ -686,7 +723,7 @@ def _harvest_section_rules_from_results(results: list[dict]) -> list[dict]:
             texts.extend(value for value in raw.values() if isinstance(value, str))
         for text in texts:
             for raw_line in str(text or "").splitlines():
-                line = raw_line.strip().strip("\"“”")
+                line = raw_line.strip().strip('"“”')
                 if not _SECTION_POINTS_RE.search(line):
                     continue
                 if not _HARVEST_FEATURE_RE.search(line):
@@ -725,7 +762,8 @@ def _harvest_section_rules_from_results(results: list[dict]) -> list[dict]:
 
 def _score_hints_from_header_payload(
     parsed: dict, *, first_question_key: str
-) -> dict[str, Decimal]:    return {
+) -> dict[str, Decimal]:
+    return {
         key: allocation["max_score"]
         for key, allocation in _score_allocations_from_header_payload(
             parsed, first_question_key=first_question_key
@@ -791,6 +829,7 @@ def _page_header_score_hints(
     provider: str,
     model: str,
     fallback_models: list[str],
+    billing_context: ModelCallContext | None = None,
 ) -> dict[str, dict]:
     """Read printed question-score allocations from the page header, not from OCR text."""
     image = render_stored_file_page_image(
@@ -846,6 +885,7 @@ def _page_header_score_hints(
                 ],
             }
         ],
+        billing_context=billing_context,
     )
     return _score_allocations_from_header_payload(
         parsed, first_question_key=first_question_key
@@ -857,14 +897,13 @@ def _solve_question(
     provider: str,
     model: str,
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
 ) -> dict:
     declared_score = question.get("declared_max_score")
     score_evidence = str(question.get("score_evidence_text") or "").strip()
     grading_rule = str(question.get("declared_grading_rule") or "").strip()
     score_evidence_source = str(question.get("score_evidence_source") or "").strip()
-    score_evidence_anchor = str(
-        question.get("score_evidence_anchor") or ""
-    ).strip()
+    score_evidence_anchor = str(question.get("score_evidence_anchor") or "").strip()
     exam_rules_text = str(question.get("exam_score_rules_text") or "").strip()
     exam_rules_block = (
         f"全卷大题赋分规则汇总（跨题共享证据）：\n{exam_rules_text}\n"
@@ -884,9 +923,7 @@ def _solve_question(
             origin_note = "（赋分证据来自大题说明，跨题共享）"
         else:
             origin_note = ""
-        declared_score_text = (
-            f"赋分提取器已从卷面确定本题满分为 {declared_score} 分{origin_note}，证据原文：{score_evidence}。max_score 必须严格为该值。卷面计分规则：{grading_rule or '按满分规则评分'}。"
-        )
+        declared_score_text = f"赋分提取器已从卷面确定本题满分为 {declared_score} 分{origin_note}，证据原文：{score_evidence}。max_score 必须严格为该值。卷面计分规则：{grading_rule or '按满分规则评分'}。"
     else:
         declared_score_text = "赋分提取器没有找到本题明确分值。必须先从题目全文和裁图中解析印刷分值（题号后的“（X分）”、大题说明行的“每小题X分，共X分”），解析到就作为 max_score 并在 rubric_text 中引用证据原文；确实解析不到才视为卷面未标注。"
     prompt = f"""你是资深的中文学科教师。请独立解答题目，并生成可直接执行的专业评分准则。AI 结果只是教师待确认草稿。
@@ -917,6 +954,7 @@ def _solve_question(
         model=model,
         fallback_models=fallback_models or [],
         messages=[{"role": "user", "content": content}],
+        billing_context=billing_context,
     )
     used_provider = str(usage.pop("_used_provider", provider))
     score_requires_review = declared_score is None and is_choice_question
@@ -1010,10 +1048,7 @@ def _answer_item_fields(result: dict) -> dict:
         ),
         "status": (
             AnswerPreparationItemStatus.CONFLICT
-            if (
-                result["score_requires_review"]
-                or result["solution_requires_review"]
-            )
+            if (result["score_requires_review"] or result["solution_requires_review"])
             else (
                 AnswerPreparationItemStatus.MATCHED
                 if result["answer_text"]
@@ -1039,6 +1074,7 @@ def _parse_answer_documents(
     provider: str,
     model: str,
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
 ) -> tuple[dict, str, int, dict]:
     question_catalog = [
         {
@@ -1073,6 +1109,7 @@ def _parse_answer_documents(
         model=model,
         fallback_models=fallback_models or [],
         messages=[{"role": "user", "content": content}],
+        billing_context=billing_context,
     )
 
 
@@ -1086,13 +1123,26 @@ def execute_answer_preparation(run_id: str) -> None:
         run.status = WorkflowRunStatus.RUNNING
         run.started_at = get_datetime_utc()
         run.error_message = None
+        reservation_id = (
+            uuid.UUID(str(run.raw_output["billing_reservation_id"]))
+            if (run.raw_output or {}).get("billing_reservation_id")
+            else None
+        )
         session.add(run)
         session.commit()
         try:
             from app.services.system_config import get_grading_defaults
 
-            defaults = get_grading_defaults(session)
-            fallback_models = [str(item) for item in defaults["fallback_models"]]
+            exam = session.get(Exam, run.exam_id)
+            if not exam:
+                raise RuntimeError("考试不存在")
+            defaults = get_grading_defaults(session, exam.org_id)
+            vision_fallback_models = [
+                str(item) for item in defaults["vision_fallback_models"]
+            ]
+            reasoning_fallback_models = [
+                str(item) for item in defaults["reasoning_fallback_models"]
+            ]
             questions = [
                 {
                     "id": question.id,
@@ -1181,7 +1231,18 @@ def execute_answer_preparation(run_id: str) -> None:
                             first_question_key=first_question_key,
                             provider=str(defaults["recognition_provider"]),
                             model=str(defaults["recognition_model"]),
-                            fallback_models=fallback_models,
+                            fallback_models=vision_fallback_models,
+                            billing_context=ModelCallContext(
+                                org_id=exam.org_id,
+                                exam_id=run.exam_id,
+                                reservation_id=reservation_id,
+                                workflow_purpose="score_structure_recognition",
+                                resource_id=f"{run.id}:{stored_file.id}:{page_number}",
+                                billing_key=(
+                                    f"{exam.org_id}:score_structure:{run.id}:"
+                                    f"{stored_file.id}:{page_number}:pipeline-v2"
+                                ),
+                            ),
                         )
                     except Exception:
                         page_allocations = {}
@@ -1217,7 +1278,18 @@ def execute_answer_preparation(run_id: str) -> None:
                             question,
                             run.provider,
                             run.model,
-                            fallback_models,
+                            reasoning_fallback_models,
+                            ModelCallContext(
+                                org_id=exam.org_id,
+                                exam_id=run.exam_id,
+                                reservation_id=reservation_id,
+                                workflow_purpose="answer_preparation",
+                                resource_id=str(question["id"]),
+                                billing_key=(
+                                    f"{exam.org_id}:answer_preparation:"
+                                    f"{question['id']}:pipeline-v2"
+                                ),
+                            ),
                         ): question
                         for question in questions
                     }
@@ -1339,7 +1411,18 @@ def execute_answer_preparation(run_id: str) -> None:
                                     question,
                                     run.provider,
                                     run.model,
-                                    fallback_models,
+                                    reasoning_fallback_models,
+                                    ModelCallContext(
+                                        org_id=exam.org_id,
+                                        exam_id=run.exam_id,
+                                        reservation_id=reservation_id,
+                                        workflow_purpose="answer_preparation",
+                                        resource_id=str(question["id"]),
+                                        billing_key=(
+                                            f"{exam.org_id}:answer_preparation:"
+                                            f"{question['id']}:pipeline-v2"
+                                        ),
+                                    ),
                                 ): item
                                 for question, item in resolved
                             }
@@ -1353,16 +1436,12 @@ def execute_answer_preparation(run_id: str) -> None:
                                 model_elapsed_ms += result["elapsed_ms"]
                                 used_providers.add(result["used_provider"])
                                 used_models.add(result["used_model"])
-                                for key, value in (
-                                    result.get("usage") or {}
-                                ).items():
+                                for key, value in (result.get("usage") or {}).items():
                                     if isinstance(value, int | float):
                                         usage_totals[key] = usage_totals.get(
                                             key, 0
                                         ) + int(value)
-                                for field, value in _answer_item_fields(
-                                    result
-                                ).items():
+                                for field, value in _answer_item_fields(result).items():
                                     setattr(item, field, value)
                                 session.add(item)
             else:
@@ -1389,7 +1468,17 @@ def execute_answer_preparation(run_id: str) -> None:
                     documents=documents,
                     provider=run.provider,
                     model=run.model,
-                    fallback_models=fallback_models,
+                    fallback_models=vision_fallback_models,
+                    billing_context=ModelCallContext(
+                        org_id=exam.org_id,
+                        exam_id=run.exam_id,
+                        reservation_id=reservation_id,
+                        workflow_purpose="answer_document_parsing",
+                        resource_id=str(run.id),
+                        billing_key=(
+                            f"{exam.org_id}:answer_document_parsing:{run.id}:pipeline-v2"
+                        ),
+                    ),
                 )
                 used_models.add(used_model)
                 used_providers.add(str(usage.get("_used_provider", run.provider)))
@@ -1499,6 +1588,8 @@ def execute_answer_preparation(run_id: str) -> None:
                 else None
             )
             run.completed_at = get_datetime_utc()
+            if reservation_id:
+                billing_service.settle_reservation(session, reservation_id)
             session.add(run)
             session.commit()
         except Exception as exc:

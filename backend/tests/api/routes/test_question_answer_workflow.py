@@ -4,7 +4,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 from sqlmodel import Session, select
 
-from app.api.routes import questions_answers
+from app.api.routes import grading, questions_answers
 from app.core.config import settings
 from app.core.db import engine
 from app.models import (
@@ -33,17 +33,17 @@ def _png() -> bytes:
 
 def test_import_complete_marking_recognition_without_model_call(
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    school_owner_token_headers: dict[str, str],
     monkeypatch,
 ) -> None:
     exam = client.post(
         f"{settings.API_V1_STR}/exams/",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"org_id": DEFAULT_ORG_ID, "title": "Marking handoff exam", "subject": "物理"},
     ).json()
     document_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/files",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         files={"file": ("paper.png", _png(), "image/png")},
         data={"document_type": "blank_exam"},
     )
@@ -56,11 +56,13 @@ def test_import_complete_marking_recognition_without_model_call(
         raise AssertionError("标定结果导入不应再次调用题目识别")
 
     monkeypatch.setattr(
-        questions_answers, "execute_question_recognition", fail_if_recognized
+        questions_answers.process_question_recognition_run,
+        "send",
+        fail_if_recognized,
     )
     response = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs/from-marking",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={
             "document_ids": [document_id],
             "covered_page_ids": [page_id],
@@ -96,7 +98,7 @@ def test_import_complete_marking_recognition_without_model_call(
     run_id = response.json()["id"]
     items = client.get(
         f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs/{run_id}/items",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     ).json()
     assert items[0]["question_text"] == "测试题干"
     assert items[0]["student_answer_text"] == "B"
@@ -104,7 +106,7 @@ def test_import_complete_marking_recognition_without_model_call(
 
     incomplete = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs/from-marking",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={
             "document_ids": [document_id],
             "covered_page_ids": [f"{document_id}:page:2"],
@@ -117,19 +119,19 @@ def test_import_complete_marking_recognition_without_model_call(
 
 def test_confirm_prepare_and_publish_immutable_revision(
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    school_owner_token_headers: dict[str, str],
     monkeypatch,
 ) -> None:
     exam_response = client.post(
         f"{settings.API_V1_STR}/exams/",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"org_id": DEFAULT_ORG_ID, "title": "Workflow integration exam", "subject": "物理"},
     )
     assert exam_response.status_code == 200
     exam_id = exam_response.json()["id"]
     document_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/files",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         files={"file": ("paper.png", _png(), "image/png")},
         data={"document_type": "blank_exam"},
     )
@@ -180,18 +182,20 @@ def test_confirm_prepare_and_publish_immutable_revision(
             session.commit()
 
     monkeypatch.setattr(
-        questions_answers, "execute_question_recognition", fake_recognition
+        questions_answers.process_question_recognition_run,
+        "send",
+        fake_recognition,
     )
     run_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/question-recognition-runs",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"document_ids": [document_id]},
     )
     assert run_response.status_code == 200
     recognition_run_id = run_response.json()["id"]
     items_response = client.get(
         f"{settings.API_V1_STR}/exams/{exam_id}/question-recognition-runs/{recognition_run_id}/items",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert items_response.status_code == 200
     assert items_response.json()[0]["student_answer_text"] == "2 m/s^2"
@@ -199,12 +203,12 @@ def test_confirm_prepare_and_publish_immutable_revision(
 
     confirm_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/question-recognition-runs/{recognition_run_id}/confirm",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert confirm_response.status_code == 200
     questions_response = client.get(
         f"{settings.API_V1_STR}/exams/{exam_id}/questions",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert questions_response.status_code == 200
     question = questions_response.json()["data"][0]
@@ -258,11 +262,13 @@ def test_confirm_prepare_and_publish_immutable_revision(
             session.commit()
 
     monkeypatch.setattr(
-        questions_answers, "execute_answer_preparation", fake_answer_preparation
+        questions_answers.process_answer_preparation_run,
+        "send",
+        fake_answer_preparation,
     )
     preparation_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/answer-preparation-runs",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={
             "source_type": "model",
             "provider": "pomoai",
@@ -274,18 +280,18 @@ def test_confirm_prepare_and_publish_immutable_revision(
     preparation_run_id = preparation_response.json()["id"]
     preparation_items = client.get(
         f"{settings.API_V1_STR}/exams/{exam_id}/answer-preparation-runs/{preparation_run_id}/items",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     ).json()
     assert preparation_items[0]["status"] == "matched"
 
     answer_confirm_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/answer-preparation-runs/{preparation_run_id}/confirm",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert answer_confirm_response.status_code == 200
     revisions_response = client.get(
         f"{settings.API_V1_STR}/exams/{exam_id}/standard-answers/revisions",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     revisions = revisions_response.json()["data"]
     assert len(revisions) == 1
@@ -295,7 +301,7 @@ def test_confirm_prepare_and_publish_immutable_revision(
 
     publish_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/standard-answers/publish",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"revision_ids": [revisions[0]["id"]]},
     )
     assert publish_response.status_code == 200
@@ -304,14 +310,14 @@ def test_confirm_prepare_and_publish_immutable_revision(
 
     immutable_response = client.patch(
         f"{settings.API_V1_STR}/exams/{exam_id}/answer-preparation-items/{preparation_items[0]['id']}",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"answer_text": "不允许覆盖历史答案"},
     )
     assert immutable_response.status_code == 409
 
     submission_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         files={"file": ("student.png", _png(), "image/png")},
         data={"student_name": "测试学生", "student_identifier": "T001"},
     )
@@ -319,7 +325,7 @@ def test_confirm_prepare_and_publish_immutable_revision(
     submission_id = submission_response.json()["id"]
     grading_response = client.post(
         f"{settings.API_V1_STR}/grading/runs",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={
             "exam_id": exam_id,
             "submission_ids": [submission_id],
@@ -338,9 +344,14 @@ def test_confirm_prepare_and_publish_immutable_revision(
         )
 
     monkeypatch.setattr(grading_workflow, "_process_item", fail_without_external_model)
+    monkeypatch.setattr(
+        grading.process_grading_run,
+        "send",
+        grading_workflow.execute_grading_run,
+    )
     start_response = client.post(
         f"{settings.API_V1_STR}/grading/runs/{grading_run_id}/start",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert start_response.status_code == 200
     with Session(engine) as session:
@@ -352,6 +363,7 @@ def test_confirm_prepare_and_publish_immutable_revision(
         ).one()
         assert str(grading_item.question_id) == question["id"]
         assert str(grading_item.answer_revision_id) == published_revision_id
+        assert grading_run.review_count == 1
 
 
 def _clear_system_config(db: Session) -> None:
@@ -364,21 +376,24 @@ def test_question_recognition_run_uses_system_config(
     client: TestClient,
     db: Session,
     superuser_token_headers: dict[str, str],
+    school_owner_token_headers: dict[str, str],
     monkeypatch,
 ) -> None:
     """创建识别 run 的 provider/model 来自系统设置 recognition_*，缺键回落 vision 默认。"""
     _clear_system_config(db)
     monkeypatch.setattr(
-        questions_answers, "execute_question_recognition", lambda _run_id: None
+        questions_answers.process_question_recognition_run,
+        "send",
+        lambda _run_id: None,
     )
     exam = client.post(
         f"{settings.API_V1_STR}/exams/",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"org_id": DEFAULT_ORG_ID, "title": "识别配置考试", "subject": "物理"},
     ).json()
     document_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/files",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         files={"file": ("paper.png", _png(), "image/png")},
         data={"document_type": "blank_exam"},
     )
@@ -389,7 +404,7 @@ def test_question_recognition_run_uses_system_config(
         # 缺键回落：recognition_* → vision 默认
         fallback_response = client.post(
             f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs",
-            headers=superuser_token_headers,
+            headers=school_owner_token_headers,
             json={"document_ids": [document_id]},
         )
         assert fallback_response.status_code == 200
@@ -401,18 +416,18 @@ def test_question_recognition_run_uses_system_config(
             headers=superuser_token_headers,
             json={
                 "recognition_provider": "pomoai",
-                "recognition_model": "gpt-5.5",
+                "recognition_model": "gemini-3.6-flash",
             },
         )
         assert patch_response.status_code == 200, patch_response.text
 
         run_response = client.post(
             f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs",
-            headers=superuser_token_headers,
+            headers=school_owner_token_headers,
             json={"document_ids": [document_id]},
         )
         assert run_response.status_code == 200
         assert run_response.json()["provider"] == "pomoai"
-        assert run_response.json()["model"] == "gpt-5.5"
+        assert run_response.json()["model"] == "gemini-3.6-flash"
     finally:
         _clear_system_config(db)

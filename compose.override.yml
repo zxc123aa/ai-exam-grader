@@ -61,9 +61,14 @@ services:
       - "8010:8010"
 
   adminer:
+    image: adminer
     restart: "no"
+    depends_on:
+      - db
+    environment:
+      - ADMINER_DESIGN=pepa-linha-dark
     ports:
-      - "8080:8080"
+      - "127.0.0.1:8080:8080"
 
   backend:
     restart: "no"

@@ -9,6 +9,7 @@ from sqlmodel import Session, col, select
 
 from app.models import ExamDocument, ExamDocumentType, ExamRegion, StoredFile
 from app.services.file_storage import get_stored_file_path
+from app.services.object_storage import put_storage_bytes
 from app.services.pdf_rendering import (
     InvalidPdfError,
     get_pdf_page_count,
@@ -139,7 +140,7 @@ def save_region_crop(
     region: ExamRegion,
     owner_id: uuid.UUID,
     submission_id: uuid.UUID,
-    upload_dir: Path,
+    upload_dir: Path | None = None,
     page_number: int | None = None,
 ) -> dict:
     cropped = crop_region_image(
@@ -154,9 +155,14 @@ def save_region_crop(
             submission_id=submission_id,
             region_id=region.id,
         )
-        target_path = upload_dir / storage_key
-        target_path.parent.mkdir(parents=True, exist_ok=True)
-        cropped.save(target_path, format="PNG")
+        buffer = BytesIO()
+        cropped.save(buffer, format="PNG")
+        if upload_dir is None:
+            put_storage_bytes(storage_key, buffer.getvalue())
+        else:
+            target_path = upload_dir / storage_key
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_bytes(buffer.getvalue())
         width, height = cropped.size
         return {
             "region_id": str(region.id),

@@ -20,7 +20,6 @@ import {
   type SubmissionAnnotationStatus,
   TasksService,
 } from "@/client"
-import { ConfBadge } from "@/components/Common/ConfBadge"
 import { PageHead } from "@/components/Common/PageHead"
 import { Tag, type TagVariant } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
@@ -558,11 +557,10 @@ function GradingDraft({
               建议得分 {annotation.suggested_score}
               {annotation.max_score != null ? ` / ${annotation.max_score}` : ""}
             </span>
-            {annotation.grading_confidence != null ? (
-              <ConfBadge value={annotation.grading_confidence * 100} />
-            ) : (
-              <span className="text-muted-foreground">n/a</span>
-            )}
+            {annotation.grading_confidence != null &&
+              annotation.grading_confidence < 0.8 && (
+                <Tag variant="amber">请复核</Tag>
+              )}
           </div>
           {annotation.suggested_comment && (
             <div className="whitespace-pre-wrap text-xs text-muted-foreground">

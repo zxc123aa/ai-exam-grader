@@ -1,14 +1,15 @@
 import uuid
 
 from fastapi.testclient import TestClient
-from sqlmodel import Session
+from sqlmodel import Session, col, select
 
 from app import crud
 from app.core.config import settings
 from app.models import (
     AnnotationGradingStatus,
+    ScoreRelease,
+    ScoreReleaseItem,
     StoredFile,
-    Student,
     StudentSubmission,
     SubmissionAnnotation,
     User,
@@ -17,7 +18,6 @@ from app.models import (
 )
 from tests.utils.user import user_authentication_headers
 from tests.utils.utils import random_email, random_lower_string
-
 
 DEFAULT_ORG_ID = "00000000-0000-0000-0000-000000000001"
 
@@ -129,6 +129,42 @@ def _make_annotation(
     db.commit()
     db.refresh(annotation)
     return annotation
+
+
+def _publish_scores(
+    db: Session, *, exam_id: uuid.UUID, teacher_id: uuid.UUID
+) -> None:
+    release = ScoreRelease(
+        exam_id=exam_id, version=1, published_by_id=teacher_id
+    )
+    db.add(release)
+    db.flush()
+    submissions = list(
+        db.exec(
+            select(StudentSubmission).where(StudentSubmission.exam_id == exam_id)
+        ).all()
+    )
+    annotations = db.exec(
+        select(SubmissionAnnotation).where(
+            col(SubmissionAnnotation.submission_id).in_([item.id for item in submissions])
+        )
+    ).all()
+    db.add_all(
+        [
+            ScoreReleaseItem(
+                release_id=release.id,
+                submission_id=item.submission_id,
+                annotation_id=item.id,
+                label=item.label,
+                score=item.score,
+                max_score=item.max_score,
+                comment=item.comment,
+                source="human" if item.score_source == "human" else "suggested",
+            )
+            for item in annotations
+        ]
+    )
+    db.commit()
 
 
 def _setup_teacher_with_classes(
@@ -364,6 +400,15 @@ def test_student_exam_list_and_report(client: TestClient, db: Session) -> None:
         max_score=100,
     )
 
+    # Draft scores are invisible until the teacher publishes the whole exam.
+    hidden = client.get(
+        f"{settings.API_V1_STR}/students/me/exams", headers=student_headers
+    )
+    assert hidden.status_code == 200
+    assert hidden.json()["count"] == 0
+    _publish_scores(db, exam_id=exam_id, teacher_id=teacher.id)
+    _publish_scores(db, exam_id=exam2_id, teacher_id=teacher.id)
+
     # 考试列表
     r = client.get(
         f"{settings.API_V1_STR}/students/me/exams", headers=student_headers
@@ -384,7 +429,7 @@ def test_student_exam_list_and_report(client: TestClient, db: Session) -> None:
     assert mine["class_rank"] == 2
     assert mine["class_size"] == 2
     assert mine["question_count"] == 2
-    assert mine["pending_review_count"] == 1
+    assert mine["pending_review_count"] == 0
     fallback_item = items["物理周测"]
     assert fallback_item["total_score"] == 60
     assert fallback_item["class_rank"] == 1
@@ -409,9 +454,9 @@ def test_student_exam_list_and_report(client: TestClient, db: Session) -> None:
     assert questions["1"]["max_score"] == 50
     assert questions["1"]["score_source"] == "final"
     assert questions["1"]["comment"] == "步骤分扣 10 分"
-    assert questions["1"]["suggested_comment"] == "AI：部分正确"
-    assert questions["2"]["score_source"] == "ai_suggested"
-    assert questions["2"]["suggested_comment"] == "AI：建议复核"
+    assert questions["1"]["suggested_comment"] is None
+    assert questions["2"]["score_source"] == "final"
+    assert questions["2"]["suggested_comment"] is None
     # 看不到别人的任何数据
     assert "李四" not in r.text and "王五" not in r.text
 

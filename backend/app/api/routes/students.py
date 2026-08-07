@@ -5,19 +5,20 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import Session, col, select
 
 from app.api.deps import CurrentUser, SessionDep, require_roles
-from app.api.routes.exams import _build_exam_scores_summary
 from app.models import (
     ClassGroup,
     Exam,
     ExamScoreSummaryPublic,
     ExamScoreSummaryRow,
+    ScoreRelease,
+    ScoreReleaseItem,
+    ScoreReleaseStatus,
     Student,
     StudentExamListItemPublic,
     StudentExamListPublic,
     StudentExamReportPublic,
     StudentExamReportQuestion,
     StudentSubmission,
-    SubmissionAnnotation,
     User,
     UserRole,
 )
@@ -26,6 +27,65 @@ router = APIRouter(prefix="/students", tags=["students"])
 
 # 学生专属端点：教师/管理员访问一律 403
 CurrentStudentUser = Annotated[User, Depends(require_roles(UserRole.STUDENT))]
+
+
+def _published_release(session: Session, exam_id: uuid.UUID) -> ScoreRelease | None:
+    return session.exec(
+        select(ScoreRelease)
+        .where(
+            ScoreRelease.exam_id == exam_id,
+            ScoreRelease.status == ScoreReleaseStatus.PUBLISHED,
+        )
+        .order_by(col(ScoreRelease.version).desc())
+    ).first()
+
+
+def _release_class_position(
+    session: Session,
+    release: ScoreRelease,
+    my_submission_ids: set[uuid.UUID],
+) -> tuple[int | None, int, str | None]:
+    """Calculate rank exclusively from the immutable published snapshot."""
+    rows = list(
+        session.exec(
+            select(ScoreReleaseItem, StudentSubmission)
+            .join(
+                StudentSubmission,
+                ScoreReleaseItem.submission_id == StudentSubmission.id,
+            )
+            .where(ScoreReleaseItem.release_id == release.id)
+        ).all()
+    )
+    totals: dict[tuple[str, str], dict[str, Any]] = {}
+    my_key: tuple[str, str] | None = None
+    for item, submission in rows:
+        key = (
+            (submission.class_name or "").strip(),
+            (submission.student_name or "").strip(),
+        )
+        entry = totals.setdefault(key, {"score": 0.0, "has_score": False})
+        if item.score is not None:
+            entry["score"] += item.score
+            entry["has_score"] = True
+        if submission.id in my_submission_ids:
+            my_key = key
+    if my_key is None:
+        return None, 0, None
+    classmates = [
+        (key, value)
+        for key, value in totals.items()
+        if key[0] == my_key[0]
+    ]
+    scored = sorted(
+        (row for row in classmates if row[1]["has_score"]),
+        key=lambda row: row[1]["score"],
+        reverse=True,
+    )
+    rank = next(
+        (index for index, (key, _value) in enumerate(scored, start=1) if key == my_key),
+        None,
+    )
+    return rank, len(classmates), my_key[0] or None
 
 
 def get_current_student_profile(
@@ -56,8 +116,14 @@ def find_my_submissions(
     )
     matched_ids = {submission.id for submission in submissions}
     if class_name:
+        class_group = session.get(ClassGroup, student.class_id)
+        if not class_group:
+            return submissions
         fallback = session.exec(
-            select(StudentSubmission).where(
+            select(StudentSubmission)
+            .join(Exam, StudentSubmission.exam_id == Exam.id)
+            .where(
+                Exam.org_id == class_group.org_id,
                 StudentSubmission.class_name == class_name,
                 StudentSubmission.student_name == student.name,
             )
@@ -166,29 +232,26 @@ def read_my_exams(
     items: list[StudentExamListItemPublic] = []
     for exam_id in exam_ids:
         exam = session.get(Exam, exam_id)
-        if not exam:
+        release = _published_release(session, exam_id)
+        if not exam or not release:
             continue
-        summary = _build_exam_scores_summary(session=session, exam_id=exam_id)
-        my_rows = [
-            row for row in summary.data if row.submission_id in my_submission_ids
-        ]
-        if not my_rows:
+        release_items = list(
+            session.exec(
+                select(ScoreReleaseItem).where(
+                    ScoreReleaseItem.release_id == release.id,
+                    col(ScoreReleaseItem.submission_id).in_(my_submission_ids),
+                )
+            ).all()
+        )
+        if not release_items:
             continue
-        class_rank, class_size, class_name = _compute_class_position(
-            summary=summary,
-            my_rows=my_rows,
-            my_submission_ids=my_submission_ids,
+        class_rank, class_size, class_name = _release_class_position(
+            session, release, my_submission_ids
         )
-        labels = {
-            question.label for row in my_rows for question in row.questions
-        }
-        total_score = sum(
-            row.total_score for row in my_rows if row.total_score is not None
-        )
+        labels = {item.label for item in release_items}
+        total_score = sum(item.score for item in release_items if item.score is not None)
         total_max_score = sum(
-            row.total_max_score
-            for row in my_rows
-            if row.total_max_score is not None
+            item.max_score for item in release_items if item.max_score is not None
         )
         items.append(
             StudentExamListItemPublic(
@@ -200,20 +263,18 @@ def read_my_exams(
                 class_name=class_name,
                 total_score=(
                     round(total_score, 2)
-                    if any(row.total_score is not None for row in my_rows)
+                    if any(item.score is not None for item in release_items)
                     else None
                 ),
                 total_max_score=(
                     round(total_max_score, 2)
-                    if any(row.total_max_score is not None for row in my_rows)
+                    if any(item.max_score is not None for item in release_items)
                     else None
                 ),
                 class_rank=class_rank,
                 class_size=class_size,
                 question_count=len(labels),
-                pending_review_count=sum(
-                    row.pending_review_count for row in my_rows
-                ),
+                pending_review_count=0,
             )
         )
     items.sort(
@@ -240,63 +301,33 @@ def read_my_exam_report(
     ):
         raise HTTPException(status_code=404, detail="Exam not found")
 
-    summary = _build_exam_scores_summary(session=session, exam_id=exam_id)
-    my_rows = [
-        row for row in summary.data if row.submission_id in my_submission_ids
-    ]
-    if not my_rows:
-        raise HTTPException(status_code=404, detail="Exam not found")
-    class_rank, class_size, class_name = _compute_class_position(
-        summary=summary,
-        my_rows=my_rows,
-        my_submission_ids=my_submission_ids,
+    release = _published_release(session, exam_id)
+    if not release:
+        raise HTTPException(status_code=404, detail="成绩尚未发布")
+    release_items = list(
+        session.exec(
+            select(ScoreReleaseItem).where(
+                ScoreReleaseItem.release_id == release.id,
+                col(ScoreReleaseItem.submission_id).in_(my_submission_ids),
+            )
+        ).all()
     )
+    if not release_items:
+        raise HTTPException(status_code=404, detail="成绩尚未发布")
 
-    # 逐题合并：同一 label 优先教师复核后的最终分（final）
-    by_label: dict[str, Any] = {}
-    for row in my_rows:
-        for question in row.questions:
-            existing = by_label.get(question.label)
-            if existing is None or (
-                existing.score_source != "final"
-                and question.score_source == "final"
-            ):
-                by_label[question.label] = question
-    annotation_ids = [
-        question.annotation_id
-        for question in by_label.values()
-        if question.annotation_id
-    ]
-    annotations_by_id = (
-        {
-            annotation.id: annotation
-            for annotation in session.exec(
-                select(SubmissionAnnotation).where(
-                    col(SubmissionAnnotation.id).in_(annotation_ids)
-                )
-            ).all()
-        }
-        if annotation_ids
-        else {}
+    class_rank, class_size, class_name = _release_class_position(
+        session, release, my_submission_ids
     )
     questions = [
         StudentExamReportQuestion(
-            label=question.label,
-            score=question.score,
-            max_score=question.max_score,
-            score_source=question.score_source,
-            comment=(
-                annotation.comment
-                if (annotation := annotations_by_id.get(question.annotation_id))
-                else None
-            ),
-            suggested_comment=(
-                annotation.suggested_comment
-                if (annotation := annotations_by_id.get(question.annotation_id))
-                else None
-            ),
+            label=item.label,
+            score=item.score,
+            max_score=item.max_score,
+            score_source="final",
+            comment=item.comment,
+            suggested_comment=None,
         )
-        for _label, question in sorted(by_label.items())
+        for item in sorted(release_items, key=lambda value: value.label)
     ]
     total_score = sum(
         question.score for question in questions if question.score is not None

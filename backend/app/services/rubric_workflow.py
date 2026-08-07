@@ -8,6 +8,7 @@ from sqlmodel import Session, select
 from app.core.config import settings
 from app.core.db import engine
 from app.models import (
+    Exam,
     ExamDocument,
     ExamDocumentType,
     ExamRegion,
@@ -17,11 +18,14 @@ from app.models import (
     StoredFile,
     get_datetime_utc,
 )
+from app.services import billing as billing_service
 from app.services.rubric_generation import generate_and_validate_rubric
 from app.services.submission_crops import crop_region_png
 
 
-def _generate_one(answer_id: uuid.UUID) -> dict:
+def _generate_one(
+    answer_id: uuid.UUID, reservation_id: uuid.UUID | None = None
+) -> dict:
     with Session(engine, expire_on_commit=False) as session:
         answer = session.get(StandardAnswer, answer_id)
         if not answer:
@@ -56,16 +60,37 @@ def _generate_one(answer_id: uuid.UUID) -> dict:
             }
         _document, stored_file = row
         try:
-            from app.services.system_config import get_grading_defaults
+            from app.models import SchoolModelScope
+            from app.services.system_config import (
+                get_grading_defaults,
+                get_school_model_target,
+            )
 
-            defaults = get_grading_defaults(session)
+            exam = session.get(Exam, answer.exam_id)
+            defaults = get_grading_defaults(session, exam.org_id if exam else None)
+            answer_provider, answer_model = get_school_model_target(
+                session,
+                org_id=exam.org_id if exam else None,
+                scope=SchoolModelScope.REFERENCE_ANSWER,
+                fallback_provider=str(defaults["grading_provider"]),
+                fallback_model=str(defaults["grading_model"]),
+            )
             generated = generate_and_validate_rubric(
                 image_bytes=crop_region_png(stored_file=stored_file, region=region),
                 answer=answer,
                 question_label=region.label,
                 vision_provider=str(defaults["recognition_provider"]),
                 vision_model=str(defaults["recognition_model"]),
-                fallback_models=[str(item) for item in defaults["fallback_models"]],
+                answer_provider=answer_provider,
+                answer_model=answer_model,
+                vision_fallback_models=[
+                    str(item) for item in defaults["vision_fallback_models"]
+                ],
+                reasoning_fallback_models=[
+                    str(item) for item in defaults["reasoning_fallback_models"]
+                ],
+                org_id=exam.org_id if exam else None,
+                reservation_id=reservation_id,
             )
             session.add(generated)
             session.commit()
@@ -91,6 +116,11 @@ def execute_rubric_generation(task_id: str, exam_id: str) -> None:
         task = session.get(ProcessingTask, task_uuid)
         if not task:
             return
+        reservation_id = (
+            uuid.UUID(str(task.input_ref["billing_reservation_id"]))
+            if (task.input_ref or {}).get("billing_reservation_id")
+            else None
+        )
         task.status, task.progress, task.updated_at = (
             ProcessingTaskStatus.RUNNING,
             0,
@@ -108,7 +138,8 @@ def execute_rubric_generation(task_id: str, exam_id: str) -> None:
         concurrency = min(4, settings.VISION_MAX_CONCURRENCY)
         with ThreadPoolExecutor(max_workers=concurrency) as pool:
             futures = [
-                pool.submit(_generate_one, answer_id) for answer_id in answer_ids
+                pool.submit(_generate_one, answer_id, reservation_id)
+                for answer_id in answer_ids
             ]
             for index, future in enumerate(as_completed(futures), start=1):
                 reports.append(future.result())
@@ -137,6 +168,8 @@ def execute_rubric_generation(task_id: str, exam_id: str) -> None:
                     {"reports": reports},
                     get_datetime_utc(),
                 )
+                if reservation_id:
+                    billing_service.settle_reservation(session, reservation_id)
                 session.add(task)
                 session.commit()
     except Exception as exc:

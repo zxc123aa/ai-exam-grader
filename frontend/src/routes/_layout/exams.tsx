@@ -34,17 +34,12 @@ function ExamsTableContent() {
 
   if (exams.data.length === 0) {
     return (
-      <div className="grid gap-4">
-        <EmptyState
-          icon={Search}
-          title="还没有考试"
-          description="创建第一场考试，然后导入卷子图片或 PDF"
-          className="bg-card shadow-card"
-        />
-        <div className="flex justify-center">
-          <AddExam />
-        </div>
-      </div>
+      <EmptyState
+        icon={Search}
+        title="还没有考试"
+        description="点击右上角「新建考试」，然后导入卷子图片或 PDF"
+        className="bg-card shadow-card"
+      />
     )
   }
 

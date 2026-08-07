@@ -95,6 +95,36 @@ def _verification_mode(value: str | None) -> str:
     return value if value in {"evidence", "selective"} else "fast"
 
 
+def _merge_token_usage(*usages: Any) -> dict[str, int]:
+    merged = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0}
+    for usage in usages:
+        if not isinstance(usage, dict):
+            continue
+        input_tokens = int(
+            usage.get("inputTokens")
+            or usage.get("input_tokens")
+            or usage.get("prompt_tokens")
+            or 0
+        )
+        output_tokens = int(
+            usage.get("outputTokens")
+            or usage.get("output_tokens")
+            or usage.get("completion_tokens")
+            or 0
+        )
+        merged["input_tokens"] += max(0, input_tokens)
+        merged["output_tokens"] += max(0, output_tokens)
+        merged["total_tokens"] += max(
+            0,
+            int(
+                usage.get("totalTokens")
+                or usage.get("total_tokens")
+                or input_tokens + output_tokens
+            ),
+        )
+    return merged
+
+
 def _process_pages(
     *,
     pages: list[dict],
@@ -125,6 +155,7 @@ def _process_pages(
         )
         layout_response.raise_for_status()
         layout_payload = layout_response.json()
+        layout_usage = layout_payload.get("tokenUsage") or {}
 
         page_images = {page["id"]: _decode_image(page["contents"]) for page in pages}
         blocks: list[dict] = []
@@ -176,6 +207,9 @@ def _process_pages(
                     "layouts": layout_payload.get("layouts", []),
                     "blocks": [],
                     "results": [],
+                    "usage": _merge_token_usage(layout_usage),
+                    "layoutTokenUsage": layout_usage,
+                    "ocrTokenUsage": {},
                     "timing": {
                         "layoutMs": layout_payload.get("elapsedMs", 0),
                         "orientationModelMs": layout_payload.get(
@@ -199,6 +233,7 @@ def _process_pages(
         )
         recognize_response.raise_for_status()
         recognize_payload = recognize_response.json()
+        ocr_usage = recognize_payload.get("tokenUsage") or {}
 
     timing = {
         "layoutMs": layout_payload.get("elapsedMs", 0),
@@ -223,8 +258,9 @@ def _process_pages(
             "blocks": blocks,
             "results": recognize_payload.get("results", []),
             "timing": timing,
-            "layoutTokenUsage": layout_payload.get("tokenUsage") or {},
-            "ocrTokenUsage": recognize_payload.get("tokenUsage") or {},
+            "usage": _merge_token_usage(layout_usage, ocr_usage),
+            "layoutTokenUsage": layout_usage,
+            "ocrTokenUsage": ocr_usage,
         }
     )
 

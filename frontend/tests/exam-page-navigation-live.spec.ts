@@ -32,9 +32,9 @@ test("multiple source files behave as consecutive pages of one exam", async ({
     `${apiBase}/exams/${exam.id}/files`,
     { headers },
   )
-  const documents = ((await filesResponse.json()).data as ExamDocument[]).filter(
-    (item) => item.document_type === "blank_exam",
-  )
+  const documents = (
+    (await filesResponse.json()).data as ExamDocument[]
+  ).filter((item) => item.document_type === "blank_exam")
   expect(documents.length).toBeGreaterThan(1)
 
   // 每个文档的页数、全卷总页数，以及每页归属哪个文件，都从 API 实际数据推导
@@ -65,9 +65,9 @@ test("multiple source files behave as consecutive pages of one exam", async ({
   )
   await page.goto(`/exams/${exam.id}/marking`)
 
-  await expect(
-    page.getByText(fileNamePerPage[0], { exact: true }),
-  ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByText(fileNamePerPage[0], { exact: true })).toBeVisible(
+    { timeout: 15_000 },
+  )
   await expect(page.getByText(`第 1 / ${totalPages} 页`)).toBeVisible()
   await expect(page.getByRole("button", { name: "上一页" })).toBeDisabled()
 

@@ -2,7 +2,7 @@ from collections.abc import Generator
 from typing import Annotated
 
 import jwt
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from jwt.exceptions import InvalidTokenError
 from pydantic import ValidationError
@@ -11,7 +11,13 @@ from sqlmodel import Session
 from app.core import security
 from app.core.config import settings
 from app.core.db import engine
-from app.models import TokenPayload, User, UserRole
+from app.models import (
+    Organization,
+    OrganizationServiceState,
+    TokenPayload,
+    User,
+    UserRole,
+)
 
 reusable_oauth2 = OAuth2PasswordBearer(
     tokenUrl=f"{settings.API_V1_STR}/login/access-token"
@@ -27,7 +33,32 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
-def get_current_user(session: SessionDep, token: TokenDep) -> User:
+def assert_organization_access(
+    session: SessionDep, user: User, *, method: str = "GET"
+) -> None:
+    """Apply the school's service state to every authenticated request."""
+    if user.org_id is None:
+        return
+    organization = session.get(Organization, user.org_id)
+    if not organization or organization.status in {
+        OrganizationServiceState.FROZEN,
+        OrganizationServiceState.DELETING,
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="学校服务已冻结，请联系点凡阅卷客服",
+        )
+    if (
+        organization.status == OrganizationServiceState.READ_ONLY
+        and method.upper() not in {"GET", "HEAD", "OPTIONS"}
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_423_LOCKED,
+            detail="学校当前处于只读导出期，不能修改数据或创建新任务",
+        )
+
+
+def get_current_user(session: SessionDep, token: TokenDep, request: Request) -> User:
     try:
         payload = jwt.decode(
             token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
@@ -49,6 +80,7 @@ def get_current_user(session: SessionDep, token: TokenDep) -> User:
         )
     if not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    assert_organization_access(session, user, method=request.method)
     return user
 
 
@@ -61,9 +93,10 @@ def is_platform_superuser(user: User) -> bool:
 
 
 def is_platform_user(user: User) -> bool:
-    """平台侧角色（超管 + 运营），跨校数据可见。"""
+    """平台侧角色（超管 + 管理员 + 运营），仅访问卖方控制面。"""
     return user.role in (
         UserRole.PLATFORM_SUPERUSER,
+        UserRole.PLATFORM_ADMIN,
         UserRole.PLATFORM_SUPPORT,
     ) or user.is_superuser
 
@@ -113,9 +146,15 @@ def require_roles(*roles: UserRole):
 
 
 def get_current_teacher_user(current_user: CurrentUser) -> User:
-    """业务端点入口：学生账号一律 403，其余角色（教师/学校管理/平台）放行。"""
-    if current_user.role == UserRole.STUDENT and not current_user.is_superuser:
+    """学校业务入口：仅学校管理者与教师可访问。"""
+    if current_user.role == UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="学生账号仅可访问我的成绩")
+    if current_user.role not in (
+        UserRole.SCHOOL_OWNER,
+        UserRole.SCHOOL_ADMIN,
+        UserRole.TEACHER,
+    ):
+        raise HTTPException(status_code=403, detail="平台账号无权访问学校业务")
     return current_user
 
 

@@ -36,11 +36,7 @@ interface BindAccountProps {
   onSuccess: () => void
 }
 
-/**
- * 绑定/解绑登录账号。
- * 账号候选列表来自 GET /users/（仅 admin+ 可用）：拉取失败（如教师 403）时
- * 降级为手动输入用户 ID，保证教师也能完成绑定。
- */
+/** 绑定/解绑登录账号，仅由学校管理角色入口调用。 */
 const BindAccount = ({ student, onSuccess }: BindAccountProps) => {
   const [isOpen, setIsOpen] = useState(false)
   const [selectedUserId, setSelectedUserId] = useState("")
@@ -57,7 +53,7 @@ const BindAccount = ({ student, onSuccess }: BindAccountProps) => {
   const studentUsers: UserPublic[] = (usersQuery.data?.data ?? []).filter(
     (user) => user.role === "student",
   )
-  // 用户列表不可用（无权限）时降级为手动输入用户 ID
+  // 网络异常时保留手动输入，方便管理员继续处理已知账号。
   const fallbackToInput = usersQuery.isError
 
   const bindMutation = useMutation({
@@ -122,8 +118,10 @@ const BindAccount = ({ student, onSuccess }: BindAccountProps) => {
 
         {student.user_id ? (
           <div className="py-4 text-muted-foreground text-sm">
-            当前绑定用户 ID：
-            <span className="font-mono">{student.user_id}</span>
+            当前账号：
+            <span className="font-medium text-foreground">
+              {student.account_email ?? "已绑定学生账号"}
+            </span>
           </div>
         ) : (
           <div className="grid gap-2 py-4">
@@ -136,8 +134,8 @@ const BindAccount = ({ student, onSuccess }: BindAccountProps) => {
                   data-testid="bind-user-id-input"
                 />
                 <p className="text-muted-foreground text-xs">
-                  当前账号无用户列表权限，请手动输入学生账号的用户
-                  ID（可由管理员在用户管理中查看）。
+                  账号列表加载失败，可重试打开窗口，或输入用户管理中显示的账号
+                  ID。
                 </p>
               </>
             ) : (

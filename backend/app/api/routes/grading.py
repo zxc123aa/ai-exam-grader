@@ -1,8 +1,7 @@
 import uuid
-from math import ceil
 from typing import Any
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlmodel import col, select
 
@@ -11,7 +10,9 @@ from app.api.deps import (
     SessionDep,
     get_current_teacher_user,
 )
+from app.core.config import settings
 from app.models import (
+    AnswerQuotaReservation,
     Exam,
     ExamQuestion,
     ExamQuestionStatus,
@@ -32,6 +33,11 @@ from app.models import (
     RecognitionItemPublic,
     RecognitionItemUpdate,
     RecognitionRunCreate,
+    ScoreRelease,
+    ScoreReleaseCreate,
+    ScoreReleaseItem,
+    ScoreReleasePublic,
+    ScoreReleaseStatus,
     StandardAnswer,
     StandardAnswerRevision,
     StandardAnswerRevisionStatus,
@@ -39,7 +45,8 @@ from app.models import (
     SubmissionAnnotation,
     get_datetime_utc,
 )
-from app.services.grading_workflow import execute_grading_run, publish_standard_answers
+from app.services import billing as billing_service
+from app.services.grading_workflow import publish_standard_answers
 from app.services.org_scope import (
     can_see_exam,
     can_write_exam,
@@ -47,9 +54,12 @@ from app.services.org_scope import (
     restricted_assigned_classes,
     submission_class_filter,
 )
-from app.services.recognition_workflow import execute_recognition_run
-from app.services.rubric_workflow import execute_rubric_generation
 from app.services.system_config import get_grading_defaults
+from app.worker import (
+    process_grading_run,
+    process_recognition_run,
+    process_rubric_generation,
+)
 
 router = APIRouter(
     prefix="/grading",
@@ -110,18 +120,19 @@ def create_recognition_run(
     session: SessionDep,
     current_user: CurrentUser,
     run_in: RecognitionRunCreate,
-    background_tasks: BackgroundTasks,
 ) -> Any:
-    owned_exam(session, current_user, run_in.exam_id, require_write=True)
+    exam = owned_exam(session, current_user, run_in.exam_id, require_write=True)
+    billing_service.require_model_entitlement(session, exam.org_id)
     submission = session.get(StudentSubmission, run_in.submission_id)
     if not submission or submission.exam_id != run_in.exam_id:
         raise HTTPException(status_code=404, detail="答卷不存在")
+    defaults = get_grading_defaults(session, exam.org_id)
     run = GradingRun(
         exam_id=run_in.exam_id,
         created_by_id=current_user.id,
-        provider=run_in.provider,
-        model=run_in.model,
-        fallback_models=[],
+        provider=str(defaults["vision_provider"]),
+        model=str(defaults["vision_model"]),
+        fallback_models=[str(item) for item in defaults["vision_fallback_models"]],
         config_snapshot={
             "pipeline": "recognition_preview",
             "submission_id": str(run_in.submission_id),
@@ -136,9 +147,33 @@ def create_recognition_run(
         },
     )
     session.add(run)
+    session.flush()
+    expected_calls = session.exec(
+        select(func.count())
+        .select_from(ExamRegion)
+        .where(ExamRegion.exam_id == exam.id)
+    ).one()
+    reservation = billing_service.reserve_task_or_raise(
+        session,
+        org_id=exam.org_id,
+        task_type="answer_recognition",
+        resource_id=str(run.id),
+        idempotency_key=f"{exam.org_id}:answer_recognition:{run.id}:v1",
+        expected_calls=max(1, expected_calls),
+        grading_run_id=run.id,
+    )
+    if reservation:
+        run.estimated_microcredits = reservation.estimated_microcredits
+        run.reserved_microcredits = reservation.estimated_microcredits
+        run.billing_status = "reserved"
+        run.config_snapshot = {
+            **run.config_snapshot,
+            "billing_reservation_id": str(reservation.id),
+        }
+        session.add(run)
     session.commit()
     session.refresh(run)
-    background_tasks.add_task(execute_recognition_run, str(run.id))
+    process_recognition_run.send(str(run.id))
     return run_public(session, run)
 
 
@@ -224,9 +259,7 @@ def update_recognition_item(
                 "slotCount": 1,
                 "assignedCount": 1,
                 "missingCount": 0,
-                "unassignedCount": len(
-                    extraction.get("unassigned_evidence") or []
-                ),
+                "unassignedCount": len(extraction.get("unassigned_evidence") or []),
                 "gradingEligible": True,
                 "verificationStatus": "teacher_confirmed",
                 "coordinatePrecision": "teacher_confirmed_text",
@@ -317,6 +350,15 @@ def run_public(session: SessionDep, run: GradingRun) -> GradingRunPublic:
         update={
             "average_confidence": float(average) if average is not None else None,
             "timing": (run.config_snapshot or {}).get("timing", {}),
+            "estimated_credits": billing_service.microcredits_to_credits(
+                run.estimated_microcredits
+            ),
+            "reserved_credits": billing_service.microcredits_to_credits(
+                run.reserved_microcredits
+            ),
+            "settled_credits": billing_service.microcredits_to_credits(
+                run.settled_microcredits
+            ),
         },
     )
 
@@ -378,8 +420,7 @@ def create_run(
             .where(
                 StandardAnswer.exam_id == run_in.exam_id,
                 StandardAnswer.question_id.is_not(None),
-                StandardAnswerRevision.status
-                == StandardAnswerRevisionStatus.PUBLISHED,
+                StandardAnswerRevision.status == StandardAnswerRevisionStatus.PUBLISHED,
             )
         ).all()
     )
@@ -402,44 +443,28 @@ def create_run(
         raise HTTPException(status_code=409, detail=detail)
     locked_versions = [revision.revision_number for _, revision in answer_rows]
     # 请求未显式给的字段回落系统设置（DB 覆盖 + env 兜底）
-    defaults = get_grading_defaults(session)
-    if (
-        run_in.max_parallel_submissions is not None
-        or run_in.max_concurrency_per_submission is not None
-    ):
-        max_parallel_submissions = run_in.max_parallel_submissions or 8
-        max_concurrency_per_submission = (
-            run_in.max_concurrency_per_submission or 4
-        )
-        max_concurrency = min(
-            32, max_parallel_submissions * max_concurrency_per_submission
-        )
-    else:
-        # 旧客户端只传 max_concurrency：保持原总并发，并推导出兼容的两级限制。
-        max_concurrency = (
-            run_in.max_concurrency
-            if run_in.max_concurrency is not None
-            else int(defaults["max_concurrency"])
-        )
-        max_parallel_submissions = min(8, max_concurrency)
-        max_concurrency_per_submission = max(
-            1, ceil(max_concurrency / max_parallel_submissions)
-        )
+    defaults = get_grading_defaults(session, exam.org_id)
+    # School users cannot override technical controls. Keeping these request
+    # fields temporarily preserves old clients, but the platform policy is the
+    # only source of truth so API callers cannot bypass the hidden UI.
+    max_concurrency = int(defaults["max_concurrency"])
+    max_parallel_submissions = min(8, max_concurrency)
+    max_concurrency_per_submission = max(
+        1, (max_concurrency + max_parallel_submissions - 1) // max_parallel_submissions
+    )
     run = GradingRun(
         exam_id=run_in.exam_id,
         created_by_id=current_user.id,
-        provider=run_in.provider or defaults["grading_provider"],
-        model=run_in.model or defaults["grading_model"],
-        fallback_models=run_in.fallback_models or defaults["fallback_models"],
+        provider=defaults["grading_provider"],
+        model=defaults["grading_model"],
+        fallback_models=defaults["reasoning_fallback_models"],
         answer_version=max(locked_versions, default=1),
         config_snapshot={
             "submission_ids": [str(item) for item in run_in.submission_ids],
-            "review_threshold": run_in.review_threshold
-            if run_in.review_threshold is not None
-            else defaults["review_threshold"],
-            "vision_provider": run_in.vision_provider
-            or defaults["vision_provider"],
-            "vision_model": run_in.vision_model or defaults["vision_model"],
+            "review_threshold": defaults["review_threshold"],
+            "vision_provider": defaults["vision_provider"],
+            "vision_model": defaults["vision_model"],
+            "vision_fallback_models": defaults["vision_fallback_models"],
             "max_concurrency": max_concurrency,
             "max_parallel_submissions": max_parallel_submissions,
             "max_concurrency_per_submission": max_concurrency_per_submission,
@@ -449,6 +474,74 @@ def create_run(
             "answer_revision_ids": locked_revisions,
         },
     )
+    session.add(run)
+    session.flush()
+    billing_service.require_model_entitlement(session, exam.org_id)
+    expected_submissions = (
+        len(run_in.submission_ids)
+        or session.exec(
+            select(func.count())
+            .select_from(StudentSubmission)
+            .where(StudentSubmission.exam_id == exam.id)
+        ).one()
+    )
+    selected_submissions_query = select(StudentSubmission).where(
+        StudentSubmission.exam_id == exam.id
+    )
+    if run_in.submission_ids:
+        selected_submissions_query = selected_submissions_query.where(
+            col(StudentSubmission.id).in_(run_in.submission_ids)
+        )
+    selected_submissions = list(session.exec(selected_submissions_query).all())
+    answer_quota_reservation = billing_service.reserve_answer_quota(
+        session,
+        org_id=exam.org_id,
+        exam_id=exam.id,
+        grading_run_id=run.id,
+        submissions=selected_submissions,
+    )
+    if settings.BILLING_ENFORCEMENT_ENABLED and answer_quota_reservation is None:
+        raise HTTPException(
+            status_code=402,
+            detail="学校可用答卷额度不足，增购后可继续批改",
+        )
+    if answer_quota_reservation:
+        run.config_snapshot = {
+            **run.config_snapshot,
+            "answer_quota_reservation_id": str(answer_quota_reservation.id),
+            "answer_quota_reserved": answer_quota_reservation.reserved_answers,
+        }
+    estimate = billing_service.quote_microcredits(
+        session,
+        org_id=exam.org_id,
+        workflow_purpose="grading_run",
+        expected_calls=max(1, expected_submissions * len(questions) * 2),
+    )
+    run.estimated_microcredits = estimate
+    try:
+        reservation = billing_service.reserve_credits(
+            session,
+            org_id=exam.org_id,
+            task_type="grading_run",
+            resource_id=str(run.id),
+            idempotency_key=f"{exam.org_id}:grading_run:{run.id}:v1",
+            estimated_microcredits=estimate,
+            grading_run_id=run.id,
+        )
+    except HTTPException:
+        reservation = None
+    if reservation:
+        run.reserved_microcredits = reservation.estimated_microcredits
+        run.billing_status = "reserved"
+        run.config_snapshot = {
+            **run.config_snapshot,
+            "billing_reservation_id": str(reservation.id),
+        }
+    elif settings.TOKEN_BUDGET_ENFORCEMENT_ENABLED:
+        run.status = GradingRunStatus.AWAITING_CREDITS
+        run.billing_status = "awaiting_credits"
+    else:
+        run.billing_status = "shadow"
     session.add(run)
     session.commit()
     session.refresh(run)
@@ -482,12 +575,36 @@ def start_run(
     session: SessionDep,
     current_user: CurrentUser,
     run_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
 ) -> Any:
     run = owned_run(session, current_user, run_id)
-    if run.status not in {"queued", "failed", "completed_with_errors"}:
+    if run.status == GradingRunStatus.AWAITING_CREDITS:
+        exam = owned_exam(session, current_user, run.exam_id)
+        try:
+            reservation = billing_service.reserve_credits(
+                session,
+                org_id=exam.org_id,
+                task_type="grading_run",
+                resource_id=str(run.id),
+                idempotency_key=f"{exam.org_id}:grading_run:{run.id}:v1",
+                estimated_microcredits=run.estimated_microcredits,
+                grading_run_id=run.id,
+            )
+        except HTTPException:
+            reservation = None
+        if not reservation:
+            return run_public(session, run)
+        run.status = GradingRunStatus.QUEUED
+        run.billing_status = "reserved"
+        run.reserved_microcredits = reservation.estimated_microcredits
+        run.config_snapshot = {
+            **run.config_snapshot,
+            "billing_reservation_id": str(reservation.id),
+        }
+        session.add(run)
+        session.commit()
+    if run.status != GradingRunStatus.QUEUED:
         raise HTTPException(status_code=409, detail="该批次当前不能启动")
-    background_tasks.add_task(execute_grading_run, str(run.id))
+    process_grading_run.send(str(run.id))
     return run_public(session, run)
 
 
@@ -497,15 +614,108 @@ def retry_run(
     session: SessionDep,
     current_user: CurrentUser,
     run_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
 ) -> Any:
     run = owned_run(session, current_user, run_id)
-    failed_items = session.exec(
-        select(GradingItem).where(
-            GradingItem.grading_run_id == run.id,
-            GradingItem.status == GradingItemStatus.FAILED,
+    # Serialize retry requests for one run. This keeps quota reservations
+    # idempotent when a user double-clicks or a client retries the HTTP call.
+    run = session.exec(
+        select(GradingRun).where(GradingRun.id == run.id).with_for_update()
+    ).one()
+    if run.status not in {
+        GradingRunStatus.FAILED,
+        GradingRunStatus.COMPLETED_WITH_ERRORS,
+    }:
+        raise HTTPException(status_code=409, detail="该批次当前无需重试")
+    failed_items = list(
+        session.exec(
+            select(GradingItem).where(
+                GradingItem.grading_run_id == run.id,
+                GradingItem.status == GradingItemStatus.FAILED,
+            )
+        ).all()
+    )
+    exam = owned_exam(session, current_user, run.exam_id, require_write=True)
+    failed_submission_ids = {item.submission_id for item in failed_items}
+    submission_query = select(StudentSubmission).where(
+        StudentSubmission.exam_id == exam.id
+    )
+    if failed_submission_ids:
+        submission_query = submission_query.where(
+            col(StudentSubmission.id).in_(failed_submission_ids)
         )
-    ).all()
+    else:
+        configured_ids = [
+            uuid.UUID(value)
+            for value in (run.config_snapshot or {}).get("submission_ids", [])
+        ]
+        if configured_ids:
+            submission_query = submission_query.where(
+                col(StudentSubmission.id).in_(configured_ids)
+            )
+    retry_submissions = list(session.exec(submission_query).all())
+    if not retry_submissions:
+        raise HTTPException(status_code=409, detail="没有可重试的答卷")
+    billing_service.require_model_entitlement(session, exam.org_id)
+    retry_sequence = session.exec(
+        select(func.count())
+        .select_from(AnswerQuotaReservation)
+        .where(AnswerQuotaReservation.grading_run_id == run.id)
+    ).one()
+    answer_reservation = billing_service.reserve_answer_quota(
+        session,
+        org_id=exam.org_id,
+        exam_id=exam.id,
+        grading_run_id=run.id,
+        submissions=retry_submissions,
+        idempotency_key=(
+            f"{exam.org_id}:grading-run:{run.id}:answers:v{retry_sequence + 1}"
+        ),
+    )
+    if settings.BILLING_ENFORCEMENT_ENABLED and answer_reservation is None:
+        raise HTTPException(
+            status_code=402, detail="学校可用答卷额度不足，增购后可重试"
+        )
+    snapshot = dict(run.config_snapshot or {})
+    if answer_reservation:
+        snapshot.update(
+            answer_quota_reservation_id=str(answer_reservation.id),
+            answer_quota_reserved=answer_reservation.reserved_answers,
+        )
+    # Token 成本是平台内部风控，不是客户计费单位。仅在显式开启内部
+    # 预算保护时为重试创建新预留，不能复用已经结算的旧预留。
+    if settings.TOKEN_BUDGET_ENFORCEMENT_ENABLED:
+        estimate = billing_service.quote_microcredits(
+            session,
+            org_id=exam.org_id,
+            workflow_purpose="grading_run",
+            expected_calls=max(
+                1, len(retry_submissions) * max(1, len(failed_items)) * 2
+            ),
+        )
+        reservation = billing_service.reserve_credits(
+            session,
+            org_id=exam.org_id,
+            task_type="grading_run_retry",
+            resource_id=str(run.id),
+            idempotency_key=(
+                f"{exam.org_id}:grading-run:{run.id}:retry:v{retry_sequence + 1}"
+            ),
+            estimated_microcredits=estimate,
+            grading_run_id=run.id,
+        )
+        if reservation is None:
+            if answer_reservation:
+                billing_service.release_answer_quota(session, answer_reservation.id)
+            raise HTTPException(
+                status_code=503, detail="平台模型服务暂时繁忙，请稍后重试"
+            )
+        snapshot["billing_reservation_id"] = str(reservation.id)
+        run.estimated_microcredits = estimate
+        run.reserved_microcredits = reservation.estimated_microcredits
+        run.billing_status = "reserved"
+    else:
+        snapshot.pop("billing_reservation_id", None)
+        run.billing_status = "shadow"
     for item in failed_items:
         item.status, item.attempts, item.error_message = (
             GradingItemStatus.QUEUED,
@@ -518,9 +728,10 @@ def retry_run(
         None,
         None,
     )
+    run.config_snapshot = snapshot
     session.add(run)
     session.commit()
-    background_tasks.add_task(execute_grading_run, str(run.id))
+    process_grading_run.send(str(run.id))
     return run_public(session, run)
 
 
@@ -530,18 +741,38 @@ def generate_rubrics(
     session: SessionDep,
     current_user: CurrentUser,
     exam_id: uuid.UUID,
-    background_tasks: BackgroundTasks,
 ) -> Any:
-    owned_exam(session, current_user, exam_id, require_write=True)
+    exam = owned_exam(session, current_user, exam_id, require_write=True)
+    billing_service.require_model_entitlement(session, exam.org_id)
     task = ProcessingTask(
         task_type="professional_rubric_generation",
         created_by_id=current_user.id,
         input_ref={"exam_id": str(exam_id), "pipeline": "professional-rubric-v1"},
     )
     session.add(task)
+    session.flush()
+    answer_count = session.exec(
+        select(func.count())
+        .select_from(StandardAnswer)
+        .where(StandardAnswer.exam_id == exam_id)
+    ).one()
+    reservation = billing_service.reserve_task_or_raise(
+        session,
+        org_id=exam.org_id,
+        task_type="rubric_generation",
+        resource_id=str(task.id),
+        idempotency_key=f"{exam.org_id}:rubric_generation:{task.id}:v1",
+        expected_calls=max(1, answer_count * 3),
+    )
+    if reservation:
+        task.input_ref = {
+            **(task.input_ref or {}),
+            "billing_reservation_id": str(reservation.id),
+        }
+        session.add(task)
     session.commit()
     session.refresh(task)
-    background_tasks.add_task(execute_rubric_generation, str(task.id), str(exam_id))
+    process_rubric_generation.send(str(task.id), str(exam_id))
     return task
 
 
@@ -581,6 +812,8 @@ def review_queue(
     result = []
     threshold = float(run.config_snapshot.get("review_threshold", 0.8))
     for annotation, submission in rows:
+        if annotation.score_source == "human":
+            continue
         reasons = {item.get("type") for item in annotation.grading_reasons}
         mirror = "mirror" in (submission.registration_notes or "").lower()
         if (
@@ -622,3 +855,164 @@ def audit_log(session: SessionDep, current_user: CurrentUser, run_id: uuid.UUID)
             .order_by(GradingAuditEvent.created_at)
         ).all()
     )
+
+
+@router.post("/exams/{exam_id}/score-releases", response_model=ScoreReleasePublic)
+def publish_exam_scores(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    release_in: ScoreReleaseCreate,
+) -> Any:
+    """Freeze the current reviewed score draft as the student-visible version."""
+    exam = owned_exam(session, current_user, exam_id, require_write=True)
+    # Serialize releases per exam, including the first release where no release row
+    # exists yet. Locking only the previous release would allow two version-1 rows.
+    session.exec(select(Exam).where(Exam.id == exam.id).with_for_update()).one()
+    submissions = list(
+        session.exec(
+            select(StudentSubmission).where(StudentSubmission.exam_id == exam.id)
+        ).all()
+    )
+    if not submissions:
+        raise HTTPException(status_code=409, detail="考试尚无答卷，不能发布成绩")
+    submission_ids = [item.id for item in submissions]
+    annotations = list(
+        session.exec(
+            select(SubmissionAnnotation).where(
+                col(SubmissionAnnotation.submission_id).in_(submission_ids)
+            )
+        ).all()
+    )
+    if not annotations:
+        raise HTTPException(status_code=409, detail="考试尚未形成建议评分")
+
+    latest: dict[tuple[uuid.UUID, str], SubmissionAnnotation] = {}
+    for annotation in annotations:
+        key = (annotation.submission_id, annotation.label)
+        current = latest.get(key)
+        if (
+            current is None
+            or (current.score_source != "human" and annotation.score_source == "human")
+            or (
+                current.score_source == annotation.score_source
+                and (annotation.updated_at or annotation.created_at)
+                > (current.updated_at or current.created_at)
+            )
+        ):
+            latest[key] = annotation
+
+    pending = [
+        item
+        for item in latest.values()
+        if item.grading_status == "needs_review" and item.score_source != "human"
+    ]
+    if pending:
+        raise HTTPException(
+            status_code=409,
+            detail=f"还有 {len(pending)} 道题待复核，处理完成后才能发布成绩",
+        )
+
+    confirmed_question_count = session.exec(
+        select(func.count())
+        .select_from(ExamQuestion)
+        .where(
+            ExamQuestion.exam_id == exam.id,
+            ExamQuestion.status == ExamQuestionStatus.CONFIRMED,
+        )
+    ).one()
+    minimum_items = max(1, confirmed_question_count)
+    submission_groups: dict[str, list[StudentSubmission]] = {}
+    for submission in submissions:
+        if submission.student_id:
+            group_key = f"student:{submission.student_id}"
+        elif submission.student_name:
+            group_key = (
+                f"identity:{submission.class_name or ''}:{submission.student_name}"
+            )
+        else:
+            group_key = f"submission:{submission.id}"
+        submission_groups.setdefault(group_key, []).append(submission)
+    incomplete_groups = []
+    for group in submission_groups.values():
+        group_ids = {submission.id for submission in group}
+        scored = [
+            item
+            for (submission_id, _label), item in latest.items()
+            if submission_id in group_ids and item.score is not None
+        ]
+        if len({item.label for item in scored}) < minimum_items:
+            incomplete_groups.append(group)
+    if incomplete_groups:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"还有 {len(incomplete_groups)} 份答卷未完成批改，"
+                "全部形成成绩后才能发布"
+            ),
+        )
+
+    previous = session.exec(
+        select(ScoreRelease)
+        .where(ScoreRelease.exam_id == exam.id)
+        .order_by(col(ScoreRelease.version).desc())
+        .with_for_update()
+    ).first()
+    if previous and previous.status == ScoreReleaseStatus.PUBLISHED:
+        previous.status = ScoreReleaseStatus.SUPERSEDED
+        session.add(previous)
+    release = ScoreRelease(
+        exam_id=exam.id,
+        version=(previous.version + 1 if previous else 1),
+        published_by_id=current_user.id,
+        reason=release_in.reason,
+    )
+    session.add(release)
+    session.flush()
+
+    items = [
+        ScoreReleaseItem(
+            release_id=release.id,
+            submission_id=annotation.submission_id,
+            annotation_id=annotation.id,
+            label=annotation.label,
+            score=annotation.score,
+            max_score=annotation.max_score,
+            comment=annotation.comment,
+            source="human" if annotation.score_source == "human" else "suggested",
+        )
+        for annotation in latest.values()
+    ]
+    session.add_all(items)
+    session.commit()
+    session.refresh(release)
+    return ScoreReleasePublic(**release.model_dump(), item_count=len(items))
+
+
+@router.get(
+    "/exams/{exam_id}/score-releases/current",
+    response_model=ScoreReleasePublic | None,
+)
+def get_current_score_release(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+) -> Any:
+    """Return the version currently visible to students, if one exists."""
+    exam = owned_exam(session, current_user, exam_id)
+    release = session.exec(
+        select(ScoreRelease)
+        .where(
+            ScoreRelease.exam_id == exam.id,
+            ScoreRelease.status == ScoreReleaseStatus.PUBLISHED,
+        )
+        .order_by(col(ScoreRelease.version).desc())
+    ).first()
+    if not release:
+        return None
+    item_count = session.exec(
+        select(func.count())
+        .select_from(ScoreReleaseItem)
+        .where(ScoreReleaseItem.release_id == release.id)
+    ).one()
+    return ScoreReleasePublic(**release.model_dump(), item_count=item_count)

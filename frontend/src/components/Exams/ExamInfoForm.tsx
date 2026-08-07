@@ -1,12 +1,10 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useQuery } from "@tanstack/react-query"
 import { Dices } from "lucide-react"
-import { useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
-import { ClassesService, PlatformService } from "@/client"
-import { resolveRole } from "@/components/Admin/roleMeta"
+import { ClassesService } from "@/client"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import { DialogClose, DialogFooter } from "@/components/ui/dialog"
@@ -20,14 +18,6 @@ import {
 } from "@/components/ui/form"
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import useAuth from "@/hooks/useAuth"
 
 const formSchema = z.object({
   title: z.string().min(1, { message: "请输入考试名称" }).max(255),
@@ -99,32 +89,11 @@ export function ExamInfoForm({
     defaultValues: { ...examInfoEmptyDefaults, ...defaultValues },
   })
 
-  const { data: classGroups } = useQuery({
+  const classGroupsQuery = useQuery({
     queryKey: ["classes"],
     queryFn: () => ClassesService.readClasses(),
   })
-
-  // 平台账号创建考试必须显式指定学校；学校角色考试自动归入本人学校，不展示选择器
-  const { user: currentUser } = useAuth()
-  const isPlatformUser =
-    currentUser != null &&
-    ["platform_superuser", "platform_support"].includes(
-      resolveRole(currentUser),
-    )
-  const { data: orgs } = useQuery({
-    queryKey: ["platform-orgs"],
-    queryFn: () => PlatformService.listOrgs(),
-    enabled: isPlatformUser,
-  })
-
-  useEffect(() => {
-    if (!isPlatformUser || form.getValues("org_id")) return
-    const options = orgs?.data ?? []
-    if (options.length === 0) return
-    const defaultOrg =
-      options.find((org) => org.code === "default") ?? options[0]
-    form.setValue("org_id", defaultOrg.id, { shouldValidate: true })
-  }, [isPlatformUser, orgs, form])
+  const classGroups = classGroupsQuery.data
 
   const fillRandomDemo = () => {
     const subjects = ["物理", "数学", "语文", "英语", "化学"]
@@ -197,34 +166,6 @@ export function ExamInfoForm({
               </FormItem>
             )}
           />
-          {isPlatformUser && (
-            <FormField
-              control={form.control}
-              name="org_id"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>
-                    学校 <span className="text-destructive">*</span>
-                  </FormLabel>
-                  <Select value={field.value} onValueChange={field.onChange}>
-                    <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="请选择学校" />
-                      </SelectTrigger>
-                    </FormControl>
-                    <SelectContent>
-                      {(orgs?.data ?? []).map((org) => (
-                        <SelectItem key={org.id} value={org.id}>
-                          {org.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-          )}
           <FormField
             control={form.control}
             name="class_ids"
@@ -234,7 +175,20 @@ export function ExamInfoForm({
                   班级 <span className="text-destructive">*</span>
                 </FormLabel>
                 <div className="grid gap-2 rounded-md border border-input p-3">
-                  {(classGroups?.data ?? []).length === 0 ? (
+                  {classGroupsQuery.isPending ? (
+                    <div
+                      className="grid gap-2"
+                      role="status"
+                      aria-label="正在加载班级"
+                    >
+                      <div className="h-5 w-32 animate-pulse rounded bg-muted" />
+                      <div className="h-5 w-40 animate-pulse rounded bg-muted" />
+                    </div>
+                  ) : classGroupsQuery.isError ? (
+                    <p className="text-destructive text-sm">
+                      班级加载失败，请稍后重试
+                    </p>
+                  ) : (classGroups?.data ?? []).length === 0 ? (
                     <p className="text-muted-foreground text-sm">
                       暂无班级，可先在「班级学生」页创建
                     </p>

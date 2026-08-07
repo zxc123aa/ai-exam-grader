@@ -24,17 +24,20 @@ def test_first_superuser_has_superuser_role(db: Session) -> None:
 
 
 def test_signup_is_closed(client: TestClient, db: Session) -> None:
-    # 公开注册已关闭（多租户阶段 3）：即使携带 role 也一律 403，不创建账号
+    # 公开注册由配置开关控制，请求不能借机指定角色。
     username = random_email()
     data = {
+        "organization_type": "school",
+        "organization_name": "暂未开放学校",
+        "contact_name": "Student One",
         "email": username,
         "password": random_lower_string(),
-        "full_name": "Student One",
+        "turnstile_token": "local-testing-token",
         "role": "school_owner",
     }
     r = client.post(f"{settings.API_V1_STR}/users/signup", json=data)
     assert r.status_code == 403
-    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
+    assert r.json()["detail"] == "学校注册暂未开放"
     user = crud.get_user_by_email(session=db, email=username)
     assert user is None
 
@@ -115,17 +118,35 @@ def test_admin_cannot_modify_superuser_account(
     assert r.status_code == 400
 
 
-def test_superuser_can_grant_superuser_role(
+def test_superuser_can_manage_platform_roles(
     client: TestClient, db: Session, superuser_token_headers: dict[str, str]
 ) -> None:
-    target, _ = _create_user_with_role(db, UserRole.TEACHER)
+    target, _ = _create_user_with_role(db, UserRole.PLATFORM_SUPPORT)
     r = client.patch(
         f"{settings.API_V1_STR}/users/{target.id}",
         headers=superuser_token_headers,
-        json={"role": "platform_superuser"},
+        json={"role": "platform_admin"},
     )
     assert r.status_code == 200
-    assert r.json()["role"] == UserRole.PLATFORM_SUPERUSER
+    assert r.json()["role"] == UserRole.PLATFORM_ADMIN
+
+
+def test_platform_roles_forbidden_from_school_business(
+    client: TestClient, db: Session
+) -> None:
+    for role in (
+        UserRole.PLATFORM_SUPERUSER,
+        UserRole.PLATFORM_ADMIN,
+        UserRole.PLATFORM_SUPPORT,
+    ):
+        user, password = _create_user_with_role(db, role)
+        headers = user_authentication_headers(
+            client=client, email=user.email, password=password
+        )
+        for path in ("/exams/", "/classes/", "/grading/runs"):
+            response = client.get(f"{settings.API_V1_STR}{path}", headers=headers)
+            assert response.status_code == 403
+            assert response.json()["detail"] == "平台账号无权访问学校业务"
 
 
 def test_student_forbidden_from_exams(client: TestClient, db: Session) -> None:

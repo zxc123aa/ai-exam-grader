@@ -31,13 +31,13 @@ import { ORG_STATUS_LABELS } from "./orgMeta"
 
 const formSchema = z.object({
   name: z.string().min(1, { message: "请输入学校名称" }),
-  status: z.enum(["active", "suspended"]),
+  status: z.enum(["active", "read_only", "frozen", "deleting"]),
   contact_name: z.string().optional(),
 })
 
 type FormData = z.infer<typeof formSchema>
 
-/** 学校信息卡：仅平台超管可编辑保存，运营角色只读。 */
+/** 学校信息卡：平台超管和管理员可编辑，运营角色只读。 */
 export function OrgInfoCard({
   org,
   canEdit,
@@ -54,9 +54,9 @@ export function OrgInfoCard({
     criteriaMode: "all",
     defaultValues: {
       name: org.name,
-      status: (org.status === "suspended" ? "suspended" : "active") as
-        | "active"
-        | "suspended",
+      status: (["read_only", "frozen", "deleting"].includes(org.status)
+        ? org.status
+        : "active") as "active" | "read_only" | "frozen" | "deleting",
       contact_name: org.contact_name ?? "",
     },
   })
@@ -68,7 +68,9 @@ export function OrgInfoCard({
       showSuccessToast("学校信息已更新")
       form.reset({
         name: updated.name,
-        status: updated.status === "suspended" ? "suspended" : "active",
+        status: (["read_only", "frozen", "deleting"].includes(updated.status)
+          ? updated.status
+          : "active") as "active" | "read_only" | "frozen" | "deleting",
         contact_name: updated.contact_name ?? "",
       })
     },
@@ -93,7 +95,7 @@ export function OrgInfoCard({
         <h3 className="font-semibold">学校信息</h3>
         {!canEdit && (
           <span className="text-muted-foreground text-xs">
-            仅平台超管可修改
+            仅平台管理角色可修改
           </span>
         )}
       </div>
@@ -142,7 +144,9 @@ export function OrgInfoCard({
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    {(["active", "suspended"] as const).map((status) => (
+                    {(
+                      ["active", "read_only", "frozen", "deleting"] as const
+                    ).map((status) => (
                       <SelectItem key={status} value={status}>
                         {ORG_STATUS_LABELS[status]}
                       </SelectItem>

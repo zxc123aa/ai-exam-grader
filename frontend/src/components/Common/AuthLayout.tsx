@@ -2,10 +2,12 @@ import { ClipboardCheck, PenLine, ScanLine } from "lucide-react"
 
 import { Appearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
+import { cn } from "@/lib/utils"
 import { Footer } from "./Footer"
 
 interface AuthLayoutProps {
   children: React.ReactNode
+  contentClassName?: string
 }
 
 const highlights = [
@@ -21,23 +23,15 @@ const highlights = [
   },
   {
     icon: ClipboardCheck,
-    title: "AI 初评，教师定稿",
-    description: "OCR 与评分草稿经教师复核后才计入成绩",
+    title: "建议评分，教师定稿",
+    description: "卷面识别与评分草稿经教师复核后才计入成绩",
   },
 ]
 
-export function AuthLayout({ children }: AuthLayoutProps) {
+export function AuthLayout({ children, contentClassName }: AuthLayoutProps) {
   return (
     <div className="grid min-h-svh lg:grid-cols-2">
       <div className="relative hidden overflow-hidden bg-sidebar text-sidebar-foreground lg:flex lg:flex-col lg:justify-between lg:p-10">
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -top-32 -right-32 size-96 rounded-full bg-primary/15 blur-3xl"
-        />
-        <div
-          aria-hidden
-          className="pointer-events-none absolute -bottom-40 -left-24 size-96 rounded-full bg-indigo-400/10 blur-3xl"
-        />
         <Logo variant="full" asLink={false} className="relative" />
         <div className="relative flex flex-col gap-8">
           <div className="flex flex-col gap-3">
@@ -47,7 +41,7 @@ export function AuthLayout({ children }: AuthLayoutProps) {
               更准确、更高效
             </p>
             <p className="max-w-md text-sm text-sidebar-foreground/70">
-              将空白试卷重建为模板，关联标准答案，并逐题复核 AI 生成的评分草稿。
+              将空白试卷重建为模板，关联标准答案，并逐题复核建议评分。
             </p>
           </div>
           <ul className="flex flex-col gap-5">
@@ -80,7 +74,9 @@ export function AuthLayout({ children }: AuthLayoutProps) {
           <Appearance />
         </div>
         <div className="flex flex-1 items-center justify-center">
-          <div className="w-full max-w-sm">{children}</div>
+          <div className={cn("w-full max-w-sm", contentClassName)}>
+            {children}
+          </div>
         </div>
         <Footer />
       </div>

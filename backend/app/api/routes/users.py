@@ -1,10 +1,10 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import EmailStr, TypeAdapter, ValidationError
-from sqlalchemy import and_, true
-from sqlmodel import col, delete, func, select
+from sqlalchemy import and_
+from sqlmodel import col, func, select
 
 from app import crud
 from app.api.deps import (
@@ -13,18 +13,19 @@ from app.api.deps import (
     is_admin_or_superuser,
     is_platform_superuser,
     is_platform_user,
-    is_superuser,
     require_roles,
 )
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models import (
     ClassGroup,
-    Exam,
     Message,
     Organization,
-    ProcessingTask,
-    StoredFile,
+    OrganizationSignupCompleted,
+    OrganizationSignupCreate,
+    OrganizationSignupRequested,
+    OrganizationSignupResend,
+    OrganizationSignupVerify,
     TeacherBatchCreate,
     TeacherBatchResult,
     TeacherBatchRowResult,
@@ -35,22 +36,25 @@ from app.models import (
     User,
     UserCreate,
     UserPublic,
-    UserRegister,
     UserRole,
     UsersPublic,
     UserUpdate,
     UserUpdateMe,
 )
+from app.services import public_signup
 from app.utils import generate_new_account_email, send_email
 
 router = APIRouter(prefix="/users", tags=["users"])
 
-PLATFORM_ROLES = (UserRole.PLATFORM_SUPERUSER, UserRole.PLATFORM_SUPPORT)
+PLATFORM_ROLES = (
+    UserRole.PLATFORM_SUPERUSER,
+    UserRole.PLATFORM_ADMIN,
+    UserRole.PLATFORM_SUPPORT,
+)
 
 _email_adapter = TypeAdapter(EmailStr)
 
-# 用户管理端点：platform_superuser 与学校管理角色（owner / admin）可用；
-# platform_support 仅只读平台端点，不参与用户管理
+# 用户管理端点：平台超管查看全部账号，但只维护平台账号；学校管理角色维护本校账号。
 CurrentAdminUser = Annotated[
     User,
     Depends(
@@ -64,22 +68,22 @@ CurrentAdminUser = Annotated[
 
 
 def _user_in_scope(current_user: User, target: User) -> bool:
-    """学校角色只能管理本校用户；平台角色不受限。
+    """平台超管只维护平台账号；学校角色只能管理本校用户。
 
     无 org 的学校账号（仅历史/测试数据）只能管理同为无 org 的非平台账号，
     避免把平台账号纳入其范围。
     """
-    if is_platform_user(current_user):
-        return True
+    if is_platform_superuser(current_user):
+        return target.role in PLATFORM_ROLES and target.org_id is None
     if current_user.org_id is None:
         return target.org_id is None and target.role not in PLATFORM_ROLES
     return target.org_id == current_user.org_id
 
 
 def _users_scope_filter(current_user: User):
-    """用户列表查询的 where 条件（与 _user_in_scope 语义一致）。"""
-    if is_platform_user(current_user):
-        return true()
+    """平台超管维护平台账号；学校角色维护本校账号。"""
+    if is_platform_superuser(current_user):
+        return and_(col(User.org_id).is_(None), col(User.role).in_(PLATFORM_ROLES))
     if current_user.org_id is None:
         return and_(col(User.org_id).is_(None), col(User.role).notin_(PLATFORM_ROLES))
     return User.org_id == current_user.org_id
@@ -93,7 +97,7 @@ def read_users(
     limit: int = 100,
 ) -> Any:
     """
-    Retrieve users. 平台角色看全部，学校角色只看本校用户。
+    Retrieve users. 平台超管看平台账号，学校角色只看本校用户。
     """
     scope = _users_scope_filter(current_user)
     count_statement = select(func.count()).select_from(User).where(scope)
@@ -131,6 +135,11 @@ def create_user(
     """
     Create new user. 学校角色只能创建本校账号，且受角色上限约束。
     """
+    if is_platform_superuser(current_user) and user_in.role not in PLATFORM_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="Platform superusers can only create platform accounts here",
+        )
     if not is_platform_user(current_user):
         # 学校角色：不能创建平台账号，账号一律归入本校
         if user_in.role in PLATFORM_ROLES:
@@ -339,7 +348,7 @@ def read_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
 
 
 @router.delete("/me", response_model=Message)
-def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
+def delete_user_me(_session: SessionDep, _current_user: CurrentUser) -> Any:
     """
     Delete own user.
 
@@ -352,13 +361,60 @@ def delete_user_me(session: SessionDep, current_user: CurrentUser) -> Any:
     )
 
 
-@router.post("/signup")
-def register_user(session: SessionDep, user_in: UserRegister) -> Any:
-    """公开注册已关闭：账号一律由学校管理员或平台创建。"""
-    raise HTTPException(
-        status_code=403,
-        detail="公开注册已关闭，请联系学校管理员创建账号",
+def _request_ip(request: Request) -> str:
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        return forwarded.split(",", 1)[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+@router.post(
+    "/signup",
+    response_model=OrganizationSignupRequested,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def register_organization(
+    request: Request, session: SessionDep, signup_in: OrganizationSignupCreate
+) -> Any:
+    """提交学校注册；邮箱验证前不创建正式租户。"""
+    public_signup.request_signup(
+        session, signup=signup_in, remote_ip=_request_ip(request)
     )
+    return OrganizationSignupRequested(
+        message="验证邮件已发送，请在 30 分钟内完成验证",
+        expires_in_seconds=settings.PUBLIC_SIGNUP_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@router.post(
+    "/signup/resend",
+    response_model=OrganizationSignupRequested,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def resend_organization_signup(
+    request: Request, session: SessionDep, resend_in: OrganizationSignupResend
+) -> Any:
+    public_signup.resend_signup(
+        session,
+        email=str(resend_in.email),
+        turnstile_token=resend_in.turnstile_token,
+        remote_ip=_request_ip(request),
+    )
+    return OrganizationSignupRequested(
+        message="新的验证邮件已发送",
+        expires_in_seconds=settings.PUBLIC_SIGNUP_TOKEN_EXPIRE_MINUTES * 60,
+    )
+
+
+@router.post("/signup/verify", response_model=OrganizationSignupCompleted)
+def verify_organization_signup(
+    session: SessionDep, verify_in: OrganizationSignupVerify
+) -> Any:
+    """验证邮箱并原子开通学校、负责人账号和试用额度。"""
+    return public_signup.verify_signup(session, token=verify_in.token)
 
 
 @router.get("/{user_id}", response_model=UserPublic)
@@ -399,7 +455,9 @@ def read_teaching_profile(
                 status_code=403,
                 detail="The user doesn't have enough privileges",
             )
-        if not _user_in_scope(current_user, target):
+        if not is_platform_user(current_user) and not _user_in_scope(
+            current_user, target
+        ):
             raise HTTPException(status_code=404, detail="User not found")
     return _build_teaching_profile(session=session, target=target)
 
@@ -426,7 +484,6 @@ CurrentSchoolManagerUser = Annotated[
         require_roles(
             UserRole.SCHOOL_OWNER,
             UserRole.SCHOOL_ADMIN,
-            UserRole.PLATFORM_SUPERUSER,
         )
     ),
 ]
@@ -440,7 +497,7 @@ def update_teaching_profile(
     current_user: CurrentSchoolManagerUser,
 ) -> Any:
     """
-    整体覆盖任教档案：school_owner/school_admin（限本校）或平台超管；
+    整体覆盖任教档案：school_owner/school_admin（限本校）；
     目标用户角色必须是 teacher/school_admin；班级必须与目标用户同校（跨校 400）。
     """
     target = session.get(User, user_id)
@@ -544,8 +601,14 @@ def update_user(
                     status_code=403,
                     detail="School admins cannot grant owner or admin roles",
                 )
-        # 学校角色不能改动用户归属学校（强制保持本校，忽略请求值）
-        user_in.org_id = current_user.org_id
+        if not is_platform_user(current_user):
+            # 学校角色不能改动用户归属学校（强制保持本校，忽略请求值）
+            user_in.org_id = current_user.org_id
+    elif user_in.role is not None and user_in.role not in PLATFORM_ROLES:
+        raise HTTPException(
+            status_code=400,
+            detail="Platform superusers can only grant platform roles",
+        )
     if user_in.email:
         existing_user = crud.get_user_by_email(session=session, email=user_in.email)
         if existing_user and existing_user.id != user_id:
@@ -562,7 +625,7 @@ def delete_user(
     session: SessionDep, current_user: CurrentAdminUser, user_id: uuid.UUID
 ) -> Message:
     """
-    Delete a user.
+    Deactivate a user. Historical school data must never follow an account deletion.
     """
     user = session.get(User, user_id)
     if not user:
@@ -576,18 +639,12 @@ def delete_user(
             status_code=403,
             detail="No permission to manage users of other organizations",
         )
-    if is_superuser(user) and not is_superuser(current_user):
+    if user.role in PLATFORM_ROLES and not is_platform_superuser(current_user):
         raise HTTPException(
             status_code=400,
-            detail="Only superusers can delete superuser accounts",
+            detail="Only platform superusers can delete platform accounts",
         )
-    for model, owner_field in (
-        (ProcessingTask, ProcessingTask.created_by_id),
-        (StoredFile, StoredFile.uploaded_by_id),
-        (Exam, Exam.owner_id),
-    ):
-        statement = delete(model).where(col(owner_field) == user_id)
-        session.exec(statement)
-    session.delete(user)
+    user.is_active = False
+    session.add(user)
     session.commit()
-    return Message(message="User deleted successfully")
+    return Message(message="User deactivated; historical data was preserved")

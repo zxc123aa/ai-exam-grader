@@ -57,7 +57,7 @@ const columns: ColumnDef<PlatformOrgUserItem>[] = [
   },
 ]
 
-/** 学校账号列表卡：姓名 / 邮箱 / 角色 / 状态，右上角可追加总管理员。 */
+/** 学校总管理员列表；校内其他账号由学校自行维护。 */
 export function OrgUsersCard({
   org,
   canAddOwner,
@@ -70,7 +70,7 @@ export function OrgUsersCard({
   return (
     <div className="rounded-2xl border bg-card p-5 shadow-card">
       <div className="mb-4 flex items-center justify-between">
-        <h3 className="font-semibold">账号列表</h3>
+        <h3 className="font-semibold">学校总管理员</h3>
         {canAddOwner && <AddOrgOwner orgId={org.id} />}
       </div>
       {users.length === 0 ? (

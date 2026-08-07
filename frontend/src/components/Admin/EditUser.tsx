@@ -53,6 +53,7 @@ const formSchema = z
     role: z
       .enum([
         "platform_superuser",
+        "platform_admin",
         "platform_support",
         "school_owner",
         "school_admin",
@@ -94,10 +95,10 @@ const EditUser = ({ user, onSuccess }: EditUserProps) => {
   const { user: currentUser } = useAuth()
   const userRole = resolveRole(user)
   const roleOptions = assignableRoles(currentUser)
-  // 非平台超管不能改动平台超管的角色
+  // 非平台超管不能改动任何平台账号的角色
   const roleDisabled =
-    userRole === "platform_superuser" &&
-    !roleOptions.includes("platform_superuser")
+    userRole.startsWith("platform_") &&
+    resolveRole(currentUser ?? user) !== "platform_superuser"
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),

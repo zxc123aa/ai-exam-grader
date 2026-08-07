@@ -5,7 +5,6 @@ import {
   type Body_login_login_access_token as AccessToken,
   LoginService,
   type UserPublic,
-  type UserRegister,
   UsersService,
 } from "@/client"
 import { handleError } from "@/utils"
@@ -26,18 +25,6 @@ const useAuth = () => {
     enabled: isLoggedIn(),
   })
 
-  const signUpMutation = useMutation({
-    mutationFn: (data: UserRegister) =>
-      UsersService.registerUser({ requestBody: data }),
-    onSuccess: () => {
-      navigate({ to: "/login" })
-    },
-    onError: handleError.bind(showErrorToast),
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["users"] })
-    },
-  })
-
   const login = async (data: AccessToken) => {
     const response = await LoginService.loginAccessToken({
       formData: data,
@@ -55,7 +42,13 @@ const useAuth = () => {
       })
       const role =
         me?.role ?? (me?.is_superuser ? "platform_superuser" : "teacher")
-      navigate({ to: role === "student" ? "/my/exams" : "/" })
+      navigate({
+        to: role.startsWith("platform")
+          ? "/platform"
+          : role === "student"
+            ? "/my/exams"
+            : "/",
+      })
     },
     onError: handleError.bind(showErrorToast),
   })
@@ -66,7 +59,6 @@ const useAuth = () => {
   }
 
   return {
-    signUpMutation,
     loginMutation,
     logout,
     user,

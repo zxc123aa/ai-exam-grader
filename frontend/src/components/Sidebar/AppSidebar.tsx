@@ -1,5 +1,6 @@
 import { Link as RouterLink, useRouterState } from "@tanstack/react-router"
 import {
+  Activity,
   BarChart3,
   Building2,
   FileText,
@@ -7,10 +8,13 @@ import {
   LayoutDashboard,
   NotebookPen,
   PenLine,
+  ReceiptText,
+  Route,
   Settings2,
   ShieldCheck,
   Upload,
   Users,
+  Workflow,
 } from "lucide-react"
 
 import { SidebarAppearance } from "@/components/Common/Appearance"
@@ -138,8 +142,12 @@ export function AppSidebar() {
   const role = currentUser ? resolveRole(currentUser) : ("teacher" as const)
   const isStudent = role === "student"
   const isPlatform =
-    role === "platform_superuser" || role === "platform_support"
+    role === "platform_superuser" ||
+    role === "platform_admin" ||
+    role === "platform_support"
   const isPlatformSuperuser = role === "platform_superuser"
+  const canManageCommerce =
+    role === "platform_superuser" || role === "platform_admin"
   const isSchoolAdmin = role === "school_owner" || role === "school_admin"
 
   return (
@@ -183,13 +191,19 @@ export function AppSidebar() {
                   tooltip="学校管理"
                   isActive={
                     pathname.startsWith("/platform") &&
-                    !pathname.startsWith("/platform/settings")
+                    !pathname.startsWith("/platform/settings") &&
+                    !pathname.startsWith("/platform/routing") &&
+                    !pathname.startsWith("/platform/usage") &&
+                    !pathname.startsWith("/platform/commerce")
                   }
                   asChild
                   className={cn(
                     "transition-all",
                     pathname.startsWith("/platform") &&
                       !pathname.startsWith("/platform/settings") &&
+                      !pathname.startsWith("/platform/routing") &&
+                      !pathname.startsWith("/platform/usage") &&
+                      !pathname.startsWith("/platform/commerce") &&
                       ACTIVE_ITEM_CLASS,
                   )}
                 >
@@ -200,27 +214,107 @@ export function AppSidebar() {
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
-              {isPlatformSuperuser && (
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="调用记录"
+                  isActive={pathname.startsWith("/platform/usage")}
+                  asChild
+                  className={cn(
+                    "transition-all",
+                    pathname.startsWith("/platform/usage") && ACTIVE_ITEM_CLASS,
+                  )}
+                >
+                  <RouterLink
+                    to="/platform/usage"
+                    search={{ days: 30, page: 1 }}
+                    onClick={handleMenuClick}
+                  >
+                    <Activity />
+                    <span>调用记录</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              {canManageCommerce && (
                 <SidebarMenuItem>
                   <SidebarMenuButton
-                    tooltip="系统设置"
-                    isActive={pathname.startsWith("/platform/settings")}
+                    tooltip="订单与财务"
+                    isActive={pathname.startsWith("/platform/commerce")}
                     asChild
                     className={cn(
                       "transition-all",
-                      pathname.startsWith("/platform/settings") &&
+                      pathname.startsWith("/platform/commerce") &&
                         ACTIVE_ITEM_CLASS,
                     )}
                   >
                     <RouterLink
-                      to="/platform/settings"
+                      to="/platform/commerce"
                       onClick={handleMenuClick}
                     >
-                      <Settings2 />
-                      <span>系统设置</span>
+                      <ReceiptText />
+                      <span>订单与财务</span>
                     </RouterLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>
+              )}
+              {isPlatformSuperuser && (
+                <>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="平台账号"
+                      isActive={pathname === "/admin"}
+                      asChild
+                      className={cn(
+                        "transition-all",
+                        pathname === "/admin" && ACTIVE_ITEM_CLASS,
+                      )}
+                    >
+                      <RouterLink to="/admin" onClick={handleMenuClick}>
+                        <ShieldCheck />
+                        <span>平台账号</span>
+                      </RouterLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="中转与方案"
+                      isActive={pathname.startsWith("/platform/settings")}
+                      asChild
+                      className={cn(
+                        "transition-all",
+                        pathname.startsWith("/platform/settings") &&
+                          ACTIVE_ITEM_CLASS,
+                      )}
+                    >
+                      <RouterLink
+                        to="/platform/settings"
+                        onClick={handleMenuClick}
+                      >
+                        <Route />
+                        <span>中转与方案</span>
+                      </RouterLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton
+                      tooltip="功能调度"
+                      isActive={pathname.startsWith("/platform/routing")}
+                      asChild
+                      className={cn(
+                        "transition-all",
+                        pathname.startsWith("/platform/routing") &&
+                          ACTIVE_ITEM_CLASS,
+                      )}
+                    >
+                      <RouterLink
+                        to="/platform/routing"
+                        onClick={handleMenuClick}
+                      >
+                        <Workflow />
+                        <span>功能调度</span>
+                      </RouterLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </>
               )}
             </SidebarMenu>
           </SidebarGroup>
@@ -275,26 +369,6 @@ export function AppSidebar() {
                     <RouterLink to="/classes" onClick={handleMenuClick}>
                       <Users />
                       <span>班级学生</span>
-                    </RouterLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    tooltip="高级设置"
-                    isActive={pathname.startsWith("/advanced-settings")}
-                    asChild
-                    className={cn(
-                      "transition-all",
-                      pathname.startsWith("/advanced-settings") &&
-                        ACTIVE_ITEM_CLASS,
-                    )}
-                  >
-                    <RouterLink
-                      to="/advanced-settings"
-                      onClick={handleMenuClick}
-                    >
-                      <Settings2 />
-                      <span>高级设置</span>
                     </RouterLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

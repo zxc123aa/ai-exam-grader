@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import uuid
 
 from app.models import StandardAnswer, StandardAnswerStatus, get_datetime_utc
+from app.services.billing import ModelCallContext
 from app.services.grading_rules import validate_rubric
 from app.services.vision_grading import call_json_model
 
@@ -17,21 +19,44 @@ def generate_and_validate_rubric(
     question_label: str,
     vision_provider: str | None = None,
     vision_model: str | None = None,
-    fallback_models: list[str] | None = None,
+    answer_provider: str | None = None,
+    answer_model: str | None = None,
+    vision_fallback_models: list[str] | None = None,
+    reasoning_fallback_models: list[str] | None = None,
+    org_id: uuid.UUID | None = None,
+    reservation_id: uuid.UUID | None = None,
 ) -> StandardAnswer:
     from app.core.config import settings
 
     vision_provider = vision_provider or settings.VISION_DEFAULT_PROVIDER
     vision_model = vision_model or settings.VISION_DEFAULT_MODEL
+    answer_provider = answer_provider or settings.GRADING_DEFAULT_PROVIDER
+    answer_model = answer_model or settings.GRADING_DEFAULT_MODEL
     image = base64.b64encode(image_bytes).decode("ascii")
     image_part = {
         "type": "image_url",
         "image_url": {"url": f"data:image/png;base64,{image}"},
     }
+
+    def context(purpose: str) -> ModelCallContext | None:
+        if not org_id:
+            return None
+        return ModelCallContext(
+            org_id=org_id,
+            exam_id=answer.exam_id,
+            reservation_id=reservation_id,
+            workflow_purpose=purpose,
+            resource_id=str(answer.id),
+            billing_key=(
+                f"{org_id}:{purpose}:{answer.id}:answer-v{answer.version}:"
+                f"{RUBRIC_SCHEMA_VERSION}"
+            ),
+        )
+
     extracted, vision_model, vision_ms = call_json_model(
         provider=vision_provider,
         model=vision_model,
-        fallback_models=fallback_models,
+        fallback_models=vision_fallback_models or [],
         messages=[
             {
                 "role": "user",
@@ -44,6 +69,8 @@ def generate_and_validate_rubric(
                 ],
             }
         ],
+        billing_context=context("rubric_question_recognition"),
+        workflow_purpose="rubric_question_recognition",
     )
     question_text = str(extracted.get("question_text", "")).strip()
     question_type = str(extracted.get("question_type", "")).strip()
@@ -54,30 +81,34 @@ def generate_and_validate_rubric(
 满分：{answer.max_score}
 只返回 JSON：{{"canonical_answer":"标准答案","accepted_answers":["等价答案"],"rubric_summary":"总体评分规则","scoring_points":[{{"id":"p1","description":"得分条件","points":1,"required":true,"accepted_evidence":["可接受表述"],"dependencies":[],"partial_credit":[]}}],"deduction_rules":[],"tolerance":{{"absolute":0,"relative":0,"unit_required":false}},"global_rules":{{"error_carry_forward":false,"score_cap":{answer.max_score},"blank_score":0,"unreadable":"review"}}}}。评分点分值之和必须等于满分。"""
     rubric, generator_model, generator_ms = call_json_model(
-        provider="pomoai",
-        model="gpt-5.6-sol",
-        fallback_models=fallback_models or ["gpt-5.5"],
+        provider=answer_provider,
+        model=answer_model,
+        fallback_models=reasoning_fallback_models or [],
         messages=[
             {
                 "role": "user",
                 "content": [{"type": "text", "text": prompt}, image_part],
             }
         ],
+        billing_context=context("rubric_generation"),
+        workflow_purpose="rubric_generation",
     )
     review_prompt = f"""你是独立评分标准审稿人。重新解答题目，检查候选答案与评分准则是否正确、完整、可执行，特别检查评分点合计、等价答案、单位/容差、步骤分和边界情况。发现问题时必须直接修订，不得只提出建议。只返回 JSON：{{"valid":true,"issues":["发现并已修复的问题"],"corrected_rubric":{{"canonical_answer":"修订答案","accepted_answers":[],"rubric_summary":"修订规则","scoring_points":[],"deduction_rules":[],"tolerance":{{}},"global_rules":{{}}}}}}。valid 表示 corrected_rubric 已达到可自动发布标准；corrected_rubric 必须始终返回完整结构，评分点分值之和等于满分。
 题目：{question_text}
 满分：{answer.max_score}
 候选准则：{json.dumps(rubric, ensure_ascii=False)}"""
     review, validator_model, validator_ms = call_json_model(
-        provider="pomoai",
-        model="gpt-5.6-sol",
-        fallback_models=fallback_models or ["gpt-5.5"],
+        provider=answer_provider,
+        model=answer_model,
+        fallback_models=reasoning_fallback_models or [],
         messages=[
             {
                 "role": "user",
                 "content": [{"type": "text", "text": review_prompt}, image_part],
             }
         ],
+        billing_context=context("rubric_validation"),
+        workflow_purpose="rubric_validation",
     )
     corrected = review.get("corrected_rubric")
     if isinstance(corrected, dict):

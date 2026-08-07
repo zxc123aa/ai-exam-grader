@@ -213,7 +213,7 @@ function DashboardStats({ examId }: { examId: string }) {
         value={stats.pendingCount}
         unit="人"
         label="待复核"
-        foot="需人工确认低置信度题目"
+        foot="集中处理需要人工确认的题目"
       />
       <StatCard
         icon={CheckCircle2}

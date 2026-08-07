@@ -51,14 +51,14 @@ def order_points(points: np.ndarray) -> np.ndarray:
 
 def paper_mask(image: np.ndarray) -> np.ndarray:
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
+    lightness, a, b = cv2.split(lab)
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     _, s, v = cv2.split(hsv)
 
     # Bright, relatively low-saturation regions are likely paper.
-    l_thr = max(120, int(np.percentile(l, 45)))
+    l_thr = max(120, int(np.percentile(lightness, 45)))
     v_thr = max(110, int(np.percentile(v, 40)))
-    mask = ((l > l_thr) & (v > v_thr) & (s < 150)).astype(np.uint8) * 255
+    mask = ((lightness > l_thr) & (v > v_thr) & (s < 150)).astype(np.uint8) * 255
 
     h, w = mask.shape
     k = max(9, int(min(h, w) * 0.015) | 1)
@@ -181,10 +181,10 @@ def warp_page(image: np.ndarray, quad: np.ndarray, max_side: int = 2400) -> np.n
 def enhance_document(image: np.ndarray) -> np.ndarray:
     # Conservative illumination correction in LAB, preserving handwriting and color marks.
     lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-    l, a, b = cv2.split(lab)
+    lightness, a, b = cv2.split(lab)
     sigma = max(15, int(min(image.shape[:2]) * 0.03))
-    bg = cv2.GaussianBlur(l, (0, 0), sigmaX=sigma, sigmaY=sigma)
-    corrected = cv2.divide(l, np.maximum(bg, 1), scale=210)
+    bg = cv2.GaussianBlur(lightness, (0, 0), sigmaX=sigma, sigmaY=sigma)
+    corrected = cv2.divide(lightness, np.maximum(bg, 1), scale=210)
     clahe = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(8, 8))
     corrected = clahe.apply(corrected)
     out = cv2.cvtColor(cv2.merge([corrected, a, b]), cv2.COLOR_LAB2BGR)

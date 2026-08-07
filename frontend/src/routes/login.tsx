@@ -61,6 +61,8 @@ function Login() {
       password: "",
     },
   })
+  const publicSignupEnabled =
+    import.meta.env.DEV || import.meta.env.VITE_PUBLIC_SIGNUP_ENABLED === "true"
 
   const onSubmit = (data: FormData) => {
     if (loginMutation.isPending) return
@@ -131,6 +133,17 @@ function Login() {
               登录
             </LoadingButton>
           </div>
+          {publicSignupEnabled && (
+            <p className="text-center text-muted-foreground text-sm">
+              内测学校首次使用？{" "}
+              <RouterLink
+                to="/signup"
+                className="font-medium text-primary hover:underline"
+              >
+                注册学校
+              </RouterLink>
+            </p>
+          )}
         </form>
       </Form>
     </AuthLayout>

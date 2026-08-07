@@ -11,11 +11,10 @@ import {
   ScanSearch,
   Upload,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { z } from "zod"
 
 import { ExamsService } from "@/client"
-import { ConfBadge } from "@/components/Common/ConfBadge"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { Tag } from "@/components/Common/Tag"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
@@ -159,7 +158,9 @@ function QuestionItemRow({
           </Tag>
           {excluded && <Tag variant="red">已排除</Tag>}
           {item.confidence !== null && item.confidence < 0.8 && (
-            <ConfBadge value={item.confidence * 100} className="shrink-0" />
+            <Tag variant="amber" className="shrink-0">
+              请复核
+            </Tag>
           )}
           {error && (
             <span className="shrink-0 text-xs text-destructive">{error}</span>
@@ -287,8 +288,9 @@ function QuestionItemRow({
             <span>{regionCount} 个识别区域</span>
             {item.confidence !== null && (
               <span className="inline-flex items-center gap-1">
-                置信度
-                <ConfBadge value={item.confidence * 100} />
+                {item.confidence < 0.8
+                  ? "题目内容可能不完整，请对照原卷确认"
+                  : "题目内容已完成初步检查"}
               </span>
             )}
             {item.notes && <span>{item.notes}</span>}
@@ -468,14 +470,9 @@ function QuestionWorkspace() {
   const current = activeRun.data
   const completed =
     current && ["completed", "completed_with_errors"].includes(current.status)
-  const averageConfidence = useMemo(() => {
-    const values = (items.data ?? [])
-      .map((item) => item.confidence)
-      .filter((value): value is number => value !== null)
-    return values.length
-      ? values.reduce((sum, value) => sum + value, 0) / values.length
-      : null
-  }, [items.data])
+  const reviewItemCount = (items.data ?? []).filter(
+    (item) => item.confidence !== null && item.confidence < 0.8,
+  ).length
   const timing = current?.timing ?? {}
 
   return (
@@ -581,13 +578,11 @@ function QuestionWorkspace() {
               </div>
             </div>
             <div className="bg-background px-4 py-3">
-              <div className="text-muted-foreground text-xs">平均置信度</div>
-              <div className="mt-1" data-testid="average-confidence">
-                {averageConfidence === null ? (
-                  <span className="font-medium text-sm">—</span>
-                ) : (
-                  <ConfBadge value={averageConfidence * 100} />
-                )}
+              <div className="text-muted-foreground text-xs">需要复核</div>
+              <div className="mt-1" data-testid="review-item-count">
+                <span className="font-medium text-sm">
+                  {reviewItemCount} 道
+                </span>
               </div>
             </div>
           </div>
@@ -600,7 +595,7 @@ function QuestionWorkspace() {
                 ["方向检测", timing.orientationMs],
                 ["版面分割", timing.layoutMs],
                 ["裁切", timing.cropMs],
-                ["OCR", timing.ocrMs],
+                ["文字识别", timing.ocrMs],
                 ["总耗时", timing.totalElapsedMs],
               ].map(([label, value]) => (
                 <div key={String(label)} className="bg-background px-4 py-3">
@@ -623,7 +618,7 @@ function QuestionWorkspace() {
       {current && ["queued", "running"].includes(current.status) ? (
         <div className="flex min-h-48 items-center justify-center gap-2 rounded-2xl border bg-card text-muted-foreground text-sm shadow-card">
           <Loader2 className="animate-spin" />
-          参考算法正在执行旋转、分割、裁切和并发 OCR
+          系统正在校正页面、识别题目并整理内容
         </div>
       ) : items.data?.length ? (
         <>

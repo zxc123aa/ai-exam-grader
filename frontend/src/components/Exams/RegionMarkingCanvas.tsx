@@ -22,6 +22,7 @@ import {
   ExamsService,
   OpenAPI,
 } from "@/client"
+import { Tag } from "@/components/Common/Tag"
 import ExamFilesDialog, {
   DocumentCornerReviewDialog,
 } from "@/components/Exams/ExamFilesDialog"
@@ -1521,11 +1522,9 @@ export default function RegionMarkingCanvas({
                         </span>
                       )}
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {item.confidence == null
-                        ? "--"
-                        : `${(item.confidence * 100).toFixed(1)}%`}
-                    </div>
+                    {item.confidence != null && item.confidence < 0.8 && (
+                      <Tag variant="amber">请核对</Tag>
+                    )}
                   </div>
                   <div>
                     <div className="mb-1 text-xs text-muted-foreground">
@@ -1552,7 +1551,7 @@ export default function RegionMarkingCanvas({
               已识别 {recognizedPageCount} / {pageCount} 页
               {recognizedPageCount < pageCount
                 ? `，还需识别 ${pageCount - recognizedPageCount} 页才能进入题目确认。`
-                : "，可以复用本次结果进入题目确认，不会再次调用模型。"}
+                : "，可以复用本次结果进入题目确认，不会重复处理。"}
             </div>
             <LoadingButton
               loading={importRecognitionMutation.isPending}
@@ -1646,18 +1645,9 @@ export default function RegionMarkingCanvas({
                   )}
                   {candidatesQuery.data?.elapsed_ms != null && (
                     <span className="text-right text-xs font-normal text-muted-foreground">
-                      {candidatesQuery.data.provider_label ||
-                        candidatesQuery.data.provider ||
-                        "版面分析"}
-                      {(candidatesQuery.data.provider_failover_count ?? 0) > 0
-                        ? ` · 已自动切换 ${candidatesQuery.data.provider_failover_count} 次`
-                        : ""}
-                      {" · "}
-                      转正 {candidatesQuery.data.rotation ?? 0}° · 方向{" "}
-                      {candidatesQuery.data.orientation_ms ?? 0} ms · 版面分析{" "}
-                      {candidatesQuery.data.layout_ms ?? 0} ms · 精修{" "}
-                      {candidatesQuery.data.refinement_ms ?? 0} ms · 总计{" "}
-                      {candidatesQuery.data.elapsed_ms} ms
+                      已完成版面分析 · 转正 {candidatesQuery.data.rotation ?? 0}
+                      ° · 总计{" "}
+                      {(candidatesQuery.data.elapsed_ms / 1000).toFixed(1)} 秒
                     </span>
                   )}
                 </div>
@@ -1690,10 +1680,12 @@ export default function RegionMarkingCanvas({
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {isRefined
-                              ? `版面分析 + 平行线精修 · ${(candidate.confidence * 100).toFixed(0)}%`
+                              ? "已自动校正分隔线"
                               : candidate.source.includes("reference-node")
-                                ? "版面候选 · 未找到可靠分隔线"
-                                : `${(candidate.confidence * 100).toFixed(0)}% · ${candidate.source}`}
+                                ? "未找到可靠分隔线，请核对"
+                                : candidate.confidence < 0.8
+                                  ? "题目边界可能不准，请核对"
+                                  : "题目边界已识别"}
                           </div>
                         </div>
                         <span className="text-xs text-muted-foreground">

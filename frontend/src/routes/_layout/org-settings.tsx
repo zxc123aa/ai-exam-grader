@@ -5,6 +5,8 @@ import { useEffect, useState } from "react"
 import { OrgService, UsersService } from "@/client"
 import { resolveRole } from "@/components/Admin/roleMeta"
 import { PageHead } from "@/components/Common/PageHead"
+import { OrgBillingSection } from "@/components/Org/OrgBillingSection"
+import { OrgModelSettingsSection } from "@/components/Org/OrgModelSettingsSection"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -106,6 +108,10 @@ function OrgSettings() {
           仅总管理员可以修改学校设置，当前为只读查看。
         </p>
       )}
+
+      <OrgBillingSection />
+
+      <OrgModelSettingsSection canEdit={canEdit} />
 
       <section className={CARD_CLASS}>
         <h3 className="font-semibold">学校信息</h3>

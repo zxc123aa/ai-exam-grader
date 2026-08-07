@@ -109,7 +109,7 @@ async function uploadBlankPaper(
 ) {
   const row = page.getByRole("row").filter({ hasText: title })
   await expect(row).toBeVisible()
-  await row.getByRole("link", { name: "进入" }).click()
+  await row.getByRole("link", { name: /继续：|进入批卷/ }).click()
 
   await page.getByRole("button", { name: "导入试卷" }).click()
   await page.getByTestId("exam-file-input").setInputFiles({

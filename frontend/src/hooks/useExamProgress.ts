@@ -12,11 +12,13 @@ export type ExamStepKey =
   | "scores"
 
 export type ExamStepRoute =
+  | "/exams/$examId"
   | "/exams/$examId/marking"
   | "/exams/$examId/questions"
   | "/exams/$examId/answers"
   | "/exams/$examId/grading"
   | "/exams/$examId/scores"
+  | "/exams/$examId/workbench"
 
 export type ExamStep = {
   key: ExamStepKey
@@ -25,142 +27,93 @@ export type ExamStep = {
   done: boolean
 }
 
-type RecognitionRun = {
-  id: string
-  status: string
-  confirmed_at: string | null
+type WorkflowSummary = {
+  next_action: string
+  next_label: string
+  next_path: string
+  message: string
+  steps: Array<{
+    code: ExamStepKey
+    label: string
+    status: "pending" | "active" | "completed" | "blocked"
+    count: number
+  }>
 }
 
-type GradingRun = {
-  id: string
-  status: string
-  config_snapshot?: Record<string, unknown>
+const STEP_ROUTES: Record<ExamStepKey, ExamStepRoute> = {
+  import: "/exams/$examId",
+  marking: "/exams/$examId/marking",
+  questions: "/exams/$examId/questions",
+  answers: "/exams/$examId/answers",
+  grading: "/exams/$examId/grading",
+  scores: "/exams/$examId/scores",
 }
 
-type AnswerRevision = {
-  id: string
-  status: "draft" | "published"
+function routeFromPath(path: string): ExamStepRoute {
+  if (path.endsWith("/workbench")) return "/exams/$examId/workbench"
+  if (path.endsWith("/questions")) return "/exams/$examId/questions"
+  if (path.endsWith("/answers")) return "/exams/$examId/answers"
+  if (path.endsWith("/grading")) return "/exams/$examId/grading"
+  if (path.endsWith("/scores")) return "/exams/$examId/scores"
+  if (/\/exams\/[^/]+\/?$/.test(path)) return "/exams/$examId"
+  return "/exams/$examId/marking"
+}
+
+const ACTION_STEP: Record<string, ExamStepKey> = {
+  import_paper: "import",
+  mark_questions: "marking",
+  confirm_questions: "questions",
+  prepare_answers: "answers",
+  import_submissions: "grading",
+  wait_grading: "grading",
+  start_grading: "grading",
+  review_exceptions: "grading",
+  publish_scores: "scores",
+  view_results: "scores",
 }
 
 /**
- * 聚合考试各环节的现有查询，推导工作区六个步骤（导入模板卷 → 框选题目 →
- * 确认题目 → 标准答案 → 批改批次 → 成绩）的完成状态与当前应做步骤。
- * 只复用各页面已有的接口与 queryKey，不新增后端 API。
+ * 后端统一汇总考试进度，前端只展示老师下一步该做什么。
+ * 避免列表每行并发请求多个业务接口造成等待和状态不一致。
  */
 export function useExamProgress(examId: string) {
   const exam = useQuery({
     queryKey: ["exam", examId],
     queryFn: () => ExamsService.readExam({ examId }),
   })
-  const files = useQuery({
-    queryKey: ["exam-files", examId],
-    queryFn: () => ExamsService.readExamFiles({ examId }),
-  })
-  const regions = useQuery({
-    queryKey: ["exam-regions", examId],
-    queryFn: () => ExamsService.readExamRegions({ examId }),
-  })
-  const recognitionRuns = useQuery({
-    queryKey: ["question-recognition-runs", examId],
+  const summary = useQuery({
+    queryKey: ["exam-workflow-summary", examId],
     queryFn: () =>
-      workflowApi<{ data: RecognitionRun[] }>(
-        `/exams/${examId}/question-recognition-runs`,
-      ),
-  })
-  const questions = useQuery({
-    queryKey: ["confirmed-questions", examId],
-    queryFn: () =>
-      workflowApi<{ data: unknown[]; count: number }>(
-        `/exams/${examId}/questions`,
-      ),
-  })
-  const revisions = useQuery({
-    queryKey: ["answer-revisions", examId],
-    queryFn: () =>
-      workflowApi<{ data: AnswerRevision[]; count: number }>(
-        `/exams/${examId}/standard-answers/revisions`,
-      ),
-  })
-  const gradingRuns = useQuery({
-    queryKey: ["grading-runs", examId],
-    queryFn: () =>
-      workflowApi<{ data: GradingRun[] }>(`/grading/runs?exam_id=${examId}`),
+      workflowApi<WorkflowSummary>(`/exams/${examId}/workflow-summary`),
   })
 
-  const hasPaper = (files.data?.data ?? []).some(
-    (document) => document.document_type === "blank_exam",
-  )
-  const hasRegions =
-    (regions.data?.data ?? []).length > 0 ||
-    (recognitionRuns.data?.data ?? []).length > 0
-  const questionsConfirmed =
-    (questions.data?.count ?? 0) > 0 ||
-    (recognitionRuns.data?.data ?? []).some((run) => Boolean(run.confirmed_at))
-  const answersPublished = (revisions.data?.data ?? []).some(
-    (revision) => revision.status === "published",
-  )
-  const gradingFinished = (gradingRuns.data?.data ?? []).some(
-    (run) =>
-      run.config_snapshot?.pipeline !== "recognition_preview" &&
-      run.status.startsWith("completed"),
-  )
-
-  const steps: ExamStep[] = [
-    {
-      key: "import",
-      label: "导入模板卷",
-      to: "/exams/$examId/marking",
-      done: hasPaper,
-    },
-    {
-      key: "marking",
-      label: "框选题目",
-      to: "/exams/$examId/marking",
-      done: hasRegions,
-    },
-    {
-      key: "questions",
-      label: "确认题目",
-      to: "/exams/$examId/questions",
-      done: questionsConfirmed,
-    },
-    {
-      key: "answers",
-      label: "标准答案",
-      to: "/exams/$examId/answers",
-      done: answersPublished,
-    },
-    {
-      key: "grading",
-      label: "批改批次",
-      to: "/exams/$examId/grading",
-      done: gradingFinished,
-    },
-    {
-      key: "scores",
-      label: "成绩",
-      to: "/exams/$examId/scores",
-      // 存在已完成的批改批次即视为成绩可看
-      done: gradingFinished,
-    },
-  ]
-
-  const currentStep =
-    steps.find((step) => !step.done) ?? steps[steps.length - 1]
-  const isLoading =
-    exam.isPending ||
-    files.isPending ||
-    regions.isPending ||
-    recognitionRuns.isPending ||
-    questions.isPending ||
-    revisions.isPending ||
-    gradingRuns.isPending
+  const steps: ExamStep[] = (summary.data?.steps ?? []).map((step) => ({
+    key: step.code,
+    label: step.label,
+    to: STEP_ROUTES[step.code],
+    done: step.status === "completed",
+  }))
+  const fallback = steps[0] ?? {
+    key: "import" as const,
+    label: "导入模板卷",
+    to: "/exams/$examId" as const,
+    done: false,
+  }
+  const currentStep = summary.data
+    ? {
+        key: ACTION_STEP[summary.data.next_action] ?? fallback.key,
+        label: summary.data.next_label,
+        to: routeFromPath(summary.data.next_path),
+        done: summary.data.next_action === "view_results",
+      }
+    : fallback
 
   return {
     steps,
     currentStep,
-    allDone: steps.every((step) => step.done),
-    isLoading,
+    allDone: summary.data?.next_action === "view_results",
+    isLoading: exam.isPending || summary.isPending,
     exam: exam.data,
+    message: summary.data?.message,
   }
 }

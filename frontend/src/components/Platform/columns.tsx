@@ -5,30 +5,79 @@ import { ArrowRight } from "lucide-react"
 import type { PlatformOrgListItem } from "@/client"
 import { Tag } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
-import {
-  formatOrgDate,
-  ORG_STATUS_LABELS,
-  ORG_STATUS_TAG_VARIANTS,
-} from "./orgMeta"
-
-function CountCell({ value }: { value?: number }) {
-  return (
-    <span className="tabular-nums text-muted-foreground">{value ?? 0}</span>
-  )
-}
+import { ORG_STATUS_LABELS, ORG_STATUS_TAG_VARIANTS } from "./orgMeta"
 
 export const columns: ColumnDef<PlatformOrgListItem>[] = [
   {
     accessorKey: "name",
     header: "学校名称",
-    cell: ({ row }) => <span className="font-medium">{row.original.name}</span>,
+    cell: ({ row }) => (
+      <div className="grid gap-0.5">
+        <span className="font-medium">{row.original.name}</span>
+        <span className="font-mono text-muted-foreground text-xs">
+          {row.original.code}
+        </span>
+      </div>
+    ),
   },
   {
-    accessorKey: "code",
-    header: "代码",
+    id: "owner",
+    header: "负责人",
+    cell: ({ row }) => {
+      const owner = row.original
+      const displayName =
+        owner.owner_name ||
+        owner.contact_name ||
+        owner.owner_email?.split("@")[0]
+      return (
+        <div className="grid max-w-56 gap-0.5">
+          <span className="text-sm">{displayName || "尚未创建总管理员"}</span>
+          {owner.owner_email && (
+            <span className="truncate text-muted-foreground text-xs">
+              {owner.owner_email}
+            </span>
+          )}
+        </div>
+      )
+    },
+  },
+  {
+    id: "people",
+    header: "学校人员",
     cell: ({ row }) => (
-      <span className="font-mono text-muted-foreground text-sm">
-        {row.original.code}
+      <div className="grid gap-0.5 text-sm tabular-nums">
+        <span>
+          {row.original.teacher_count ?? 0} 位老师 ·{" "}
+          {row.original.student_count ?? 0} 名学生
+        </span>
+        <span className="text-muted-foreground text-xs">
+          {row.original.class_count ?? 0} 个班级
+        </span>
+      </div>
+    ),
+  },
+  {
+    id: "accounts",
+    header: "账号",
+    cell: ({ row }) => (
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="text-sm tabular-nums">
+          {row.original.account_count ?? 0} 个
+        </span>
+        {(row.original.unbound_student_count ?? 0) > 0 && (
+          <Tag variant="amber">
+            {row.original.unbound_student_count} 名学生未开通
+          </Tag>
+        )}
+      </div>
+    ),
+  },
+  {
+    accessorKey: "exam_count",
+    header: "考试",
+    cell: ({ row }) => (
+      <span className="text-muted-foreground text-sm tabular-nums">
+        {row.original.exam_count ?? 0} 场
       </span>
     ),
   },
@@ -43,30 +92,6 @@ export const columns: ColumnDef<PlatformOrgListItem>[] = [
         </Tag>
       )
     },
-  },
-  {
-    accessorKey: "exam_count",
-    header: "考试数",
-    cell: ({ row }) => <CountCell value={row.original.exam_count} />,
-  },
-  {
-    accessorKey: "student_count",
-    header: "学生数",
-    cell: ({ row }) => <CountCell value={row.original.student_count} />,
-  },
-  {
-    accessorKey: "teacher_count",
-    header: "老师数",
-    cell: ({ row }) => <CountCell value={row.original.teacher_count} />,
-  },
-  {
-    accessorKey: "created_at",
-    header: "创建时间",
-    cell: ({ row }) => (
-      <span className="text-muted-foreground">
-        {formatOrgDate(row.original.created_at)}
-      </span>
-    ),
   },
   {
     id: "actions",

@@ -3,6 +3,7 @@ import type { TagVariant } from "@/components/Common/Tag"
 
 export const ROLE_LABELS: Record<UserRole, string> = {
   platform_superuser: "平台超管",
+  platform_admin: "平台管理员",
   platform_support: "平台运营",
   school_owner: "总管理员",
   school_admin: "管理员",
@@ -12,6 +13,7 @@ export const ROLE_LABELS: Record<UserRole, string> = {
 
 export const ROLE_TAG_VARIANTS: Record<UserRole, TagVariant> = {
   platform_superuser: "violet",
+  platform_admin: "indigo",
   platform_support: "sky",
   school_owner: "indigo",
   school_admin: "sky",
@@ -21,6 +23,7 @@ export const ROLE_TAG_VARIANTS: Record<UserRole, TagVariant> = {
 
 export const ROLE_OPTIONS: UserRole[] = [
   "platform_superuser",
+  "platform_admin",
   "platform_support",
   "school_owner",
   "school_admin",
@@ -53,7 +56,7 @@ export function resolveRole(
 
 /**
  * 当前用户可分配的角色，按角色分级：
- * platform_superuser → 全部非平台角色；school_owner → school_admin/teacher/student；
+ * platform_superuser → 平台管理员/运营；school_owner → school_admin/teacher/student；
  * school_admin → teacher/student；其他角色不能创建/改角色。
  */
 export function assignableRoles(
@@ -62,9 +65,9 @@ export function assignableRoles(
   if (!currentUser) return []
   switch (resolveRole(currentUser)) {
     case "platform_superuser":
-      return ROLE_OPTIONS.filter(
-        (role) => role !== "platform_superuser" && role !== "platform_support",
-      )
+      return ["platform_admin", "platform_support"]
+    case "platform_admin":
+      return []
     case "school_owner":
       return ["school_admin", "teacher", "student"]
     case "school_admin":

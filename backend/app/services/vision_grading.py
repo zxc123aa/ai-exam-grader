@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import re
 import threading
 import time
@@ -9,10 +10,19 @@ from dataclasses import dataclass
 from io import BytesIO
 
 import httpx
+from fastapi import HTTPException
 from PIL import Image
 
 from app.core.config import settings
 from app.models import StandardAnswer
+from app.services import billing, provider_gateway
+from app.services.billing import ModelCallContext
+from app.services.model_concurrency import (
+    ModelConcurrencyUnavailable,
+    distributed_model_slot,
+)
+
+logger = logging.getLogger(__name__)
 
 
 class VisionGradingError(RuntimeError):
@@ -23,6 +33,17 @@ class VisionGradingError(RuntimeError):
 class ModelTarget:
     provider: str
     model: str
+
+
+@dataclass(frozen=True)
+class _ResolvedCallTarget:
+    provider: str
+    model: str
+    upstream_model: str
+    base_url: str
+    api_key: str
+    timeout_seconds: int
+    dynamic: provider_gateway.RuntimeTarget | None = None
 
 
 _PROVIDER_PREFERENCE = ("pomoai", "kimi", "fluxnode_gemini", "fluxnode_grok")
@@ -56,7 +77,10 @@ class VisionExtraction:
 
 
 def segment_page_with_gemini(
-    *, image_bytes: bytes, provider: str = "fluxnode_gemini", model: str = "gemini-3.5-flash"
+    *,
+    image_bytes: bytes,
+    provider: str = "fluxnode_gemini",
+    model: str = "gemini-3.5-flash",
 ) -> tuple[list[dict], str, int, int]:
     """Use the reference layout prompt to locate complete question blocks."""
     source = Image.open(BytesIO(image_bytes)).convert("RGB")
@@ -70,7 +94,13 @@ def segment_page_with_gemini(
         orientation_content.extend(
             [
                 {"type": "text", "text": f"候选 {rotation}°"},
-                {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64," + base64.b64encode(buffer.getvalue()).decode("ascii")}},
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": "data:image/jpeg;base64,"
+                        + base64.b64encode(buffer.getvalue()).decode("ascii")
+                    },
+                },
             ]
         )
     orientation, _orientation_model, orientation_ms = _call_model(
@@ -78,8 +108,13 @@ def segment_page_with_gemini(
         model=model,
         fallback_models=[],
         messages=[{"role": "user", "content": orientation_content}],
+        workflow_purpose="region_detection",
     )
-    rotation = int(orientation.get("rotation", 0)) if str(orientation.get("rotation", 0)).isdigit() else 0
+    rotation = (
+        int(orientation.get("rotation", 0))
+        if str(orientation.get("rotation", 0)).isdigit()
+        else 0
+    )
     rotation = rotation if rotation in {0, 90, 180, 270} else 0
     upright = source.rotate(-rotation, expand=True)
     upright_buffer = BytesIO()
@@ -100,15 +135,24 @@ JSON格式：{"pageLabel":"...","studentLabel":"姓名/座号/班级的可读组
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image}"}},
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:image/png;base64,{image}"},
+                    },
                 ],
             }
         ],
+        workflow_purpose="region_detection",
     )
     regions = parsed.get("regions")
     if not isinstance(regions, list):
         raise VisionGradingError("Gemini 版面分析未返回 regions")
-    return [item for item in regions if isinstance(item, dict)], used_model, elapsed_ms, orientation_ms
+    return (
+        [item for item in regions if isinstance(item, dict)],
+        used_model,
+        elapsed_ms,
+        orientation_ms,
+    )
 
 
 def provider_config(provider: str) -> tuple[str, str]:
@@ -132,11 +176,9 @@ def provider_config(provider: str) -> tuple[str, str]:
     return base_url.rstrip("/"), api_key
 
 
-
-
-def _temperature_for(provider: str) -> float:
+def _temperature_for(provider: str, model: str | None = None) -> float:
     """Kimi 系列模型只接受 temperature=1（其余值 400），其他 provider 用低温求稳。"""
-    return 1.0 if provider == "kimi" else 0.1
+    return 1.0 if provider == "kimi" or (model or "").startswith("kimi-") else 0.1
 
 
 def _configured(provider: str) -> bool:
@@ -173,7 +215,9 @@ def _candidate_targets(
     provider: str, model: str, fallback_models: list[str]
 ) -> list[ModelTarget]:
     targets = [ModelTarget(provider, model)]
-    targets.extend(_resolve_target(provider, item) for item in fallback_models if item.strip())
+    targets.extend(
+        _resolve_target(provider, item) for item in fallback_models if item.strip()
+    )
     return list(dict.fromkeys(targets))
 
 
@@ -238,6 +282,7 @@ def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
         raise VisionGradingError(reason)
     raise VisionGradingError(f"模型请求未被接受（HTTP {response.status_code}）")
 
+
 def _parse_json(text: str) -> dict:
     cleaned = re.sub(r"<think>[\s\S]*?</think>", "", text, flags=re.I)
     fenced = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", cleaned, flags=re.I)
@@ -263,26 +308,195 @@ def _endpoint(base_url: str) -> str:
     )
 
 
+def _resolved_call_targets(
+    *,
+    provider: str,
+    model: str,
+    fallback_models: list[str],
+    billing_context: ModelCallContext | None,
+    workflow_purpose: str | None,
+) -> list[_ResolvedCallTarget]:
+    legacy_candidates = _candidate_targets(provider, model, fallback_models)
+    resolved: list[_ResolvedCallTarget] = []
+    if settings.DYNAMIC_PROVIDER_ROUTING_ENABLED:
+        sticky_key = (
+            billing_context.billing_key if billing_context else f"{provider}:{model}"
+        )
+        seen_dynamic_targets: set[tuple[object, object]] = set()
+        for candidate_index, candidate in enumerate(legacy_candidates):
+            for target in provider_gateway.resolve_targets(
+                provider=candidate.provider,
+                model=candidate.model,
+                workflow_purpose=(
+                    billing_context.workflow_purpose
+                    if billing_context
+                    else workflow_purpose
+                ),
+                sticky_key=sticky_key,
+                # The first candidate follows the function's platform default.
+                # Explicit fallback candidates must keep their own canonical
+                # model so Sol can fail over to Terra/Kimi and Gemini 3.6 can
+                # fail over to 3.5 without crossing task families.
+                prefer_assignment=candidate_index == 0,
+            ):
+                target_key = (target.channel_id, target.upstream_model)
+                if target_key in seen_dynamic_targets:
+                    continue
+                seen_dynamic_targets.add(target_key)
+                resolved.append(
+                    _ResolvedCallTarget(
+                        provider=target.provider,
+                        model=target.canonical_model,
+                        upstream_model=target.upstream_model,
+                        base_url=target.base_url,
+                        api_key=target.api_key,
+                        timeout_seconds=target.timeout_seconds,
+                        dynamic=target,
+                    )
+                )
+
+    # Once a model is managed in the database, channel state is authoritative:
+    # a disabled/draining channel must not be bypassed through an old env key.
+    managed_purpose = (
+        settings.DYNAMIC_PROVIDER_ROUTING_ENABLED
+        and provider_gateway.is_managed_purpose(
+            workflow_purpose=(
+                billing_context.workflow_purpose
+                if billing_context
+                else workflow_purpose
+            )
+        )
+    )
+    for candidate in legacy_candidates:
+        if managed_purpose:
+            continue
+        if (
+            settings.DYNAMIC_PROVIDER_ROUTING_ENABLED
+            and provider_gateway.is_managed_route(
+                provider=candidate.provider, model=candidate.model
+            )
+        ):
+            continue
+        try:
+            base_url, api_key = provider_config(candidate.provider)
+        except VisionGradingError:
+            continue
+        resolved.append(
+            _ResolvedCallTarget(
+                provider=candidate.provider,
+                model=candidate.model,
+                upstream_model=candidate.model,
+                base_url=base_url,
+                api_key=api_key,
+                timeout_seconds=settings.VISION_TIMEOUT_SECONDS,
+            )
+        )
+    return resolved
+
+
+def _upstream_request_id(response: httpx.Response) -> str | None:
+    headers = getattr(response, "headers", {})
+    normalized = (
+        {str(key).casefold(): value for key, value in headers.items()}
+        if hasattr(headers, "items")
+        else {}
+    )
+    for name in (
+        "x-oneapi-request-id",
+        "x-request-id",
+        "request-id",
+        "openai-request-id",
+    ):
+        value = normalized.get(name)
+        if value:
+            return str(value)[:255]
+    return None
+
+
+def _post_dynamic_model(
+    target: _ResolvedCallTarget,
+    *,
+    messages: list[dict],
+) -> httpx.Response:
+    assert target.dynamic is not None
+    with httpx.Client(
+        follow_redirects=False,
+        trust_env=settings.ENVIRONMENT == "local",
+        verify=True,
+        timeout=target.timeout_seconds,
+    ) as client:
+        return client.post(
+            provider_gateway.endpoint(target.dynamic),
+            headers={
+                "Authorization": f"Bearer {target.api_key}",
+                "Content-Type": "application/json",
+            },
+            json=provider_gateway.request_payload(
+                target.dynamic,
+                messages=messages,
+                temperature=_temperature_for(target.provider, target.model),
+            ),
+        )
+
+
+def _post_legacy_model(
+    target: _ResolvedCallTarget,
+    *,
+    messages: list[dict],
+) -> httpx.Response:
+    return httpx.post(
+        _endpoint(target.base_url),
+        headers={
+            "Authorization": f"Bearer {target.api_key}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "model": target.upstream_model,
+            "temperature": _temperature_for(target.provider, target.model),
+            "messages": messages,
+            "max_tokens": settings.MODEL_MAX_OUTPUT_TOKENS,
+        },
+        timeout=target.timeout_seconds,
+        follow_redirects=False,
+    )
+
+
 def _call_model(
-    *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
+    *,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    fallback_models: list[str],
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, int]:
     parsed, _used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
         provider=provider,
         model=model,
         messages=messages,
         fallback_models=fallback_models,
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
     )
     return parsed, used_model, elapsed_ms
 
 
 def _call_model_with_metadata(
-    *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
+    *,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    fallback_models: list[str],
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, int, dict]:
     parsed, used_provider, used_model, elapsed_ms, usage = _call_model_with_route(
         provider=provider,
         model=model,
         messages=messages,
         fallback_models=fallback_models,
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
     )
     if used_provider != provider:
         usage = {**usage, "_used_provider": used_provider}
@@ -290,41 +504,157 @@ def _call_model_with_metadata(
 
 
 def _call_model_with_route(
-    *, provider: str, model: str, messages: list[dict], fallback_models: list[str]
+    *,
+    provider: str,
+    model: str,
+    messages: list[dict],
+    fallback_models: list[str],
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, str, int, dict]:
-    candidates = _candidate_targets(provider, model, fallback_models)
+    candidates = _resolved_call_targets(
+        provider=provider,
+        model=model,
+        fallback_models=fallback_models,
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
+    )
+    if not candidates:
+        raise VisionGradingError("没有可用的模型通道")
     last_error: Exception | None = None
-    for candidate in candidates:
+    for attempt, candidate in enumerate(candidates, start=1):
         started = time.perf_counter()
+        response: httpx.Response | None = None
+        if billing_context:
+            try:
+                billing.authorize_next_model_call(billing_context)
+            except HTTPException as exc:
+                raise VisionGradingError(str(exc.detail)) from exc
         try:
+            if (
+                billing_context
+                and settings.BILLING_ENFORCEMENT_ENABLED
+                and candidate.dynamic is None
+                and not billing.route_accepts_billing(
+                    candidate.provider, candidate.model
+                )
+            ):
+                raise VisionGradingError("该模型通道未返回可计费用量，已自动停用")
             cooldown_reason = _provider_cooldown_reason(candidate.provider)
             if cooldown_reason:
                 raise VisionGradingError(cooldown_reason)
-            base_url, api_key = provider_config(candidate.provider)
-            response = httpx.post(
-                _endpoint(base_url),
-                headers={
-                    "Authorization": f"Bearer {api_key}",
-                    "Content-Type": "application/json",
-                },
-                json={
-                    "model": candidate.model,
-                    "temperature": _temperature_for(candidate.provider),
-                    "messages": messages,
-                },
-                timeout=settings.VISION_TIMEOUT_SECONDS,
-            )
+            if billing_context:
+                with distributed_model_slot(
+                    org_id=billing_context.org_id,
+                    org_limit=billing.effective_org_concurrency(
+                        billing_context.org_id,
+                        billing_context.org_concurrency_limit,
+                    ),
+                    global_limit=32,
+                    channel_id=(
+                        candidate.dynamic.channel_id if candidate.dynamic else None
+                    ),
+                    channel_limit=(
+                        candidate.dynamic.max_concurrency if candidate.dynamic else None
+                    ),
+                    calls_per_minute=billing.effective_org_calls_per_minute(
+                        billing_context.org_id
+                    ),
+                ):
+                    response = (
+                        _post_dynamic_model(candidate, messages=messages)
+                        if candidate.dynamic
+                        else _post_legacy_model(candidate, messages=messages)
+                    )
+            else:
+                response = (
+                    _post_dynamic_model(candidate, messages=messages)
+                    if candidate.dynamic
+                    else _post_legacy_model(candidate, messages=messages)
+                )
             _raise_for_model_response(response, candidate.provider)
             payload = response.json()
-            parsed = _parse_json(
-                payload.get("choices", [{}])[0].get("message", {}).get("content", "")
-            )
+            if not isinstance(payload, dict):
+                raise VisionGradingError("模型未返回有效对象")
             usage = payload.get("usage")
+            content = (
+                provider_gateway.response_content(candidate.dynamic.protocol, payload)
+                if candidate.dynamic
+                else payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            try:
+                parsed = _parse_json(str(content))
+            except VisionGradingError:
+                if billing_context and isinstance(usage, dict) and usage:
+                    billing.record_model_attempt(
+                        billing_context,
+                        requested_provider=provider,
+                        requested_model=model,
+                        actual_provider=candidate.provider,
+                        actual_model=candidate.model,
+                        usage=usage,
+                        latency_ms=round((time.perf_counter() - started) * 1000),
+                        attempt=attempt,
+                        error_code="InvalidStructuredOutput",
+                        channel_id=(
+                            candidate.dynamic.channel_id if candidate.dynamic else None
+                        ),
+                        route_policy_id=(
+                            candidate.dynamic.route_policy_id
+                            if candidate.dynamic
+                            else None
+                        ),
+                        route_version_id=(
+                            candidate.dynamic.route_version_id
+                            if candidate.dynamic
+                            else None
+                        ),
+                        upstream_request_id=_upstream_request_id(response),
+                        http_status=response.status_code,
+                    )
+                raise
+            elapsed_ms = round((time.perf_counter() - started) * 1000)
+            if candidate.dynamic:
+                try:
+                    provider_gateway.record_success(
+                        candidate.dynamic,
+                        latency_ms=elapsed_ms,
+                        usage_present=isinstance(usage, dict) and bool(usage),
+                        http_status=response.status_code,
+                    )
+                except Exception:
+                    logger.exception("Failed to record provider health success")
+            if billing_context:
+                billing.record_model_attempt(
+                    billing_context,
+                    requested_provider=provider,
+                    requested_model=model,
+                    actual_provider=candidate.provider,
+                    actual_model=candidate.model,
+                    usage=usage if isinstance(usage, dict) else None,
+                    latency_ms=elapsed_ms,
+                    attempt=attempt,
+                    channel_id=(
+                        candidate.dynamic.channel_id if candidate.dynamic else None
+                    ),
+                    route_policy_id=(
+                        candidate.dynamic.route_policy_id if candidate.dynamic else None
+                    ),
+                    route_version_id=(
+                        candidate.dynamic.route_version_id
+                        if candidate.dynamic
+                        else None
+                    ),
+                    upstream_request_id=_upstream_request_id(response),
+                    http_status=response.status_code,
+                )
             return (
                 parsed,
                 candidate.provider,
                 candidate.model,
-                round((time.perf_counter() - started) * 1000),
+                elapsed_ms,
                 usage if isinstance(usage, dict) else {},
             )
         except (
@@ -334,7 +664,47 @@ def _call_model_with_route(
             TypeError,
             ValueError,
             VisionGradingError,
+            provider_gateway.ProviderGatewayError,
+            ModelConcurrencyUnavailable,
         ) as exc:
+            # Capacity/rate-limit failures are inside 点凡阅卷 and say nothing
+            # about the upstream channel's health.
+            if candidate.dynamic and not isinstance(exc, ModelConcurrencyUnavailable):
+                try:
+                    provider_gateway.record_failure(
+                        candidate.dynamic,
+                        error_code=type(exc).__name__,
+                        http_status=response.status_code if response else None,
+                    )
+                except Exception:
+                    logger.exception("Failed to record provider health failure")
+            if billing_context:
+                billing.record_model_attempt(
+                    billing_context,
+                    requested_provider=provider,
+                    requested_model=model,
+                    actual_provider=candidate.provider,
+                    actual_model=candidate.model,
+                    usage=None,
+                    latency_ms=round((time.perf_counter() - started) * 1000),
+                    attempt=attempt,
+                    error_code=type(exc).__name__,
+                    channel_id=(
+                        candidate.dynamic.channel_id if candidate.dynamic else None
+                    ),
+                    route_policy_id=(
+                        candidate.dynamic.route_policy_id if candidate.dynamic else None
+                    ),
+                    route_version_id=(
+                        candidate.dynamic.route_version_id
+                        if candidate.dynamic
+                        else None
+                    ),
+                    upstream_request_id=(
+                        _upstream_request_id(response) if response else None
+                    ),
+                    http_status=response.status_code if response else None,
+                )
             last_error = exc
     raise VisionGradingError(f"可用模型均未完成请求：{last_error}")
 
@@ -345,12 +715,16 @@ def call_json_model(
     model: str,
     messages: list[dict],
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, int]:
     return _call_model(
         provider=provider,
         model=model,
         messages=messages,
         fallback_models=fallback_models or [],
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
     )
 
 
@@ -360,12 +734,16 @@ def call_json_model_with_metadata(
     model: str,
     messages: list[dict],
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, int, dict]:
     return _call_model_with_metadata(
         provider=provider,
         model=model,
         messages=messages,
         fallback_models=fallback_models or [],
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
     )
 
 
@@ -375,6 +753,8 @@ def call_json_model_with_route(
     model: str,
     messages: list[dict],
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
+    workflow_purpose: str | None = None,
 ) -> tuple[dict, str, str, int, dict]:
     """Return payload plus the provider/model that actually completed the call."""
     return _call_model_with_route(
@@ -382,6 +762,8 @@ def call_json_model_with_route(
         model=model,
         messages=messages,
         fallback_models=fallback_models or [],
+        billing_context=billing_context,
+        workflow_purpose=workflow_purpose,
     )
 
 
@@ -392,6 +774,7 @@ def extract_answer_image(
     model: str,
     question_label: str,
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
 ) -> VisionExtraction:
     return extract_answer_images(
         image_bytes_list=[image_bytes],
@@ -399,6 +782,7 @@ def extract_answer_image(
         model=model,
         question_label=question_label,
         fallback_models=fallback_models,
+        billing_context=billing_context,
     )
 
 
@@ -409,6 +793,7 @@ def extract_answer_images(
     model: str,
     question_label: str,
     fallback_models: list[str] | None = None,
+    billing_context: ModelCallContext | None = None,
 ) -> VisionExtraction:
     if not image_bytes_list:
         raise VisionGradingError("题目没有可识别的区域图片")
@@ -440,10 +825,15 @@ def extract_answer_images(
                 "content": content,
             }
         ],
+        billing_context=billing_context,
     )
     confidence = min(max(float(parsed["confidence"]), 0), 1)
     raw_notes = parsed.get("notes", "")
-    notes = [str(item) for item in raw_notes] if isinstance(raw_notes, list) else ([str(raw_notes)] if raw_notes else [])
+    notes = (
+        [str(item) for item in raw_notes]
+        if isinstance(raw_notes, list)
+        else ([str(raw_notes)] if raw_notes else [])
+    )
     return VisionExtraction(
         question_text=str(parsed.get("question", ""))[:12000],
         student_answer=str(parsed.get("studentAnswer", ""))[:8000],
@@ -464,19 +854,38 @@ def grade_answer_text(
     provider: str,
     model: str,
     fallback_models: list[str],
+    image_bytes_list: list[bytes] | None = None,
+    billing_context: ModelCallContext | None = None,
 ) -> VisionGrade:
-    prompt = f"""你是严谨的中文试卷阅卷教师。以下学生作答已经由独立视觉模型忠实转录。你只能依据转录文本、标准答案和评分点判题，不要假设图片中还有其他内容。
-学生作答：{student_answer or "[空白]"}
+    prompt = f"""你是严谨的中文试卷阅卷教师。题区原图是最终判分证据，视觉模型转录文字只用于辅助定位。你必须亲自查看原图中的印刷题目、图表、公式和学生完整作答；原图与转录冲突时以原图为准，不得把印刷题干误当成学生作答。看不清或题区不完整时降低 confidence 并进入人工复核，禁止臆测。
+题目文本（辅助）：{standard_answer.question_text or "[以原图为准]"}
+学生作答转录（辅助）：{student_answer or "[空白]"}
 标准答案：{standard_answer.answer_text}
 满分：{standard_answer.max_score}
 评分细则：{standard_answer.rubric_text or "按答案正确程度给分"}
 评分点：{json.dumps(standard_answer.scoring_points, ensure_ascii=False)}
 只返回 JSON：{{"score":0,"confidence":0.0,"comment":"中文评语","evidence":[{{"point":"评分点","matched":true,"points":0,"reason":"依据"}}]}}。score 必须在 0 到满分之间；confidence 为 0 到 1。"""
+    content: list[dict] = [{"type": "text", "text": prompt}]
+    for index, image_bytes in enumerate(image_bytes_list or [], start=1):
+        image = base64.b64encode(image_bytes).decode("ascii")
+        content.extend(
+            [
+                {
+                    "type": "text",
+                    "text": f"同一道题的原始题区 {index}/{len(image_bytes_list or [])}",
+                },
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/png;base64,{image}"},
+                },
+            ]
+        )
     parsed, used_provider, used_model, elapsed_ms, _usage = _call_model_with_route(
         provider=provider,
         model=model,
         fallback_models=fallback_models,
-        messages=[{"role": "user", "content": prompt}],
+        messages=[{"role": "user", "content": content}],
+        billing_context=billing_context,
     )
     score = min(max(float(parsed["score"]), 0), standard_answer.max_score)
     confidence = min(max(float(parsed["confidence"]), 0), 1)
@@ -500,6 +909,7 @@ def grade_answer_image(
     provider: str,
     model: str,
     fallback_models: list[str],
+    billing_context: ModelCallContext | None = None,
 ) -> VisionGrade:
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = f"""你是严谨的中文试卷阅卷教师。读取图片中的学生作答，根据标准答案和评分点给分。
@@ -525,6 +935,7 @@ score 必须在 0 到满分之间；confidence 为 0 到 1。看不清时降低 
                 ],
             }
         ],
+        billing_context=billing_context,
     )
     score = min(max(float(parsed["score"]), 0), standard_answer.max_score)
     confidence = min(max(float(parsed["confidence"]), 0), 1)

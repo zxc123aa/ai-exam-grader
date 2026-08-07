@@ -6,7 +6,12 @@ from fastapi.responses import HTMLResponse
 from fastapi.security import OAuth2PasswordRequestForm
 
 from app import crud
-from app.api.deps import CurrentUser, SessionDep, get_current_active_superuser
+from app.api.deps import (
+    CurrentUser,
+    SessionDep,
+    assert_organization_access,
+    get_current_active_superuser,
+)
 from app.core import security
 from app.core.config import settings
 from app.models import Message, NewPassword, Token, UserPublic, UserUpdate
@@ -34,6 +39,7 @@ def login_access_token(
         raise HTTPException(status_code=400, detail="Incorrect email or password")
     elif not user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
+    assert_organization_access(session, user, method="GET")
     access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
     return Token(
         access_token=security.create_access_token(

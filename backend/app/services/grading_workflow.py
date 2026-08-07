@@ -8,11 +8,12 @@ from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
 from dataclasses import dataclass
 from typing import Any
 
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from app.core.db import engine
 from app.models import (
     AnnotationGradingStatus,
+    Exam,
     ExamQuestion,
     ExamQuestionRegion,
     ExamQuestionStatus,
@@ -33,6 +34,8 @@ from app.models import (
     SubmissionRegistrationStatus,
     get_datetime_utc,
 )
+from app.services import billing as billing_service
+from app.services.billing import ModelCallContext
 from app.services.grading_rules import (
     enforce_scoring_points,
     grade_objective,
@@ -46,6 +49,13 @@ from app.services.submission_crops import (
 from app.services.vision_grading import extract_answer_images, grade_answer_text
 
 MAX_TOTAL_CONCURRENCY = 32
+
+
+def _review_item_count(items: Iterable[GradingItem]) -> int:
+    return sum(
+        item.status in {GradingItemStatus.NEEDS_REVIEW, GradingItemStatus.FAILED}
+        for item in items
+    )
 
 
 def publish_standard_answers(session: Session, run: GradingRun) -> list[StandardAnswer]:
@@ -133,12 +143,18 @@ class WorkPayload:
     vision_model: str
     grading_provider: str
     grading_model: str
+    vision_fallback_models: list[str]
     fallback_models: list[str]
     attempt: int
     extraction_override: dict | None = None
     # Global paper page per region id; regions store document-local pages while
     # the submission is a single multi-page file.
     page_numbers: dict[uuid.UUID, int] | None = None
+    org_id: uuid.UUID | None = None
+    grading_run_id: uuid.UUID | None = None
+    reservation_id: uuid.UUID | None = None
+    answer_revision_id: uuid.UUID | None = None
+    org_concurrency_limit: int = 8
 
 
 @dataclass(frozen=True)
@@ -220,22 +236,48 @@ def _process_item(payload: WorkPayload) -> WorkResult:
     if payload.attempt > 1:
         time.sleep(min(4, 0.5 * (2 ** (payload.attempt - 2))) + random.random() * 0.25)
     try:
+        region_images: list[bytes] | None = None
+
+        def load_region_images() -> list[bytes]:
+            return [
+                crop_region_png(
+                    stored_file=payload.stored_file,
+                    region=region,
+                    page_number=(payload.page_numbers or {}).get(region.id),
+                )
+                for region in payload.regions
+            ]
+
         if payload.extraction_override:
             extraction_data = dict(payload.extraction_override)
         else:
+            region_images = load_region_images()
             extraction = extract_answer_images(
-                image_bytes_list=[
-                    crop_region_png(
-                        stored_file=payload.stored_file,
-                        region=region,
-                        page_number=(payload.page_numbers or {}).get(region.id),
-                    )
-                    for region in payload.regions
-                ],
+                image_bytes_list=region_images,
                 provider=payload.vision_provider,
                 model=payload.vision_model,
                 question_label=payload.region.label,
-                fallback_models=payload.fallback_models,
+                fallback_models=payload.vision_fallback_models,
+                billing_context=(
+                    ModelCallContext(
+                        org_id=payload.org_id,
+                        exam_id=payload.answer.exam_id,
+                        grading_run_id=payload.grading_run_id,
+                        reservation_id=payload.reservation_id,
+                        workflow_purpose="answer_extraction",
+                        resource_id=str(payload.item_id),
+                        billing_key=(
+                            f"{payload.org_id}:answer_extraction:{payload.item_id}:"
+                            f"{payload.answer_revision_id}:pipeline-v2"
+                        ),
+                        org_concurrency_limit=min(
+                            MAX_TOTAL_CONCURRENCY,
+                            max(1, int(payload.org_concurrency_limit)),
+                        ),
+                    )
+                    if payload.org_id
+                    else None
+                ),
             )
             extraction_data = {
                 "question_text": extraction.question_text,
@@ -291,6 +333,27 @@ def _process_item(payload: WorkPayload) -> WorkResult:
             provider=payload.grading_provider,
             model=payload.grading_model,
             fallback_models=payload.fallback_models,
+            image_bytes_list=region_images or load_region_images(),
+            billing_context=(
+                ModelCallContext(
+                    org_id=payload.org_id,
+                    exam_id=payload.answer.exam_id,
+                    grading_run_id=payload.grading_run_id,
+                    reservation_id=payload.reservation_id,
+                    workflow_purpose="subjective_grading",
+                    resource_id=str(payload.item_id),
+                    billing_key=(
+                        f"{payload.org_id}:subjective_grading:{payload.item_id}:"
+                        f"{payload.answer_revision_id}:pipeline-v2"
+                    ),
+                    org_concurrency_limit=min(
+                        MAX_TOTAL_CONCURRENCY,
+                        max(1, int(payload.org_concurrency_limit)),
+                    ),
+                )
+                if payload.org_id
+                else None
+            ),
         )
         score = enforce_scoring_points(
             grade.score, grade.evidence, payload.answer.max_score
@@ -544,6 +607,8 @@ def _save_result(
 def execute_grading_run(run_id: str) -> None:
     started_perf = time.perf_counter()
     recognition_timing: dict = {}
+    questions: list[ExamQuestion] = []
+    submissions: list[StudentSubmission] = []
     with Session(engine, expire_on_commit=False) as session:
         run = session.get(GradingRun, uuid.UUID(run_id))
         if not run:
@@ -556,6 +621,14 @@ def execute_grading_run(run_id: str) -> None:
         session.add(run)
         session.commit()
         try:
+            exam = session.get(Exam, run.exam_id)
+            if not exam:
+                raise RuntimeError("考试不存在")
+            reservation_id = (
+                uuid.UUID(str(run.config_snapshot["billing_reservation_id"]))
+                if run.config_snapshot.get("billing_reservation_id")
+                else None
+            )
             questions = list(
                 session.exec(
                     select(ExamQuestion).where(
@@ -761,12 +834,29 @@ def execute_grading_run(run_id: str) -> None:
                         vision_model=str(run.config_snapshot["vision_model"]),
                         grading_provider=run.provider,
                         grading_model=run.model,
+                        vision_fallback_models=[
+                            str(item)
+                            for item in run.config_snapshot.get(
+                                "vision_fallback_models", []
+                            )
+                        ],
                         fallback_models=run.fallback_models,
                         attempt=item.attempts + 1,
                         extraction_override=recognition_items.get(
                             (submission_id, region_id)
                         ),
                         page_numbers=region_page_numbers,
+                        org_id=exam.org_id,
+                        grading_run_id=run.id,
+                        reservation_id=reservation_id,
+                        answer_revision_id=revision.id,
+                        org_concurrency_limit=min(
+                            MAX_TOTAL_CONCURRENCY,
+                            max(
+                                1,
+                                int(run.config_snapshot.get("max_concurrency", 8)),
+                            ),
+                        ),
                     )
                 )
             max_concurrency = min(
@@ -868,17 +958,7 @@ def execute_grading_run(run_id: str) -> None:
                     run.failed_count = sum(
                         item.status == GradingItemStatus.FAILED for item in items
                     )
-                    run.review_count = len(
-                        {
-                            item.submission_id
-                            for item in items
-                            if item.status
-                            in {
-                                GradingItemStatus.NEEDS_REVIEW,
-                                GradingItemStatus.FAILED,
-                            }
-                        }
-                    )
+                    run.review_count = _review_item_count(items)
                     session.add(run)
                     session.commit()
             run.completed_count = len(submissions)
@@ -984,5 +1064,53 @@ def execute_grading_run(run_id: str) -> None:
             },
         }
         run.completed_at = get_datetime_utc()
+        answer_quota_value = (run.config_snapshot or {}).get(
+            "answer_quota_reservation_id"
+        )
+        if answer_quota_value:
+            answer_reservation_id = uuid.UUID(str(answer_quota_value))
+            if run.status == GradingRunStatus.FAILED:
+                run.config_snapshot = {
+                    **(run.config_snapshot or {}),
+                    "answer_quota_released": billing_service.release_answer_quota(
+                        session, answer_reservation_id
+                    ),
+                }
+            else:
+                completed_submission_ids = set(
+                    session.exec(
+                        select(GradingItem.submission_id)
+                        .where(
+                            GradingItem.grading_run_id == run.id,
+                            GradingItem.status.in_(
+                                [
+                                    GradingItemStatus.COMPLETED,
+                                    GradingItemStatus.NEEDS_REVIEW,
+                                ]
+                            ),
+                        )
+                        .group_by(GradingItem.submission_id)
+                        .having(func.count(GradingItem.id) == len(questions))
+                    ).all()
+                )
+                completed_submissions = [
+                    submission
+                    for submission in submissions
+                    if submission.id in completed_submission_ids
+                ]
+                run.config_snapshot = {
+                    **(run.config_snapshot or {}),
+                    "answer_quota_settled": billing_service.settle_answer_quota(
+                        session,
+                        reservation_id=answer_reservation_id,
+                        completed_submissions=completed_submissions,
+                    ),
+                }
+        reservation_value = (run.config_snapshot or {}).get("billing_reservation_id")
+        if reservation_value:
+            run.settled_microcredits = billing_service.settle_reservation(
+                session, uuid.UUID(str(reservation_value))
+            )
+            run.billing_status = "settled"
         session.add(run)
         session.commit()

@@ -7,16 +7,28 @@ import { logInUser } from "./utils/user"
 test("Admin page is accessible and shows correct title", async ({ page }) => {
   await page.goto("/admin")
   await expect(
-    page.getByRole("heading", { name: "用户管理" }).last(),
+    page.getByRole("heading", { name: "平台账号" }).last(),
   ).toBeVisible()
-  await expect(
-    page.getByText("Manage user accounts and permissions"),
-  ).toBeVisible()
+  await expect(page.getByText("维护点凡平台内部管理员与运营账号")).toBeVisible()
+  await expect(page.getByRole("link", { name: "学校账号" })).toHaveAttribute(
+    "href",
+    "/platform",
+  )
 })
 
 test("Add User button is visible", async ({ page }) => {
   await page.goto("/admin")
   await expect(page.getByRole("button", { name: "添加用户" })).toBeVisible()
+})
+
+test("平台账号页与学校人员目录职责分离", async ({ page }) => {
+  await page.goto("/admin")
+
+  await expect(page.getByText("示范二中")).toHaveCount(0)
+  await expect(page.getByText("当前账号", { exact: true })).toBeVisible()
+  await expect(page.getByText("未填写", { exact: true })).toHaveCount(0)
+  await expect(page.getByText("You", { exact: true })).toHaveCount(0)
+  await expect(page.getByRole("button", { name: "批量导入" })).toHaveCount(0)
 })
 
 test.describe("Admin user management", () => {
@@ -44,7 +56,7 @@ test.describe("Admin user management", () => {
     await expect(userRow).toBeVisible()
   })
 
-  test("Create a school owner", async ({ page }) => {
+  test("Create a platform support account", async ({ page }) => {
     await page.goto("/admin")
 
     const email = randomEmail()
@@ -58,7 +70,7 @@ test.describe("Admin user management", () => {
 
     const dialog = page.getByRole("dialog")
     await dialog.getByRole("combobox").click()
-    await page.getByRole("option", { name: "总管理员" }).click()
+    await page.getByRole("option", { name: "平台运营" }).click()
 
     await dialog.getByRole("button", { name: "保存" }).click()
 
@@ -67,7 +79,7 @@ test.describe("Admin user management", () => {
     await expect(page.getByRole("dialog")).not.toBeVisible()
 
     const userRow = page.getByRole("row").filter({ hasText: email })
-    await expect(userRow.getByText("总管理员")).toBeVisible()
+    await expect(userRow.getByText("平台运营")).toBeVisible()
   })
 
   test("Edit a user successfully", async ({ page }) => {
@@ -205,7 +217,7 @@ test.describe("Admin page access control", () => {
     await page.goto("/admin")
 
     await expect(
-      page.getByRole("heading", { name: "用户管理" }).last(),
+      page.getByRole("heading", { name: "平台账号" }).last(),
     ).toBeVisible()
   })
 })

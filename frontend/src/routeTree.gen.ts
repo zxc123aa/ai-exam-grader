@@ -15,15 +15,19 @@ import { Route as RecoverPasswordRouteImport } from './routes/recover-password'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as LayoutRouteImport } from './routes/_layout'
 import { Route as LayoutIndexRouteImport } from './routes/_layout/index'
+import { Route as SignupVerifyRouteImport } from './routes/signup_.verify'
 import { Route as LayoutSettingsRouteImport } from './routes/_layout/settings'
 import { Route as LayoutPlatformRouteImport } from './routes/_layout/platform'
 import { Route as LayoutOrgSettingsRouteImport } from './routes/_layout/org-settings'
+import { Route as LayoutGettingStartedRouteImport } from './routes/_layout/getting-started'
 import { Route as LayoutExamsRouteImport } from './routes/_layout/exams'
 import { Route as LayoutComposeRouteImport } from './routes/_layout/compose'
 import { Route as LayoutClassesRouteImport } from './routes/_layout/classes'
-import { Route as LayoutAdvancedSettingsRouteImport } from './routes/_layout/advanced-settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
+import { Route as LayoutPlatformUsageRouteImport } from './routes/_layout/platform_.usage'
 import { Route as LayoutPlatformSettingsRouteImport } from './routes/_layout/platform_.settings'
+import { Route as LayoutPlatformRoutingRouteImport } from './routes/_layout/platform_.routing'
+import { Route as LayoutPlatformCommerceRouteImport } from './routes/_layout/platform_.commerce'
 import { Route as LayoutPlatformOrgIdRouteImport } from './routes/_layout/platform_.$orgId'
 import { Route as LayoutMyExamsRouteImport } from './routes/_layout/my.exams'
 import { Route as LayoutExamsExamIdRouteImport } from './routes/_layout/exams_.$examId'
@@ -67,6 +71,11 @@ const LayoutIndexRoute = LayoutIndexRouteImport.update({
   path: '/',
   getParentRoute: () => LayoutRoute,
 } as any)
+const SignupVerifyRoute = SignupVerifyRouteImport.update({
+  id: '/signup_/verify',
+  path: '/signup/verify',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LayoutSettingsRoute = LayoutSettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -80,6 +89,11 @@ const LayoutPlatformRoute = LayoutPlatformRouteImport.update({
 const LayoutOrgSettingsRoute = LayoutOrgSettingsRouteImport.update({
   id: '/org-settings',
   path: '/org-settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutGettingStartedRoute = LayoutGettingStartedRouteImport.update({
+  id: '/getting-started',
+  path: '/getting-started',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutExamsRoute = LayoutExamsRouteImport.update({
@@ -97,19 +111,29 @@ const LayoutClassesRoute = LayoutClassesRouteImport.update({
   path: '/classes',
   getParentRoute: () => LayoutRoute,
 } as any)
-const LayoutAdvancedSettingsRoute = LayoutAdvancedSettingsRouteImport.update({
-  id: '/advanced-settings',
-  path: '/advanced-settings',
-  getParentRoute: () => LayoutRoute,
-} as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutPlatformUsageRoute = LayoutPlatformUsageRouteImport.update({
+  id: '/platform_/usage',
+  path: '/platform/usage',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutPlatformSettingsRoute = LayoutPlatformSettingsRouteImport.update({
   id: '/platform_/settings',
   path: '/platform/settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutPlatformRoutingRoute = LayoutPlatformRoutingRouteImport.update({
+  id: '/platform_/routing',
+  path: '/platform/routing',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutPlatformCommerceRoute = LayoutPlatformCommerceRouteImport.update({
+  id: '/platform_/commerce',
+  path: '/platform/commerce',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutPlatformOrgIdRoute = LayoutPlatformOrgIdRouteImport.update({
@@ -191,17 +215,21 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
-  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/classes': typeof LayoutClassesRoute
   '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
+  '/getting-started': typeof LayoutGettingStartedRoute
   '/org-settings': typeof LayoutOrgSettingsRoute
   '/platform': typeof LayoutPlatformRoute
   '/settings': typeof LayoutSettingsRoute
+  '/signup/verify': typeof SignupVerifyRoute
   '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/my/exams': typeof LayoutMyExamsRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/platform/commerce': typeof LayoutPlatformCommerceRoute
+  '/platform/routing': typeof LayoutPlatformRoutingRoute
   '/platform/settings': typeof LayoutPlatformSettingsRoute
+  '/platform/usage': typeof LayoutPlatformUsageRoute
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
@@ -219,17 +247,21 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
-  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/classes': typeof LayoutClassesRoute
   '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
+  '/getting-started': typeof LayoutGettingStartedRoute
   '/org-settings': typeof LayoutOrgSettingsRoute
   '/platform': typeof LayoutPlatformRoute
   '/settings': typeof LayoutSettingsRoute
+  '/signup/verify': typeof SignupVerifyRoute
   '/': typeof LayoutIndexRoute
   '/my/exams': typeof LayoutMyExamsRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/platform/commerce': typeof LayoutPlatformCommerceRoute
+  '/platform/routing': typeof LayoutPlatformRoutingRoute
   '/platform/settings': typeof LayoutPlatformSettingsRoute
+  '/platform/usage': typeof LayoutPlatformUsageRoute
   '/exams/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/exams/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/exams/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
@@ -249,18 +281,22 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRoute
-  '/_layout/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/_layout/classes': typeof LayoutClassesRoute
   '/_layout/compose': typeof LayoutComposeRoute
   '/_layout/exams': typeof LayoutExamsRoute
+  '/_layout/getting-started': typeof LayoutGettingStartedRoute
   '/_layout/org-settings': typeof LayoutOrgSettingsRoute
   '/_layout/platform': typeof LayoutPlatformRoute
   '/_layout/settings': typeof LayoutSettingsRoute
+  '/signup_/verify': typeof SignupVerifyRoute
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/exams_/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/_layout/my/exams': typeof LayoutMyExamsRoute
   '/_layout/platform_/$orgId': typeof LayoutPlatformOrgIdRoute
+  '/_layout/platform_/commerce': typeof LayoutPlatformCommerceRoute
+  '/_layout/platform_/routing': typeof LayoutPlatformRoutingRoute
   '/_layout/platform_/settings': typeof LayoutPlatformSettingsRoute
+  '/_layout/platform_/usage': typeof LayoutPlatformUsageRoute
   '/_layout/exams_/$examId/answers': typeof LayoutExamsExamIdAnswersRoute
   '/_layout/exams_/$examId/grading': typeof LayoutExamsExamIdGradingRoute
   '/_layout/exams_/$examId/marking': typeof LayoutExamsExamIdMarkingRoute
@@ -281,17 +317,21 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
-    | '/advanced-settings'
     | '/classes'
     | '/compose'
     | '/exams'
+    | '/getting-started'
     | '/org-settings'
     | '/platform'
     | '/settings'
+    | '/signup/verify'
     | '/exams/$examId'
     | '/my/exams'
     | '/platform/$orgId'
+    | '/platform/commerce'
+    | '/platform/routing'
     | '/platform/settings'
+    | '/platform/usage'
     | '/exams/$examId/answers'
     | '/exams/$examId/grading'
     | '/exams/$examId/marking'
@@ -309,17 +349,21 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
-    | '/advanced-settings'
     | '/classes'
     | '/compose'
     | '/exams'
+    | '/getting-started'
     | '/org-settings'
     | '/platform'
     | '/settings'
+    | '/signup/verify'
     | '/'
     | '/my/exams'
     | '/platform/$orgId'
+    | '/platform/commerce'
+    | '/platform/routing'
     | '/platform/settings'
+    | '/platform/usage'
     | '/exams/$examId/answers'
     | '/exams/$examId/grading'
     | '/exams/$examId/marking'
@@ -338,18 +382,22 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
-    | '/_layout/advanced-settings'
     | '/_layout/classes'
     | '/_layout/compose'
     | '/_layout/exams'
+    | '/_layout/getting-started'
     | '/_layout/org-settings'
     | '/_layout/platform'
     | '/_layout/settings'
+    | '/signup_/verify'
     | '/_layout/'
     | '/_layout/exams_/$examId'
     | '/_layout/my/exams'
     | '/_layout/platform_/$orgId'
+    | '/_layout/platform_/commerce'
+    | '/_layout/platform_/routing'
     | '/_layout/platform_/settings'
+    | '/_layout/platform_/usage'
     | '/_layout/exams_/$examId/answers'
     | '/_layout/exams_/$examId/grading'
     | '/_layout/exams_/$examId/marking'
@@ -368,6 +416,7 @@ export interface RootRouteChildren {
   RecoverPasswordRoute: typeof RecoverPasswordRoute
   ResetPasswordRoute: typeof ResetPasswordRoute
   SignupRoute: typeof SignupRoute
+  SignupVerifyRoute: typeof SignupVerifyRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -414,6 +463,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutIndexRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/signup_/verify': {
+      id: '/signup_/verify'
+      path: '/signup/verify'
+      fullPath: '/signup/verify'
+      preLoaderRoute: typeof SignupVerifyRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_layout/settings': {
       id: '/_layout/settings'
       path: '/settings'
@@ -433,6 +489,13 @@ declare module '@tanstack/react-router' {
       path: '/org-settings'
       fullPath: '/org-settings'
       preLoaderRoute: typeof LayoutOrgSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/getting-started': {
+      id: '/_layout/getting-started'
+      path: '/getting-started'
+      fullPath: '/getting-started'
+      preLoaderRoute: typeof LayoutGettingStartedRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/exams': {
@@ -456,13 +519,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutClassesRouteImport
       parentRoute: typeof LayoutRoute
     }
-    '/_layout/advanced-settings': {
-      id: '/_layout/advanced-settings'
-      path: '/advanced-settings'
-      fullPath: '/advanced-settings'
-      preLoaderRoute: typeof LayoutAdvancedSettingsRouteImport
-      parentRoute: typeof LayoutRoute
-    }
     '/_layout/admin': {
       id: '/_layout/admin'
       path: '/admin'
@@ -470,11 +526,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutAdminRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/platform_/usage': {
+      id: '/_layout/platform_/usage'
+      path: '/platform/usage'
+      fullPath: '/platform/usage'
+      preLoaderRoute: typeof LayoutPlatformUsageRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/platform_/settings': {
       id: '/_layout/platform_/settings'
       path: '/platform/settings'
       fullPath: '/platform/settings'
       preLoaderRoute: typeof LayoutPlatformSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/platform_/routing': {
+      id: '/_layout/platform_/routing'
+      path: '/platform/routing'
+      fullPath: '/platform/routing'
+      preLoaderRoute: typeof LayoutPlatformRoutingRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/platform_/commerce': {
+      id: '/_layout/platform_/commerce'
+      path: '/platform/commerce'
+      fullPath: '/platform/commerce'
+      preLoaderRoute: typeof LayoutPlatformCommerceRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/platform_/$orgId': {
@@ -601,10 +678,10 @@ const LayoutExamsExamIdRouteWithChildren =
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
-  LayoutAdvancedSettingsRoute: typeof LayoutAdvancedSettingsRoute
   LayoutClassesRoute: typeof LayoutClassesRoute
   LayoutComposeRoute: typeof LayoutComposeRoute
   LayoutExamsRoute: typeof LayoutExamsRoute
+  LayoutGettingStartedRoute: typeof LayoutGettingStartedRoute
   LayoutOrgSettingsRoute: typeof LayoutOrgSettingsRoute
   LayoutPlatformRoute: typeof LayoutPlatformRoute
   LayoutSettingsRoute: typeof LayoutSettingsRoute
@@ -612,16 +689,19 @@ interface LayoutRouteChildren {
   LayoutExamsExamIdRoute: typeof LayoutExamsExamIdRouteWithChildren
   LayoutMyExamsRoute: typeof LayoutMyExamsRoute
   LayoutPlatformOrgIdRoute: typeof LayoutPlatformOrgIdRoute
+  LayoutPlatformCommerceRoute: typeof LayoutPlatformCommerceRoute
+  LayoutPlatformRoutingRoute: typeof LayoutPlatformRoutingRoute
   LayoutPlatformSettingsRoute: typeof LayoutPlatformSettingsRoute
+  LayoutPlatformUsageRoute: typeof LayoutPlatformUsageRoute
   LayoutMyExamsExamIdRoute: typeof LayoutMyExamsExamIdRoute
 }
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRoute,
-  LayoutAdvancedSettingsRoute: LayoutAdvancedSettingsRoute,
   LayoutClassesRoute: LayoutClassesRoute,
   LayoutComposeRoute: LayoutComposeRoute,
   LayoutExamsRoute: LayoutExamsRoute,
+  LayoutGettingStartedRoute: LayoutGettingStartedRoute,
   LayoutOrgSettingsRoute: LayoutOrgSettingsRoute,
   LayoutPlatformRoute: LayoutPlatformRoute,
   LayoutSettingsRoute: LayoutSettingsRoute,
@@ -629,7 +709,10 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutExamsExamIdRoute: LayoutExamsExamIdRouteWithChildren,
   LayoutMyExamsRoute: LayoutMyExamsRoute,
   LayoutPlatformOrgIdRoute: LayoutPlatformOrgIdRoute,
+  LayoutPlatformCommerceRoute: LayoutPlatformCommerceRoute,
+  LayoutPlatformRoutingRoute: LayoutPlatformRoutingRoute,
   LayoutPlatformSettingsRoute: LayoutPlatformSettingsRoute,
+  LayoutPlatformUsageRoute: LayoutPlatformUsageRoute,
   LayoutMyExamsExamIdRoute: LayoutMyExamsExamIdRoute,
 }
 
@@ -642,6 +725,7 @@ const rootRouteChildren: RootRouteChildren = {
   RecoverPasswordRoute: RecoverPasswordRoute,
   ResetPasswordRoute: ResetPasswordRoute,
   SignupRoute: SignupRoute,
+  SignupVerifyRoute: SignupVerifyRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

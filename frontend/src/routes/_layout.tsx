@@ -61,19 +61,21 @@ const TITLE_BY_SEGMENT: Record<string, string> = {
   report: "改卷报告",
   scores: "班级分析",
   compose: "重新组卷",
-  "advanced-settings": "高级设置",
   classes: "班级学生",
   admin: "用户管理",
   platform: "学校管理",
   "org-settings": "学校设置",
   settings: "个人设置",
+  "getting-started": "首次开通",
 }
 
 function pageTitle(pathname: string) {
   if (pathname === "/") return "工作台"
   if (pathname === "/exams") return "考试管理"
-  // 平台子页先于逐段匹配：/platform/settings 的 settings 段是「系统设置」而非「个人设置」
-  if (pathname === "/platform/settings") return "系统设置"
+  // 平台子页先于逐段匹配：/platform/settings 是卖方模型控制面。
+  if (pathname === "/platform/settings") return "中转与方案"
+  if (pathname === "/platform/routing") return "功能调度"
+  if (pathname === "/platform/usage") return "调用记录"
   // 学生端路径优先：/my/exams 的 exams 段不能被误判为「导入试卷」
   if (pathname.startsWith("/my")) {
     return pathname === "/my/exams" ? "我的成绩" : "成绩报告"
@@ -109,7 +111,7 @@ function ExamSelector() {
       }}
     >
       <SelectTrigger
-        className="h-9 w-56 rounded-full border-border bg-card text-xs"
+        className="h-9 min-w-0 w-40 rounded-full border-border bg-card text-xs sm:w-56"
         data-testid="exam-selector"
       >
         <SelectValue placeholder="选择考试" />
@@ -172,24 +174,35 @@ function Layout() {
   })
   const { showInfoToast } = useCustomToast()
   const { user } = useAuth()
-  const role =
-    user?.role ?? (user?.is_superuser ? "platform_superuser" : "teacher")
+  const role = user ? resolveRole(user) : "teacher"
   const isStudent = user ? role === "student" : false
+  const isPlatform = role.startsWith("platform_")
 
   // 学生只能访问 /my/* 和个人设置，其余路径送回「我的成绩」
   if (isStudent && !pathname.startsWith("/my") && pathname !== "/settings") {
     return <Navigate to="/my/exams" replace />
+  }
+  const platformPathAllowed =
+    pathname.startsWith("/platform") ||
+    pathname === "/settings" ||
+    (role === "platform_superuser" && pathname === "/admin")
+  if (isPlatform && !platformPathAllowed) {
+    return <Navigate to="/platform" replace />
   }
 
   return (
     <SidebarProvider>
       <AppSidebar />
       <SidebarInset>
-        <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-4 border-b bg-background/85 px-6 backdrop-blur">
+        <header className="sticky top-0 z-10 flex h-16 shrink-0 items-center gap-2 border-b bg-background/85 px-3 backdrop-blur sm:gap-4 sm:px-6">
           <SidebarTrigger className="-ml-1 text-muted-foreground" />
-          <h1 className="text-lg font-bold">{pageTitle(pathname)}</h1>
-          <div className="ml-auto flex items-center gap-3">
-            {!isStudent && (
+          <h1 className="hidden whitespace-nowrap text-lg font-bold sm:block">
+            {pathname === "/admin" && isPlatform
+              ? "平台账号"
+              : pageTitle(pathname)}
+          </h1>
+          <div className="ml-auto flex min-w-0 items-center gap-2 sm:gap-3">
+            {!isStudent && !isPlatform && (
               <>
                 <ExamSelector />
                 <div className="hidden items-center gap-2 rounded-full border bg-card px-4 py-2 text-muted-foreground transition-all focus-within:border-primary focus-within:shadow-[0_0_0_3px_rgba(46,91,255,0.12)] md:flex md:w-64">

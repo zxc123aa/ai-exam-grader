@@ -9,7 +9,13 @@ import {
   ScanLine,
   Trash2,
 } from "lucide-react"
-import { type ReactNode, useEffect, useRef, useState } from "react"
+import {
+  type ReactNode,
+  useEffect,
+  useEffectEvent,
+  useRef,
+  useState,
+} from "react"
 
 import {
   type ExamDocumentPublic,
@@ -90,7 +96,7 @@ function readScanWarnings(document: ExamDocumentPublic): ScanWarning[] {
 function formatScanWarning(warning: ScanWarning) {
   const labels: Record<string, string> = {
     low_sharpness: "图片清晰度偏低",
-    low_gutter_confidence: "双页中缝置信度偏低",
+    low_gutter_confidence: "双页中缝位置可能不准",
     split_half_page_fallback: "使用了左右页回退分割",
     content_near_top_edge: "顶部内容靠近裁切边缘",
     content_near_bottom_edge: "底部内容靠近裁切边缘",
@@ -98,8 +104,8 @@ function formatScanWarning(warning: ScanWarning) {
     content_near_right_edge: "右侧内容靠近裁切边缘",
     vision_page_polygon_rejected: "页面边界未通过几何校验",
     vision_page_polygon_failed: "页面边界检测失败",
-    doc_unwarping_unavailable: "文档方向/曲面展开服务暂不可用",
-    doc_unwarping_quality_rejected: "曲面展开结果退化，已保留透视校正页",
+    doc_unwarping_unavailable: "请检查页面方向和纸张弯曲处",
+    doc_unwarping_quality_rejected: "请检查纸张弯曲处是否影响文字",
   }
   return labels[warning.code] || warning.message
 }
@@ -132,12 +138,28 @@ function hasPreprocessingPreview(
 
 function formatPreprocessingStatus(status?: string) {
   const labels: Record<string, string> = {
+    queued: "排队中",
+    running: "处理中",
     ready: "扫描通过",
     review: "需要复核",
     failed: "扫描失败",
     not_required: "原始文件",
   }
   return labels[status || "not_required"] || status || "原始文件"
+}
+
+function isDocumentPreprocessing(document: ExamDocumentPublic) {
+  return (
+    document.preprocessing_status === "queued" ||
+    document.preprocessing_status === "running"
+  )
+}
+
+function hasPreprocessingError(document: ExamDocumentPublic) {
+  return (
+    document.preprocessing_status === "review" ||
+    document.preprocessing_status === "failed"
+  )
 }
 
 function PreprocessingPreview({
@@ -198,7 +220,9 @@ function PreprocessingPreview({
       })
     return () => {
       cancelled = true
-      objectUrls.forEach((url) => URL.revokeObjectURL(url))
+      objectUrls.forEach((url) => {
+        URL.revokeObjectURL(url)
+      })
     }
   }, [document.id, examId, availableKinds.map, availableKinds.length])
 
@@ -509,6 +533,7 @@ function splitSpreadCornersToPages(
 }
 
 function canReviewDocumentCorners(document: ExamDocumentPublic) {
+  if (isDocumentPreprocessing(document)) return false
   const contentType = document.stored_file.content_type ?? ""
   return (
     contentType.startsWith("image/") ||
@@ -815,28 +840,29 @@ export function DocumentCornerReviewDialog({
     }
   }
 
+  const loadStoredQuadForEffect = useEffectEvent(loadSourceAndUseStoredQuad)
+
   useEffect(() => {
     if (!open || !document) {
-      clearEditor()
-      clearObjectUrl()
+      editorRef.current?.destroy()
+      editorRef.current = null
+      if (editorHostRef.current) editorHostRef.current.innerHTML = ""
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
       imageRef.current = null
       setStatus("idle")
       return
     }
-    void loadSourceAndUseStoredQuad()
+    void loadStoredQuadForEffect()
     return () => {
-      clearEditor()
-      clearObjectUrl()
+      editorRef.current?.destroy()
+      editorRef.current = null
+      if (editorHostRef.current) editorHostRef.current.innerHTML = ""
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
+      objectUrlRef.current = null
       imageRef.current = null
     }
-  }, [
-    open,
-    document?.id,
-    document,
-    loadSourceAndUseStoredQuad,
-    clearObjectUrl,
-    clearEditor,
-  ])
+  }, [open, document])
 
   const isBusy =
     autoRectifying ||
@@ -863,7 +889,9 @@ export function DocumentCornerReviewDialog({
               <div className="text-muted-foreground">
                 {imageSize ? `原图尺寸 ${imageSize}` : "等待读取原图"}
                 {confidence != null
-                  ? ` · 检测置信度 ${Math.round(confidence * 100)}%`
+                  ? confidence < 0.8
+                    ? " · 图片边界可能不准，请检查四角"
+                    : " · 已找到纸面边界"
                   : ""}
               </div>
             </div>
@@ -1102,12 +1130,17 @@ export function ExamFilesContent({
     queryKey,
     queryFn: () => ExamsService.readExamFiles({ examId: exam.id }),
     enabled: active,
+    refetchInterval: (query) =>
+      query.state.data?.data.some(isDocumentPreprocessing) ? 2500 : false,
   })
 
   const uploadMutation = useMutation({
     mutationFn: (files: File[]) => uploadExamFiles(exam.id, files),
-    onSuccess: () => {
-      showSuccessToast("试卷导入成功")
+    onSuccess: (result) => {
+      const processingStarted = result.data.some(isDocumentPreprocessing)
+      showSuccessToast(
+        processingStarted ? "上传成功，正在后台处理" : "试卷导入成功",
+      )
       setSelectedFiles([])
       setInputKey((value) => value + 1)
     },
@@ -1177,6 +1210,7 @@ export function ExamFilesContent({
   const documents = (data?.data ?? []).filter(
     (document) => document.document_type === "blank_exam",
   )
+  const hasProcessingDocuments = documents.some(isDocumentPreprocessing)
   let pageOffset = 0
   const documentsWithRange = documents.map((document) => {
     const pageCount = document.page_count ?? 1
@@ -1205,14 +1239,28 @@ export function ExamFilesContent({
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
             <Input
               key={inputKey}
+              id="exam-file-input"
               data-testid="exam-file-input"
               type="file"
               accept=".pdf,image/png,image/jpeg"
               multiple
+              className="sr-only"
               onChange={(event) =>
                 setSelectedFiles(Array.from(event.target.files ?? []))
               }
             />
+            <div className="flex min-w-0 flex-1 items-center gap-3">
+              <Button type="button" variant="outline" asChild>
+                <label htmlFor="exam-file-input" className="cursor-pointer">
+                  选择图片或 PDF
+                </label>
+              </Button>
+              <span className="min-w-0 truncate text-muted-foreground text-sm">
+                {selectedFiles.length > 0
+                  ? `已选择 ${selectedFiles.length} 个文件`
+                  : "尚未选择文件"}
+              </span>
+            </div>
             <LoadingButton
               data-testid="exam-file-upload-button"
               type="button"
@@ -1292,6 +1340,7 @@ export function ExamFilesContent({
                   size="sm"
                   loading={autoRectifyAllMutation.isPending}
                   disabled={
+                    hasProcessingDocuments ||
                     uploadMutation.isPending ||
                     reorderMutation.isPending ||
                     deleteMutation.isPending ||
@@ -1310,6 +1359,7 @@ export function ExamFilesContent({
                   size="sm"
                   loading={clearMutation.isPending}
                   disabled={
+                    hasProcessingDocuments ||
                     uploadMutation.isPending ||
                     reorderMutation.isPending ||
                     deleteMutation.isPending
@@ -1357,7 +1407,7 @@ export function ExamFilesContent({
                           <div className="mt-1 flex flex-wrap items-center gap-1.5">
                             <Badge
                               variant={
-                                document.preprocessing_status === "review"
+                                hasPreprocessingError(document)
                                   ? "destructive"
                                   : "secondary"
                               }
@@ -1396,7 +1446,11 @@ export function ExamFilesContent({
                           type="button"
                           variant="outline"
                           size="icon-sm"
-                          disabled={index === 0 || reorderMutation.isPending}
+                          disabled={
+                            hasProcessingDocuments ||
+                            index === 0 ||
+                            reorderMutation.isPending
+                          }
                           onClick={() => moveUploadedDocument(index, -1)}
                         >
                           <ArrowUp />
@@ -1408,6 +1462,7 @@ export function ExamFilesContent({
                           size="icon-sm"
                           disabled={
                             index === documents.length - 1 ||
+                            hasProcessingDocuments ||
                             reorderMutation.isPending
                           }
                           onClick={() => moveUploadedDocument(index, 1)}
@@ -1424,6 +1479,7 @@ export function ExamFilesContent({
                             deleteMutation.variables === document.id
                           }
                           disabled={
+                            hasProcessingDocuments ||
                             clearMutation.isPending ||
                             reorderMutation.isPending ||
                             uploadMutation.isPending
@@ -1445,15 +1501,19 @@ export function ExamFilesContent({
                             : ""}
                         </div>
                       )}
-                      <PreprocessingPreview
-                        examId={exam.id}
-                        document={document}
-                      />
-                      <SplitPagePreview
-                        examId={exam.id}
-                        documentId={document.id}
-                        pageCount={document.page_count ?? 1}
-                      />
+                      {!isDocumentPreprocessing(document) && (
+                        <>
+                          <PreprocessingPreview
+                            examId={exam.id}
+                            document={document}
+                          />
+                          <SplitPagePreview
+                            examId={exam.id}
+                            documentId={document.id}
+                            pageCount={document.page_count ?? 1}
+                          />
+                        </>
+                      )}
                     </div>
                   )
                 },

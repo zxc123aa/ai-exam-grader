@@ -32,7 +32,6 @@ import {
   type SubmissionAnnotationStatus,
 } from "@/client"
 import { Chip } from "@/components/Common/Chip"
-import { ConfBadge } from "@/components/Common/ConfBadge"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { Tag } from "@/components/Common/Tag"
 import { useGradingAssignments } from "@/components/Exams/GradingAssignmentsCard"
@@ -635,7 +634,7 @@ function GradingWorkbench() {
     )
   }, [currentAnnotation, regions, regionsById])
 
-  // 面板记忆：每题首次进入默认展开；低置信度自动展开
+  // 面板记忆：每题首次进入默认展开；需要复核时自动展开
   // biome-ignore lint/correctness/useExhaustiveDependencies: 仅在题目切换时评估首访
   useEffect(() => {
     if (!currentQuestion) return
@@ -1212,7 +1211,6 @@ function GradingWorkbench() {
                   {confidence != null && confidence < 0.8 && (
                     <div className="flex items-center gap-2 rounded-md border border-amber-300/60 bg-amber-500/10 px-3 py-2 text-amber-700 text-xs dark:text-amber-400">
                       建议人工确认此题评分
-                      <ConfBadge value={confidence * 100} />
                     </div>
                   )}
 
@@ -1396,7 +1394,7 @@ function GradingWorkbench() {
 
             <div className="ml-auto flex items-center gap-2">
               {confidence != null && confidence < 0.8 && (
-                <ConfBadge value={confidence * 100} />
+                <Tag variant="amber">请复核</Tag>
               )}
               <Button
                 variant="outline"

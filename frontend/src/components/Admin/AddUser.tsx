@@ -1,7 +1,7 @@
 import { zodResolver } from "@hookform/resolvers/zod"
 import { useMutation, useQueryClient } from "@tanstack/react-query"
 import { Plus } from "lucide-react"
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { useForm } from "react-hook-form"
 import { z } from "zod"
 
@@ -53,6 +53,7 @@ const formSchema = z
       .min(1, { message: "Please confirm your password" }),
     role: z.enum([
       "platform_superuser",
+      "platform_admin",
       "platform_support",
       "school_owner",
       "school_admin",
@@ -73,7 +74,7 @@ const AddUser = () => {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const { user: currentUser } = useAuth()
-  const roleOptions = assignableRoles(currentUser)
+  const roleOptions = useMemo(() => assignableRoles(currentUser), [currentUser])
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -89,12 +90,26 @@ const AddUser = () => {
     },
   })
 
+  useEffect(() => {
+    const selectedRole = form.getValues("role")
+    if (roleOptions.length > 0 && !roleOptions.includes(selectedRole)) {
+      form.setValue("role", roleOptions[0])
+    }
+  }, [form, roleOptions])
+
   const mutation = useMutation({
     mutationFn: (data: UserCreate) =>
       UsersService.createUser({ requestBody: data }),
     onSuccess: () => {
       showSuccessToast("用户创建成功")
-      form.reset()
+      form.reset({
+        email: "",
+        full_name: "",
+        password: "",
+        confirm_password: "",
+        role: roleOptions[0] ?? "teacher",
+        is_active: true,
+      })
       setIsOpen(false)
     },
     onError: handleError.bind(showErrorToast),
@@ -104,7 +119,8 @@ const AddUser = () => {
   })
 
   const onSubmit = (data: FormData) => {
-    mutation.mutate(data)
+    const { confirm_password: _confirmPassword, ...payload } = data
+    mutation.mutate(payload)
   }
 
   return (

@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh-CN">
+  <body style="margin:0;background:#fafaf9;font-family:Arial,'Microsoft YaHei',sans-serif;color:#1a1a1a">
+    <div style="max-width:560px;margin:0 auto;padding:40px 20px">
+      <div style="background:#fff;border:1px solid #ebebe8;border-radius:10px;padding:32px">
+        <p style="margin:0 0 24px;color:#2e5bff;font-size:13px;font-weight:700">DIANFAN · 点凡阅卷</p>
+        <h1 style="margin:0 0 16px;font-size:24px;line-height:1.35">验证邮箱，开通学校账号</h1>
+        <p style="margin:0 0 12px;color:#6b6b6b;line-height:1.7">{{ contact_name }}，你好：</p>
+        <p style="margin:0 0 24px;color:#6b6b6b;line-height:1.7">请确认使用 {{ email }} 为“{{ organization_name }}”开通点凡阅卷。验证完成后会生成学校 ID，并发放 30 天、200 份答卷的内测额度。</p>
+        <a href="{{ link }}" style="display:inline-block;background:#2e5bff;color:#fff;text-decoration:none;border-radius:8px;padding:12px 20px;font-weight:700">验证并开通</a>
+        <p style="margin:24px 0 0;color:#9c9c9c;font-size:13px;line-height:1.6">链接在 {{ valid_minutes }} 分钟内有效。如果不是你提交的注册，可以忽略这封邮件。</p>
+      </div>
+    </div>
+  </body>
+</html>

@@ -99,20 +99,19 @@ def _seed_published_answer(
 
 def test_question_bank_and_compose(
     client: TestClient,
-    superuser_token_headers: dict[str, str],
+    school_owner_token_headers: dict[str, str],
+    school_owner_user: tuple[User, str],
 ) -> None:
     exam_response = client.post(
         f"{settings.API_V1_STR}/exams/",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"org_id": DEFAULT_ORG_ID, "title": "题库来源卷", "subject": "物理"},
     )
     assert exam_response.status_code == 200
     exam_id = exam_response.json()["id"]
 
     with Session(engine) as session:
-        owner = session.exec(
-            select(User).where(User.email == settings.FIRST_SUPERUSER)
-        ).one()
+        owner = school_owner_user[0]
         source_exam = session.get(Exam, uuid.UUID(exam_id))
         assert source_exam
         q1 = _seed_question(
@@ -153,7 +152,7 @@ def test_question_bank_and_compose(
 
     bank_response = client.get(
         f"{settings.API_V1_STR}/exams/question-bank",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     )
     assert bank_response.status_code == 200
     bank = bank_response.json()
@@ -173,28 +172,28 @@ def test_question_bank_and_compose(
 
     filtered = client.get(
         f"{settings.API_V1_STR}/exams/question-bank",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         params={"knowledge_point": "电场"},
     ).json()
     assert [entry["question_id"] for entry in filtered["data"]] == [str(q1_id)]
 
     filtered = client.get(
         f"{settings.API_V1_STR}/exams/question-bank",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         params={"difficulty": 4},
     ).json()
     assert [entry["question_id"] for entry in filtered["data"]] == [str(q2_id)]
 
     filtered = client.get(
         f"{settings.API_V1_STR}/exams/question-bank",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         params={"question_type": "calculation", "knowledge_point": "光学"},
     ).json()
     assert [entry["question_id"] for entry in filtered["data"]] == [str(q2_id)]
 
     compose_response = client.post(
         f"{settings.API_V1_STR}/exams/compose",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"title": "电场光学巩固卷", "question_ids": [str(q2_id), str(q1_id)]},
     )
     assert compose_response.status_code == 200
@@ -203,7 +202,7 @@ def test_question_bank_and_compose(
 
     new_questions = client.get(
         f"{settings.API_V1_STR}/exams/{new_exam_id}/questions",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
     ).json()["data"]
     assert [question["question_key"] for question in new_questions] == ["1", "2"]
     # 题目顺序保持 compose 请求中的选择顺序：q2 在前。
@@ -251,7 +250,7 @@ def test_question_bank_and_compose(
 
     bad_compose = client.post(
         f"{settings.API_V1_STR}/exams/compose",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         json={"title": "无效组卷", "question_ids": [str(uuid.uuid4())]},
     )
     assert bad_compose.status_code == 422

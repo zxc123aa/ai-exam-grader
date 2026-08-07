@@ -1,0 +1,185 @@
+name: dianfan-staging
+
+services:
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    env_file:
+      - ${DIANFAN_ENV_FILE:?Set DIANFAN_ENV_FILE to the staging env path}
+    environment:
+      PGDATA: /var/lib/postgresql/data/pgdata
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - private
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    volumes:
+      - redis-data:/data
+    networks:
+      - private
+
+  reference-algorithm:
+    image: dianfan-reference-algorithm:${TAG:?TAG is required}
+    build:
+      context: ./参考算法/2_试卷分析文件
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - ${DIANFAN_REFERENCE_ENV_FILE:-${DIANFAN_ENV_FILE}}
+    environment:
+      PORT: "3417"
+      DEFAULT_PROVIDER: ${VISION_DEFAULT_PROVIDER:-pomoai}
+      DEFAULT_MODEL: ${VISION_DEFAULT_MODEL:-gemini-3.5-flash}
+      AVAILABLE_PROVIDERS: pomoai,fluxnode_gemini,fluxnode_grok,kimi
+      PROVIDER_POMOAI_LABEL: PomoAI
+      PROVIDER_POMOAI_BASE_URL: ${PROVIDER_POMOAI_BASE_URL:-https://www.pomoai.ai}
+      PROVIDER_POMOAI_MODELS: gemini-3.5-flash,gemini-3.6-flash,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5
+      PROVIDER_FLUXNODE_GEMINI_LABEL: FluxNode Gemini
+      PROVIDER_FLUXNODE_GEMINI_BASE_URL: ${PROVIDER_FLUXNODE_GEMINI_BASE_URL:-https://fluxnode.org}
+      PROVIDER_FLUXNODE_GEMINI_MODELS: gemini-3.5-flash,gemini-3.6-flash
+      PROVIDER_FLUXNODE_GROK_LABEL: FluxNode Grok
+      PROVIDER_FLUXNODE_GROK_BASE_URL: ${PROVIDER_FLUXNODE_GROK_BASE_URL:-https://fluxnode.org}
+      PROVIDER_FLUXNODE_GROK_MODELS: grok-4.5
+      PROVIDER_KIMI_LABEL: Kimi Coding
+      PROVIDER_KIMI_BASE_URL: ${PROVIDER_KIMI_BASE_URL:-https://api.kimi.com/coding/v1}
+      PROVIDER_KIMI_MODELS: kimi-k2.7-code,kimi-k2.7-code-highspeed,kimi-k2.6,kimi-k2.5
+      MODEL_TIMEOUT_MS: ${VISION_TIMEOUT_SECONDS:-180}000
+      MAX_CONCURRENT_OCR: ${VISION_MAX_CONCURRENCY:-4}
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://localhost:3417/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - private
+
+  prestart:
+    image: dianfan-backend:${TAG:?TAG is required}
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - ${DIANFAN_ENV_FILE}
+    environment: &backend-environment
+      POSTGRES_SERVER: db
+      POSTGRES_PORT: "5432"
+      REDIS_URL: redis://redis:6379/0
+      LOCAL_UPLOAD_DIR: /app/data/uploads
+      STORAGE_CACHE_DIR: /app/data/storage-cache
+      REFERENCE_ALGORITHM_URL: http://reference-algorithm:3417
+    depends_on:
+      db:
+        condition: service_healthy
+    command: ["bash", "scripts/prestart.sh"]
+    volumes:
+      - ${DIANFAN_UPLOADS_DIR:?Set DIANFAN_UPLOADS_DIR}:/app/data/uploads
+      - storage-cache:/app/data/storage-cache
+    networks:
+      - private
+
+  backend:
+    image: dianfan-backend:${TAG}
+    restart: unless-stopped
+    env_file:
+      - ${DIANFAN_ENV_FILE}
+    environment: *backend-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      reference-algorithm:
+        condition: service_healthy
+      prestart:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    volumes:
+      - ${DIANFAN_UPLOADS_DIR}:/app/data/uploads
+      - storage-cache:/app/data/storage-cache
+    networks:
+      private:
+      proxy:
+        aliases:
+          - dianfan-staging-backend
+
+  worker:
+    image: dianfan-backend:${TAG}
+    restart: unless-stopped
+    env_file:
+      - ${DIANFAN_ENV_FILE}
+    environment: *backend-environment
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      reference-algorithm:
+        condition: service_healthy
+      prestart:
+        condition: service_completed_successfully
+    command: ["dramatiq", "app.worker"]
+    volumes:
+      - ${DIANFAN_UPLOADS_DIR}:/app/data/uploads
+      - storage-cache:/app/data/storage-cache
+    networks:
+      - private
+
+  frontend:
+    image: dianfan-frontend:${TAG}
+    restart: unless-stopped
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ${FRONTEND_HOST:?FRONTEND_HOST is required}
+        VITE_PUBLIC_SIGNUP_ENABLED: ${PUBLIC_SIGNUP_ENABLED:-false}
+        VITE_TURNSTILE_SITE_KEY: ${VITE_TURNSTILE_SITE_KEY:-}
+    networks:
+      proxy:
+        aliases:
+          - dianfan-staging-frontend
+
+volumes:
+  db-data:
+    name: dianfan-staging-db-data
+  redis-data:
+    name: dianfan-staging-redis-data
+  storage-cache:
+    name: dianfan-staging-storage-cache
+
+networks:
+  private:
+    name: dianfan-staging-private
+  proxy:
+    external: true
+    name: acg-faka_default

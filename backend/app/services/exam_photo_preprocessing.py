@@ -945,6 +945,9 @@ def normalize_reading_orientation(
             model=settings.VISION_DEFAULT_MODEL,
             fallback_models=[],
             messages=[{"role": "user", "content": content}],
+            # Rotation is applied by OpenCV; only the optional reading-direction
+            # judgment uses a visual model and follows the visual route policy.
+            workflow_purpose="region_detection",
         )
     except (PhotoPreprocessingError, VisionGradingError) as exc:
         metadata.update(
@@ -1079,7 +1082,6 @@ def apply_fine_deskew_to_pages(
     deskew_started = time.perf_counter()
     deskew_attempts: list[dict[str, object]] = []
     deskewed_pages: list[PreprocessedPage] = []
-    current_x = 0
     for _index, page in enumerate(pages, start=1):
         deskewed, deskew_meta = fine_deskew_page(page.image)
         deskew_attempts.append(
@@ -1088,13 +1090,15 @@ def apply_fine_deskew_to_pages(
                 **deskew_meta,
             }
         )
-        width = deskewed.shape[1]
         deskewed_pages.append(
             PreprocessedPage(
                 name=page.name,
                 image=deskewed,
-                x_start=current_x,
-                x_end=current_x + width,
+                # These coordinates describe the crop in the source spread.
+                # Fine deskew may change output width, but must not erase the
+                # gutter overlap metadata used for traceability and tests.
+                x_start=page.x_start,
+                x_end=page.x_end,
                 source_quad=page.source_quad,
                 homography=page.homography,
                 quality={
@@ -1103,7 +1107,6 @@ def apply_fine_deskew_to_pages(
                 },
             )
         )
-        current_x += width
     return (
         deskewed_pages,
         deskew_attempts,

@@ -57,12 +57,16 @@ from app.models import (
     ExamScoreSummaryRow,
     ExamsPublic,
     ExamUpdate,
+    ExamWorkflowStepPublic,
+    ExamWorkflowSummaryPublic,
+    GradingAssigneePublic,
     GradingAssignment,
     GradingAssignmentClassPublic,
     GradingAssignmentItemPublic,
     GradingAssignmentsPublic,
     GradingAssignmentsUpdate,
     GradingRun,
+    GradingRunStatus,
     Message,
     ProcessingTask,
     ProcessingTaskPublic,
@@ -70,6 +74,8 @@ from app.models import (
     QuestionBankEntryPublic,
     QuestionBankPublic,
     QuestionRecognitionRun,
+    ScoreRelease,
+    ScoreReleaseStatus,
     StandardAnswer,
     StandardAnswerCreate,
     StandardAnswerPublic,
@@ -89,8 +95,10 @@ from app.models import (
     SubmissionAnnotationCreate,
     SubmissionAnnotationPublic,
     SubmissionAnnotationsPublic,
+    SubmissionAnnotationStatus,
     SubmissionAnnotationUpdate,
     SubmissionRegistrationStatus,
+    TeacherClassLink,
     TokenPayload,
     User,
     UserRole,
@@ -114,6 +122,7 @@ from app.services.file_storage import (
     store_upload_file,
     validate_scan_photo_upload_file,
 )
+from app.services.object_storage import materialize_storage_key
 from app.services.org_scope import (
     assigned_class_ids,
     can_see_exam,
@@ -158,6 +167,7 @@ from app.services.system_config import get_grading_defaults
 from app.services.vision_grading import VisionGradingError, call_json_model
 from app.services.zip_submissions import build_pdf_bytes_from_zip
 from app.worker import (
+    process_exam_document_preprocessing,
     process_submission_processing_task,
     run_submission_processing_task,
 )
@@ -207,6 +217,161 @@ def build_exam_public(
     public.class_ids = [link.class_id for link, _class_group in rows]
     public.class_names = [class_group.name for _link, class_group in rows]
     return public
+
+
+@router.get("/{exam_id}/workflow-summary", response_model=ExamWorkflowSummaryPublic)
+def read_exam_workflow_summary(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> ExamWorkflowSummaryPublic:
+    """Return one teacher-facing next action without exposing model internals."""
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    paper_count = session.exec(
+        select(func.count())
+        .select_from(ExamDocument)
+        .where(
+            ExamDocument.exam_id == exam.id,
+            ExamDocument.document_type == ExamDocumentType.BLANK_EXAM,
+        )
+    ).one()
+    region_count = session.exec(
+        select(func.count()).select_from(ExamRegion).where(ExamRegion.exam_id == exam.id)
+    ).one()
+    confirmed_question_count = session.exec(
+        select(func.count())
+        .select_from(ExamQuestion)
+        .where(
+            ExamQuestion.exam_id == exam.id,
+            ExamQuestion.status == ExamQuestionStatus.CONFIRMED,
+        )
+    ).one()
+    ready_answer_count = session.exec(
+        select(func.count())
+        .select_from(StandardAnswer)
+        .where(
+            StandardAnswer.exam_id == exam.id,
+            StandardAnswer.status == StandardAnswerStatus.READY,
+        )
+    ).one()
+    submission_count = session.exec(
+        select(func.count())
+        .select_from(StudentSubmission)
+        .where(StudentSubmission.exam_id == exam.id)
+    ).one()
+    latest_run = session.exec(
+        select(GradingRun)
+        .where(GradingRun.exam_id == exam.id)
+        .order_by(col(GradingRun.created_at).desc())
+    ).first()
+    review_count = session.exec(
+        select(func.count())
+        .select_from(SubmissionAnnotation)
+        .join(StudentSubmission)
+        .where(
+            StudentSubmission.exam_id == exam.id,
+            SubmissionAnnotation.status == SubmissionAnnotationStatus.NEEDS_REVIEW,
+        )
+    ).one()
+    published = session.exec(
+        select(ScoreRelease.id).where(
+            ScoreRelease.exam_id == exam.id,
+            ScoreRelease.status == ScoreReleaseStatus.PUBLISHED,
+        )
+    ).first()
+
+    run_finished = bool(
+        latest_run
+        and latest_run.status
+        in {GradingRunStatus.COMPLETED, GradingRunStatus.COMPLETED_WITH_ERRORS}
+    )
+    run_active = bool(
+        latest_run
+        and latest_run.status in {GradingRunStatus.QUEUED, GradingRunStatus.RUNNING}
+    )
+    conditions = [
+        (paper_count == 0, "import_paper", "导入模板卷", "", "先上传模板卷，系统会自动准备后续步骤。"),
+        (region_count == 0, "mark_questions", "确认题目区域", "marking", "确认每道题在卷面上的位置。"),
+        (confirmed_question_count == 0, "confirm_questions", "确认题目内容", "questions", "检查题目内容，确认后再准备参考答案。"),
+        (ready_answer_count < confirmed_question_count, "prepare_answers", "确认参考答案", "answers", "检查参考答案和评分点，确认无误后开始批改。"),
+        (submission_count == 0, "import_submissions", "导入学生答卷", "grading", "导入学生答卷后即可开始批改。"),
+        (run_active, "wait_grading", "查看批改进度", "grading", "批改正在后台进行，你可以离开页面，异常结果会集中提醒。"),
+        (not run_finished, "start_grading", "开始批改", "grading", "准备工作已完成，可以开始本次批改。"),
+        (review_count > 0, "review_exceptions", f"复核 {review_count} 处异常", "workbench", "正常结果已经处理，只需集中检查这些异常。"),
+        (not published, "publish_scores", "发布成绩", "scores", "复核完成后发布成绩，学生才能查看。"),
+    ]
+    next_action, next_label, route, message = (
+        "view_results",
+        "查看成绩",
+        "scores",
+        "本次考试已完成，可以查看成绩和学情分析。",
+    )
+    for matched, code, label, candidate_route, candidate_message in conditions:
+        if matched:
+            next_action, next_label, route, message = (
+                code,
+                label,
+                candidate_route,
+                candidate_message,
+            )
+            break
+    completed = {
+        "import": paper_count > 0,
+        "marking": region_count > 0,
+        "questions": confirmed_question_count > 0,
+        "answers": confirmed_question_count > 0
+        and ready_answer_count >= confirmed_question_count,
+        "grading": run_finished,
+        "scores": published is not None,
+    }
+    active_code = {
+        "import_paper": "import",
+        "mark_questions": "marking",
+        "confirm_questions": "questions",
+        "prepare_answers": "answers",
+        "import_submissions": "grading",
+        "wait_grading": "grading",
+        "start_grading": "grading",
+        "review_exceptions": "grading",
+        "publish_scores": "scores",
+        "view_results": "scores",
+    }[next_action]
+    labels = {
+        "import": "导入模板卷",
+        "marking": "确认题目区域",
+        "questions": "确认题目内容",
+        "answers": "确认参考答案",
+        "grading": "批改与复核",
+        "scores": "发布成绩",
+    }
+    counts = {
+        "import": paper_count,
+        "marking": region_count,
+        "questions": confirmed_question_count,
+        "answers": ready_answer_count,
+        "grading": review_count,
+        "scores": 1 if published else 0,
+    }
+    return ExamWorkflowSummaryPublic(
+        exam_id=exam.id,
+        next_action=next_action,
+        next_label=next_label,
+        next_path=f"/exams/{exam.id}/{route}".rstrip("/"),
+        message=message,
+        steps=[
+            ExamWorkflowStepPublic(
+                code=code,
+                label=label,
+                status="completed"
+                if completed[code]
+                else "active"
+                if code == active_code
+                else "pending",
+                count=counts[code],
+            )
+            for code, label in labels.items()
+        ],
+    )
 
 
 def replace_exam_class_links(
@@ -650,6 +815,34 @@ def preprocess_uploaded_image_file(
         )
 
 
+def should_queue_image_preprocessing(
+    *, stored_file: StoredFile, preprocess_mode: Literal["auto", "force", "none"]
+) -> bool:
+    return (
+        preprocess_mode != "none"
+        and stored_file.content_type in SCAN_PHOTO_CONTENT_TYPES
+    )
+
+
+def mark_preprocessing_enqueue_failed(
+    *, session: SessionDep, documents: list[ExamDocument], exc: Exception
+) -> None:
+    message = str(exc).strip() or exc.__class__.__name__
+    for document in documents:
+        document.preprocessing_status = "failed"
+        document.preprocessing_quality = 0.0
+        document.preprocessing_metadata = {
+            "source": "async_scan_preprocessing_v1",
+            "scan_engine": settings.SCAN_ENGINE,
+            "error": {
+                "code": "enqueue_failed",
+                "message": message[:500],
+            },
+        }
+        session.add(document)
+    session.commit()
+
+
 def get_exam_document_for_user(
     *,
     session: SessionDep,
@@ -809,9 +1002,7 @@ def assert_can_write_submission_annotations(
     restricted = restricted_assigned_classes(session, current_user, exam)
     if restricted is not None:
         class_ids, class_names = restricted
-        if submission_in_assigned_classes(
-            session, submission, class_ids, class_names
-        ):
+        if submission_in_assigned_classes(session, submission, class_ids, class_names):
             return
     raise HTTPException(status_code=403, detail="无权批改非负责班级的答卷")
 
@@ -1116,9 +1307,7 @@ def read_question_bank(
     if not is_platform_user(current_user):
         statement = statement.where(Exam.org_id == current_user.org_id)
     if knowledge_point:
-        statement = statement.where(
-            ExamQuestion.knowledge_point == knowledge_point
-        )
+        statement = statement.where(ExamQuestion.knowledge_point == knowledge_point)
     if question_type:
         statement = statement.where(ExamQuestion.question_type == question_type)
     if difficulty is not None:
@@ -1312,7 +1501,7 @@ def read_exam(
 
 
 def _build_grading_assignments_public(
-    *, session: SessionDep, exam: Exam
+    *, session: SessionDep, exam: Exam, include_candidates: bool = False
 ) -> GradingAssignmentsPublic:
     rows = session.exec(
         select(GradingAssignment, ClassGroup, User)
@@ -1332,20 +1521,59 @@ def _build_grading_assignments_public(
     ]
     assigned_class_id_set = {assignment.class_id for assignment in assignments}
     unassigned = [
-        GradingAssignmentClassPublic(class_id=class_group.id, class_name=class_group.name)
+        GradingAssignmentClassPublic(
+            class_id=class_group.id, class_name=class_group.name
+        )
         for class_group in exam_classes_with_submissions(session, exam)
         if class_group.id not in assigned_class_id_set
     ]
+    candidates: list[GradingAssigneePublic] = []
+    if include_candidates:
+        users = session.exec(
+            select(User)
+            .where(
+                User.org_id == exam.org_id,
+                User.is_active.is_(True),
+                col(User.role).in_(
+                    [
+                        UserRole.TEACHER,
+                        UserRole.SCHOOL_ADMIN,
+                        UserRole.SCHOOL_OWNER,
+                    ]
+                ),
+            )
+            .order_by(col(User.full_name).asc(), col(User.email).asc())
+        ).all()
+        user_ids = [user.id for user in users]
+        links = (
+            session.exec(
+                select(TeacherClassLink).where(
+                    col(TeacherClassLink.user_id).in_(user_ids)
+                )
+            ).all()
+            if user_ids
+            else []
+        )
+        class_ids_by_user: dict[uuid.UUID, list[uuid.UUID]] = {}
+        for link in links:
+            class_ids_by_user.setdefault(link.user_id, []).append(link.class_id)
+        candidates = [
+            GradingAssigneePublic(
+                user_id=user.id,
+                user_name=user.full_name or user.email,
+                class_ids=class_ids_by_user.get(user.id, []),
+            )
+            for user in users
+        ]
     return GradingAssignmentsPublic(
         enabled=exam.shared_grading_enabled,
         assignments=assignments,
         unassigned=unassigned,
+        candidates=candidates,
     )
 
 
-@router.get(
-    "/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic
-)
+@router.get("/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic)
 def read_grading_assignments(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Any:
@@ -1357,12 +1585,14 @@ def read_grading_assignments(
         current_user.org_id is None or current_user.org_id != exam.org_id
     ):
         raise HTTPException(status_code=404, detail="Exam not found")
-    return _build_grading_assignments_public(session=session, exam=exam)
+    return _build_grading_assignments_public(
+        session=session,
+        exam=exam,
+        include_candidates=can_write_exam(current_user, exam),
+    )
 
 
-@router.put(
-    "/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic
-)
+@router.put("/{exam_id}/grading-assignments", response_model=GradingAssignmentsPublic)
 def update_grading_assignments(
     *,
     session: SessionDep,
@@ -1436,7 +1666,9 @@ def update_grading_assignments(
     session.add(exam)
     session.commit()
     session.refresh(exam)
-    return _build_grading_assignments_public(session=session, exam=exam)
+    return _build_grading_assignments_public(
+        session=session, exam=exam, include_candidates=True
+    )
 
 
 @router.post("/{exam_id}/files", response_model=ExamDocumentPublic)
@@ -1468,24 +1700,24 @@ async def upload_exam_file(
     except HTTPException:
         session.rollback()
         raise
+    queue_preprocessing = should_queue_image_preprocessing(
+        stored_file=stored_file, preprocess_mode=preprocess
+    )
     active_file = stored_file
     try:
-        (
-            active_file,
-            preprocessing_metadata,
-            preprocessing_quality,
-            preprocessing_status,
-            original_file_id,
-        ) = preprocess_uploaded_image_file(
-            session=session,
-            owner_id=exam.owner_id,
-            stored_file=stored_file,
-            preprocess_mode=preprocess,
+        preprocessing_status = "queued" if queue_preprocessing else "not_required"
+        preprocessing_metadata = (
+            {
+                "source": "async_scan_preprocessing_v1",
+                "scan_engine": settings.SCAN_ENGINE,
+            }
+            if queue_preprocessing
+            else None
         )
         exam_document = ExamDocument(
             exam_id=exam.id,
             stored_file_id=active_file.id,
-            original_stored_file_id=original_file_id,
+            original_stored_file_id=(stored_file.id if queue_preprocessing else None),
             document_type=document_type,
             sort_order=get_next_exam_document_sort_order(
                 session=session,
@@ -1493,7 +1725,7 @@ async def upload_exam_file(
                 document_type=document_type,
             ),
             preprocessing_status=preprocessing_status,
-            preprocessing_quality=preprocessing_quality,
+            preprocessing_quality=None,
             preprocessing_metadata=preprocessing_metadata,
         )
         session.add(exam_document)
@@ -1506,6 +1738,14 @@ async def upload_exam_file(
         raise
     session.refresh(exam_document)
     session.refresh(active_file)
+    if queue_preprocessing:
+        try:
+            process_exam_document_preprocessing.send(str(exam_document.id))
+        except Exception as exc:
+            mark_preprocessing_enqueue_failed(
+                session=session, documents=[exam_document], exc=exc
+            )
+            session.refresh(exam_document)
     return build_exam_document_public(
         exam_document=exam_document, stored_file=active_file
     )
@@ -1535,6 +1775,7 @@ async def upload_exam_files(
     stored_files: list[StoredFile] = []
     active_files: list[StoredFile] = []
     documents: list[ExamDocument] = []
+    queued_documents: list[ExamDocument] = []
     next_sort_order = get_next_exam_document_sort_order(
         session=session,
         exam_id=exam.id,
@@ -1552,31 +1793,36 @@ async def upload_exam_files(
             )
             stored_files.append(stored_file)
             validate_uploaded_pdf(stored_file)
-            (
-                active_file,
-                preprocessing_metadata,
-                preprocessing_quality,
-                preprocessing_status,
-                original_file_id,
-            ) = preprocess_uploaded_image_file(
-                session=session,
-                owner_id=exam.owner_id,
-                stored_file=stored_file,
-                preprocess_mode=preprocess,
+            queue_preprocessing = should_queue_image_preprocessing(
+                stored_file=stored_file, preprocess_mode=preprocess
+            )
+            active_file = stored_file
+            preprocessing_status = "queued" if queue_preprocessing else "not_required"
+            preprocessing_metadata = (
+                {
+                    "source": "async_scan_preprocessing_v1",
+                    "scan_engine": settings.SCAN_ENGINE,
+                }
+                if queue_preprocessing
+                else None
             )
             active_files.append(active_file)
             document = ExamDocument(
                 exam_id=exam.id,
                 stored_file_id=active_file.id,
-                original_stored_file_id=original_file_id,
+                original_stored_file_id=(
+                    stored_file.id if queue_preprocessing else None
+                ),
                 document_type=document_type,
                 sort_order=next_sort_order + offset,
                 preprocessing_status=preprocessing_status,
-                preprocessing_quality=preprocessing_quality,
+                preprocessing_quality=None,
                 preprocessing_metadata=preprocessing_metadata,
             )
             session.add(document)
             documents.append(document)
+            if queue_preprocessing:
+                queued_documents.append(document)
         session.commit()
     except Exception:
         session.rollback()
@@ -1586,6 +1832,19 @@ async def upload_exam_files(
             if all(active_file.id != stored_file.id for stored_file in stored_files):
                 cleanup_stored_file_path(get_stored_file_path(active_file))
         raise
+
+    enqueue_failed: list[ExamDocument] = []
+    for document in queued_documents:
+        try:
+            process_exam_document_preprocessing.send(str(document.id))
+        except Exception:
+            enqueue_failed.append(document)
+    if enqueue_failed:
+        mark_preprocessing_enqueue_failed(
+            session=session,
+            documents=enqueue_failed,
+            exc=RuntimeError("Background preprocessing queue is unavailable"),
+        )
 
     public_documents = []
     for document, active_file in zip(documents, active_files, strict=True):
@@ -1821,7 +2080,7 @@ def recognize_exam_files_with_reference_algorithm(
     exam_id: uuid.UUID,
     recognition_in: ExamDocumentRecognitionRequest,
 ) -> dict:
-    get_exam_for_user(
+    exam = get_exam_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
@@ -1849,7 +2108,7 @@ def recognize_exam_files_with_reference_algorithm(
             detail="Some exam documents do not belong to this exam",
         )
     try:
-        defaults = get_grading_defaults(session)
+        defaults = get_grading_defaults(session, exam.org_id)
         return process_stored_files(
             documents=documents,
             verification_mode=recognition_in.verification_mode,
@@ -2314,7 +2573,10 @@ def read_exam_region_candidates(
     provider_failover_count = 0
     if engine == GEMINI_LAYOUT_ENGINE_NAME:
         try:
-            layout_defaults = get_grading_defaults(session)
+            exam = session.get(Exam, exam_id)
+            layout_defaults = get_grading_defaults(
+                session, exam.org_id if exam else None
+            )
             layout_payload = layout_stored_file(
                 stored_file=stored_file,
                 page_numbers=[page_number],
@@ -2439,7 +2701,8 @@ def recognize_exam_document_with_reference_algorithm(
         require_write=True,
     )
     try:
-        defaults = get_grading_defaults(session)
+        exam = session.get(Exam, exam_id)
+        defaults = get_grading_defaults(session, exam.org_id if exam else None)
         return process_stored_file(
             stored_file=stored_file,
             provider=str(defaults["region_provider"]),
@@ -2480,7 +2743,8 @@ def recognize_exam_document_page_with_reference_algorithm(
         )
     ).all()
     try:
-        defaults = get_grading_defaults(session)
+        exam = session.get(Exam, exam_id)
+        defaults = get_grading_defaults(session, exam.org_id if exam else None)
         return process_stored_file_page_context(
             documents=list(documents),
             target_document_id=document.id,
@@ -2514,9 +2778,7 @@ async def upload_student_submission(
         exam_id=exam_id,
         require_write=True,
     )
-    zip_upload = is_zip_upload(
-        filename=file.filename, content_type=file.content_type
-    )
+    zip_upload = is_zip_upload(filename=file.filename, content_type=file.content_type)
     stored_file = await store_upload_file(
         session=session,
         current_user=current_user,
@@ -2749,9 +3011,7 @@ def _build_exam_scores_summary(
                     score=chosen.score,
                     max_score=chosen.max_score,
                     score_source=(
-                        "final"
-                        if chosen.score_source == "human"
-                        else "ai_suggested"
+                        "final" if chosen.score_source == "human" else "ai_suggested"
                     ),
                     annotation_id=chosen.id,
                 )
@@ -2837,9 +3097,7 @@ def _compute_exam_analysis_stats(summary: ExamScoreSummaryPublic) -> dict | None
     if not scored:
         return None
     totals = [float(s["total_score"]) for s in scored]
-    full_marks = [
-        float(s["total_max_score"]) for s in scored if s["total_max_score"]
-    ]
+    full_marks = [float(s["total_max_score"]) for s in scored if s["total_max_score"]]
     full_mark = max(full_marks) if full_marks else None
     sorted_totals = sorted(totals)
     quartile = max(1, len(sorted_totals) // 4)
@@ -2884,17 +3142,13 @@ def _compute_exam_analysis_stats(summary: ExamScoreSummaryPublic) -> dict | None
             else None
         ),
         "stddev": round(statistics.pstdev(totals), 2) if len(totals) > 1 else 0.0,
-        "top_quartile_avg": round(
-            sum(sorted_totals[-quartile:]) / quartile, 1
-        ),
+        "top_quartile_avg": round(sum(sorted_totals[-quartile:]) / quartile, 1),
         "bottom_quartile_avg": round(sum(sorted_totals[:quartile]) / quartile, 1),
         "weakest_questions": question_rates[:3],
     }
 
 
-@router.post(
-    "/{exam_id}/analysis-report", response_model=ExamAnalysisReportPublic
-)
+@router.post("/{exam_id}/analysis-report", response_model=ExamAnalysisReportPublic)
 def create_exam_analysis_report(
     session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
 ) -> Any:
@@ -2926,7 +3180,7 @@ def create_exam_analysis_report(
         f"考试：{exam.title}\n"
         f"统计数据：{json.dumps(stats, ensure_ascii=False)}"
     )
-    defaults = get_grading_defaults(session)
+    defaults = get_grading_defaults(session, exam.org_id)
     try:
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
@@ -2943,12 +3197,8 @@ def create_exam_analysis_report(
         for key in ("overall", "weak", "polar", "advice")
     }
     if not all(report.values()):
-        raise HTTPException(
-            status_code=502, detail="AI 学情报告返回内容不完整，请重试"
-        )
-    return ExamAnalysisReportPublic(
-        **report, generated_at=get_datetime_utc()
-    )
+        raise HTTPException(status_code=502, detail="AI 学情报告返回内容不完整，请重试")
+    return ExamAnalysisReportPublic(**report, generated_at=get_datetime_utc())
 
 
 @router.post(
@@ -3216,9 +3466,7 @@ async def append_student_submission_pages(
             status_code=status.HTTP_409_CONFLICT,
             detail="Submission already has grading data; appending pages would invalidate it",
         )
-    zip_upload = is_zip_upload(
-        filename=file.filename, content_type=file.content_type
-    )
+    zip_upload = is_zip_upload(filename=file.filename, content_type=file.content_type)
     uploaded_file = await store_upload_file(
         session=session,
         current_user=current_user,
@@ -3427,9 +3675,7 @@ def read_student_submission_template_regions(
         submission_id=submission_id,
     )
     if page_number is not None and page_number < 1:
-        raise HTTPException(
-            status_code=422, detail="Page number must be at least 1"
-        )
+        raise HTTPException(status_code=422, detail="Page number must be at least 1")
     statement = (
         select(ExamRegion)
         .where(ExamRegion.exam_id == exam_id)
@@ -3542,12 +3788,12 @@ def read_submission_annotation_crop(
 
     storage_key = matching_crop.get("storage_key") if matching_crop else None
     if storage_key:
-        upload_root = settings.LOCAL_UPLOAD_DIR.resolve()
-        path = (upload_root / storage_key).resolve()
-        if path.is_relative_to(upload_root) and path.exists():
-            return FileResponse(
-                path=path, media_type="image/png", filename=path.name
-            )
+        try:
+            path = materialize_storage_key(str(storage_key))
+        except Exception:
+            path = None
+        if path is not None and path.exists():
+            return FileResponse(path=path, media_type="image/png", filename=path.name)
 
     # 回退：批量批改生成的批注没有持久化裁切图，按模板区域实时裁切。
     _submission, stored_file = get_student_submission_for_user(
@@ -3682,6 +3928,8 @@ def update_submission_annotation(
         from app.models import GradingAuditEvent
 
         annotation.score_source = "human"
+        annotation.grading_status = AnnotationGradingStatus.SUCCEEDED
+        annotation.status = SubmissionAnnotationStatus.ACCEPTED
         session.add(
             GradingAuditEvent(
                 submission_id=submission_id,

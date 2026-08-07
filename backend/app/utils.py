@@ -35,6 +35,7 @@ def send_email(
     email_to: str,
     subject: str = "",
     html_content: str = "",
+    raise_on_error: bool = False,
 ) -> None:
     assert settings.emails_enabled, "no provided configuration for email variables"
     message = emails.Message(
@@ -53,6 +54,8 @@ def send_email(
         smtp_options["password"] = settings.SMTP_PASSWORD
     response = message.send(to=email_to, smtp=smtp_options)
     logger.info(f"send email result: {response}")
+    if raise_on_error and not response.success:
+        raise RuntimeError(f"SMTP delivery failed: {response.status_code}")
 
 
 def generate_test_email(email_to: str) -> EmailData:
@@ -98,6 +101,31 @@ def generate_new_account_email(
         },
     )
     return EmailData(html_content=html_content, subject=subject)
+
+
+def generate_signup_verification_email(
+    *,
+    email_to: str,
+    contact_name: str,
+    organization_name: str,
+    token: str,
+    valid_minutes: int,
+) -> EmailData:
+    link = f"{settings.FRONTEND_HOST}/signup/verify?token={token}"
+    return EmailData(
+        subject="验证邮箱并开通点凡阅卷",
+        html_content=render_email_template(
+            template_name="signup_verification.html",
+            context={
+                "project_name": settings.PROJECT_NAME,
+                "email": email_to,
+                "contact_name": contact_name,
+                "organization_name": organization_name,
+                "valid_minutes": valid_minutes,
+                "link": link,
+            },
+        ),
+    )
 
 
 def generate_password_reset_token(email: str) -> str:

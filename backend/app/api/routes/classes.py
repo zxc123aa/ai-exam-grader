@@ -9,7 +9,6 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
     get_current_teacher_user,
-    is_platform_user,
 )
 from app.core.security import get_password_hash
 from app.models import (
@@ -87,6 +86,17 @@ def count_students(session: Session, class_id: uuid.UUID) -> int:
     ).one()
 
 
+def build_student_public(*, session: Session, student: Student) -> StudentPublic:
+    account_email = None
+    if student.user_id:
+        account_email = session.exec(
+            select(User.email).where(User.id == student.user_id)
+        ).first()
+    return StudentPublic.model_validate(
+        student, update={"account_email": account_email}
+    )
+
+
 def ensure_class_name_available(
     *,
     session: Session,
@@ -146,17 +156,10 @@ def create_class(
     name = class_in.name.strip()
     if not name:
         raise HTTPException(status_code=422, detail="Class name must not be empty")
-    # 学校角色的班级归入本人学校；平台角色必须显式指定 org_id
+    # 班级一律归入当前学校。
     org_id = resolve_target_org_id(session, current_user, class_in.org_id)
     if org_id is None:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "平台账号创建班级必须指定 org_id"
-                if is_platform_user(current_user)
-                else "账号未归属学校，无法创建班级"
-            ),
-        )
+        raise HTTPException(status_code=400, detail="账号未归属学校，无法创建班级")
     ensure_class_name_available(session=session, org_id=org_id, name=name)
     class_group = ClassGroup(
         name=name,
@@ -239,7 +242,7 @@ def read_students(
     )
     students = session.exec(statement).all()
     return StudentsPublic(
-        data=[StudentPublic.model_validate(student) for student in students],
+        data=[build_student_public(session=session, student=student) for student in students],
         count=len(students),
     )
 
@@ -269,18 +272,17 @@ def create_student(
             status_code=409, detail="Student name already exists in this class"
         )
     session.refresh(student)
-    return StudentPublic.model_validate(student)
+    return build_student_public(session=session, student=student)
 
 
 # 学生批量建账号的占位邮箱域名与统一初始密码
 # TODO(v1 之后): 强制首次登录改密
 STUDENT_ACCOUNT_DOMAIN = "school.local"
 STUDENT_INITIAL_PASSWORD = "Dianfan@2026"
-# 批量创建学生账号仅限学校管理角色（platform_superuser 同现有用户管理约定）
+# 批量创建学生账号仅限学校管理角色。
 ACCOUNT_CREATOR_ROLES = (
     UserRole.SCHOOL_OWNER,
     UserRole.SCHOOL_ADMIN,
-    UserRole.PLATFORM_SUPERUSER,
 )
 
 
@@ -299,7 +301,6 @@ def create_students_batch(
     if (
         batch_in.create_accounts
         and current_user.role not in ACCOUNT_CREATOR_ROLES
-        and not current_user.is_superuser
     ):
         raise HTTPException(
             status_code=403,
@@ -432,7 +433,7 @@ def update_student(
             status_code=409, detail="Student name already exists in this class"
         )
     session.refresh(student)
-    return StudentPublic.model_validate(student)
+    return build_student_public(session=session, student=student)
 
 
 @router.delete("/students/{student_id}", response_model=Message)
@@ -465,6 +466,11 @@ def bind_student_account(
         raise HTTPException(
             status_code=400, detail="Only student accounts can be bound"
         )
+    class_group = get_class_for_user(
+        session=session, current_user=current_user, class_id=student.class_id
+    )
+    if user.org_id != class_group.org_id:
+        raise HTTPException(status_code=404, detail="User not found")
     bound = session.exec(
         select(Student).where(
             Student.user_id == bind_in.user_id, Student.id != student.id
@@ -478,7 +484,7 @@ def bind_student_account(
     session.add(student)
     session.commit()
     session.refresh(student)
-    return StudentPublic.model_validate(student)
+    return build_student_public(session=session, student=student)
 
 
 @router.delete("/students/{student_id}/bind-account", response_model=StudentPublic)
@@ -492,4 +498,4 @@ def unbind_student_account(
     session.add(student)
     session.commit()
     session.refresh(student)
-    return StudentPublic.model_validate(student)
+    return build_student_public(session=session, student=student)

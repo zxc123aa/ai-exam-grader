@@ -95,6 +95,128 @@ def test_verification_mode_preserves_selective() -> None:
     assert reference_algorithm._verification_mode("selective") == "selective"
 
 
+def test_process_pages_combines_layout_and_ocr_token_usage(monkeypatch) -> None:
+    responses = iter(
+        [
+            _Response(
+                {
+                    "layouts": [
+                        {
+                            "pageId": "page-1",
+                            "regions": [
+                                {
+                                    "id": "question-1",
+                                    "xmin": 0,
+                                    "ymin": 0,
+                                    "xmax": 1000,
+                                    "ymax": 1000,
+                                }
+                            ],
+                        }
+                    ],
+                    "tokenUsage": {
+                        "inputTokens": 100,
+                        "outputTokens": 20,
+                        "totalTokens": 120,
+                    },
+                }
+            ),
+            _Response(
+                {
+                    "results": [],
+                    "tokenUsage": {
+                        "inputTokens": 200,
+                        "outputTokens": 30,
+                        "totalTokens": 230,
+                    },
+                }
+            ),
+        ]
+    )
+
+    class _Client:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def post(self, *_args, **_kwargs):
+            return next(responses)
+
+    monkeypatch.setattr(reference_algorithm.httpx, "Client", _Client)
+    monkeypatch.setattr(reference_algorithm, "_decode_image", lambda _contents: object())
+    monkeypatch.setattr(
+        reference_algorithm,
+        "_crop_region_image",
+        lambda _image, _layout, _region: "data:image/jpeg;base64,test",
+    )
+
+    payload = reference_algorithm._process_pages(
+        pages=[
+            {
+                "id": "page-1",
+                "fileName": "paper.png",
+                "image": "data:image/png;base64,test",
+                "contents": b"image",
+            }
+        ]
+    )
+
+    assert payload["usage"] == {
+        "input_tokens": 300,
+        "output_tokens": 50,
+        "total_tokens": 350,
+    }
+
+
+def test_process_pages_records_layout_usage_when_no_blocks(monkeypatch) -> None:
+    class _Client:
+        def __init__(self, **_kwargs) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args) -> None:
+            return None
+
+        def post(self, *_args, **_kwargs):
+            return _Response(
+                {
+                    "layouts": [],
+                    "tokenUsage": {
+                        "inputTokens": 80,
+                        "outputTokens": 10,
+                        "totalTokens": 90,
+                    },
+                }
+            )
+
+    monkeypatch.setattr(reference_algorithm.httpx, "Client", _Client)
+    monkeypatch.setattr(reference_algorithm, "_decode_image", lambda _contents: object())
+
+    payload = reference_algorithm._process_pages(
+        pages=[
+            {
+                "id": "page-1",
+                "fileName": "paper.png",
+                "image": "data:image/png;base64,test",
+                "contents": b"image",
+            }
+        ]
+    )
+
+    assert payload["usage"] == {
+        "input_tokens": 80,
+        "output_tokens": 10,
+        "total_tokens": 90,
+    }
+
+
 def test_page_context_includes_adjacent_pages_across_image_files(monkeypatch) -> None:
     captured: dict = {}
     documents = [

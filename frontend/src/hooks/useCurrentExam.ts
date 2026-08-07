@@ -3,6 +3,7 @@ import { useRouterState } from "@tanstack/react-router"
 import { useCallback, useEffect, useState } from "react"
 
 import { type ExamPublic, ExamsService } from "@/client"
+import { resolveRole } from "@/components/Admin/roleMeta"
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 
 const STORAGE_KEY = "current_exam_id"
@@ -16,7 +17,9 @@ const EXAM_PATH_RE = /^\/exams\/([0-9a-f-]{36})/
  */
 export function useCurrentExam() {
   const { user } = useAuth()
-  const isStudent = user?.role === "student"
+  const canUseExams =
+    user != null &&
+    ["school_owner", "school_admin", "teacher"].includes(resolveRole(user))
   const pathname = useRouterState({
     select: (state) => state.location.pathname,
   })
@@ -24,7 +27,7 @@ export function useCurrentExam() {
   const examsQuery = useQuery({
     queryKey: ["exams"],
     queryFn: () => ExamsService.readExams({ skip: 0, limit: 100 }),
-    enabled: isLoggedIn() && !!user && !isStudent,
+    enabled: isLoggedIn() && canUseExams,
   })
   const exams = examsQuery.data?.data ?? []
 

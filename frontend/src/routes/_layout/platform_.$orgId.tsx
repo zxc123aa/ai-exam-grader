@@ -7,14 +7,16 @@ import { PlatformService } from "@/client"
 import { resolveRole } from "@/components/Admin/roleMeta"
 import { PageHead } from "@/components/Common/PageHead"
 import { Tag } from "@/components/Common/Tag"
+import { OrgBillingCard } from "@/components/Platform/OrgBillingCard"
 import { OrgInfoCard } from "@/components/Platform/OrgInfoCard"
+import { OrgModelUsageSection } from "@/components/Platform/OrgModelUsageSection"
 import { OrgStatsCards } from "@/components/Platform/OrgStatsCards"
-import { OrgUsersCard } from "@/components/Platform/OrgUsersCard"
 import {
   ORG_STATUS_LABELS,
   ORG_STATUS_TAG_VARIANTS,
   requirePlatformRole,
 } from "@/components/Platform/orgMeta"
+import { OrgPeopleDirectory } from "@/components/Platform/PeopleDirectory"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import useAuth from "@/hooks/useAuth"
@@ -41,8 +43,10 @@ export const Route = createFileRoute("/_layout/platform_/$orgId")({
 function OrgDetailContent({ orgId }: { orgId: string }) {
   const { user: currentUser } = useAuth()
   const { data: org } = useSuspenseQuery(getOrgQueryOptions(orgId))
-  const isPlatformSuperuser = currentUser
-    ? resolveRole(currentUser) === "platform_superuser"
+  const canManagePlatform = currentUser
+    ? ["platform_superuser", "platform_admin"].includes(
+        resolveRole(currentUser),
+      )
     : false
 
   return (
@@ -65,8 +69,10 @@ function OrgDetailContent({ orgId }: { orgId: string }) {
         }
       />
       <OrgStatsCards org={org} />
-      <OrgInfoCard org={org} canEdit={isPlatformSuperuser} />
-      <OrgUsersCard org={org} canAddOwner={isPlatformSuperuser} />
+      <OrgPeopleDirectory orgId={orgId} canAddOwner={canManagePlatform} />
+      <OrgBillingCard orgId={orgId} canEdit={canManagePlatform} />
+      <OrgModelUsageSection orgId={orgId} />
+      <OrgInfoCard org={org} canEdit={canManagePlatform} />
     </div>
   )
 }

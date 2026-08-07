@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import re
 
-
 NORMALIZATION_VERSION = "question_text_normalization_v1"
 _SECTION_HEADING_RE = re.compile(
     r"^[一二三四五六七八九十]+[、.．]\s*.*(?:题|选择|填空|作图|实验|综合应用|计算).*"

@@ -1933,8 +1933,9 @@ app.post(
   },
 );
 
-app.get("/api/health", (_req, res) =>
-  res.json({
+app.get("/api/health", (_req, res) => {
+  const operational = PROVIDERS.length > 0;
+  res.status(operational ? 200 : 503).json({
     ok: true,
     provider: DEFAULT_PROVIDER,
     defaultProvider: DEFAULT_PROVIDER,
@@ -1959,9 +1960,9 @@ app.get("/api/health", (_req, res) =>
         TOTAL_USD_PER_MILLION,
       ),
     },
-    hasKey: PROVIDERS.length > 0,
-  }),
-);
+    hasKey: operational,
+  });
+});
 
 app.post("/api/layout", async (req, res) => {
   const pages = Array.isArray(req.body?.pages) ? req.body.pages : [];

@@ -14,7 +14,6 @@ import {
 import { useEffect, useMemo, useState } from "react"
 
 import { ExamsService } from "@/client"
-import { ConfBadge } from "@/components/Common/ConfBadge"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { Tag, type TagVariant } from "@/components/Common/Tag"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
@@ -115,35 +114,6 @@ type Revision = {
   published_at: string | null
 }
 
-const providerModels: Record<string, string[]> = {
-  pomoai: [
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "claude-fable-5",
-    "claude-opus-4-8",
-    "claude-opus-4-6",
-    "gemini-3.5-flash",
-    "grok-4.5",
-  ],
-  fluxnode_gemini: ["gemini-3.5-flash"],
-  fluxnode_grok: ["grok-4.5"],
-  kimi: [
-    "kimi-k2.7-code",
-    "kimi-k2.7-code-highspeed",
-    "kimi-k2.6",
-    "kimi-k2.5",
-  ],
-}
-
-const providerLabels: Record<string, string> = {
-  pomoai: "聚合平台",
-  fluxnode_gemini: "智能识别",
-  fluxnode_grok: "Grok",
-  kimi: "Kimi",
-}
-
 function formatMs(value?: number) {
   if (value === undefined) return "—"
   return value >= 1000 ? `${(value / 1000).toFixed(2)} 秒` : `${value} 毫秒`
@@ -233,7 +203,9 @@ function AnswerItemRow({
           {statusLabel}
         </Tag>
         {item.confidence !== null && item.confidence < 0.8 && (
-          <ConfBadge value={item.confidence * 100} className="shrink-0" />
+          <Tag variant="amber" className="shrink-0">
+            请复核
+          </Tag>
         )}
         {error && (
           <span className="shrink-0 text-xs text-destructive">{error}</span>
@@ -312,8 +284,9 @@ function AnswerItemRow({
           </div>
           {item.confidence !== null && (
             <div className="flex items-center gap-1 text-muted-foreground text-xs">
-              置信度
-              <ConfBadge value={item.confidence * 100} />
+              {item.confidence < 0.8
+                ? "此答案依据可能不完整，请人工确认"
+                : "答案内容已完成初步检查"}
             </div>
           )}
         </div>
@@ -327,8 +300,6 @@ function AnswerWorkspace() {
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [mode, setMode] = useState<"model" | "document">("model")
-  const [provider, setProvider] = useState("pomoai")
-  const [model, setModel] = useState("gpt-5.6-sol")
   const [selectedDocuments, setSelectedDocuments] = useState<string[]>([])
   const [activeRunId, setActiveRunId] = useState<string | null>(null)
   const [drafts, setDrafts] = useState<Record<string, AnswerDraft>>({})
@@ -460,14 +431,9 @@ function AnswerWorkspace() {
   const confirmedQuestions = (questions.data?.data ?? []).filter(
     (question) => question.status === "confirmed",
   )
-  const averageConfidence = useMemo(() => {
-    const values = (items.data ?? [])
-      .map((item) => item.confidence)
-      .filter((value): value is number => value !== null)
-    return values.length
-      ? values.reduce((sum, value) => sum + value, 0) / values.length
-      : null
-  }, [items.data])
+  const reviewItemCount = (items.data ?? []).filter(
+    (item) => item.confidence !== null && item.confidence < 0.8,
+  ).length
   const draftTotalScore = useMemo(
     () =>
       (items.data ?? []).reduce(
@@ -491,15 +457,13 @@ function AnswerWorkspace() {
         method: "POST",
         body: JSON.stringify({
           source_type: mode,
-          provider,
-          model,
           document_ids: mode === "document" ? selectedDocuments : [],
         }),
       }),
     onSuccess: (created) => {
       setActiveRunId(created.id)
       showSuccessToast(
-        mode === "model" ? "模型解题任务已启动" : "答案文档整理任务已启动",
+        mode === "model" ? "参考答案生成任务已启动" : "答案文档整理任务已启动",
       )
       queryClient.invalidateQueries({
         queryKey: ["answer-preparation-runs", examId],
@@ -578,8 +542,7 @@ function AnswerWorkspace() {
     <div className="grid gap-6">
       <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <p className="max-w-3xl text-muted-foreground text-sm">
-          标准答案只在新卷子首次建库时准备一次。默认用 GPT-5.6 SOL
-          根据已确认题目解题，也可以上传答案文档整理；所有答案和评分准则必须人工确认，发布后形成不可变版本，后续批改复用该版本。
+          标准答案只在新卷子首次建库时准备一次。系统会根据已确认题目和题目图片准备参考答案，也可以上传答案文档整理；所有答案和评分准则必须人工确认，发布后形成不可变版本，后续批改复用该版本。
         </p>
         <div className="flex flex-wrap gap-2">
           <Tag variant="mint">{confirmedQuestions.length} 道已确认题目</Tag>
@@ -617,7 +580,7 @@ function AnswerWorkspace() {
                   <TabsList>
                     <TabsTrigger value="model">
                       <Sparkles />
-                      模型独立解题
+                      自动生成
                     </TabsTrigger>
                     <TabsTrigger value="document">
                       <Upload />
@@ -625,46 +588,8 @@ function AnswerWorkspace() {
                     </TabsTrigger>
                   </TabsList>
                 </Tabs>
-                <div className="flex flex-wrap gap-3">
-                  <div className="grid min-w-44 gap-1">
-                    <Label>提供者</Label>
-                    <Select
-                      value={provider}
-                      onValueChange={(value) => {
-                        setProvider(value)
-                        setModel(providerModels[value][0])
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {Object.keys(providerModels).map((value) => (
-                          <SelectItem key={value} value={value}>
-                            {providerLabels[value] ?? value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="grid min-w-60 gap-1">
-                    <Label>模型</Label>
-                    <Select value={model} onValueChange={setModel}>
-                      <SelectTrigger>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {providerModels[provider].map((value) => (
-                          <SelectItem key={value} value={value}>
-                            {value}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
                 <div className="max-w-3xl text-xs text-muted-foreground">
-                  模型独立解题会读取已确认题干和题目裁图生成标准答案、满分和评分点；答案文档模式只整理文档中已有答案，未匹配或冲突项需要人工处理。
+                  系统按本校处理方案读取已确认题干和题目裁图，生成参考答案、满分和评分点；答案文档模式只整理文档中已有答案，未匹配或冲突项需要人工处理。
                 </div>
               </div>
               <Button
@@ -763,8 +688,10 @@ function AnswerWorkspace() {
                 >
                   {(runs.data?.data ?? []).map((candidate, index) => (
                     <option key={candidate.id} value={candidate.id}>
-                      批次 {runs.data!.data.length - index} ·{" "}
-                      {candidate.provider}/{candidate.model}
+                      批次 {runs.data!.data.length - index} ·
+                      {candidate.source_type === "model"
+                        ? "自动生成"
+                        : "答案文档"}
                     </option>
                   ))}
                 </select>
@@ -773,22 +700,15 @@ function AnswerWorkspace() {
                 {[
                   [
                     "来源",
-                    current.source_type === "model" ? "模型解题" : "答案文档",
+                    current.source_type === "model" ? "自动生成" : "答案文档",
                   ],
-                  ["提供者", current.provider],
-                  ["模型", current.model],
-                  ["模型耗时", formatMs(current.timing.modelMs)],
+                  ["准备耗时", formatMs(current.timing.modelMs)],
                   ["总耗时", formatMs(current.timing.totalElapsedMs)],
                   [
                     "草稿总分",
                     items.data?.length ? `${draftTotalScore} 分` : "—",
                   ],
-                  [
-                    "平均置信度",
-                    averageConfidence === null
-                      ? "—"
-                      : `${Math.round(averageConfidence * 100)}%`,
-                  ],
+                  ["需要复核", `${reviewItemCount} 道`],
                 ].map(([label, value]) => (
                   <div key={label} className="min-w-0 bg-background px-4 py-3">
                     <div className="text-muted-foreground text-xs">{label}</div>
@@ -945,7 +865,6 @@ function AnswerWorkspace() {
                         {revision.answer_text}
                       </div>
                       <div className="mt-1 text-muted-foreground text-xs">
-                        {revision.source_provider}/{revision.source_model} ·
                         满分 {revision.max_score} ·{" "}
                         {revision.scoring_points.length} 个评分点
                       </div>

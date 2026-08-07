@@ -4,11 +4,11 @@ from app.core.config import settings
 
 
 def test_upload_file(
-    client: TestClient, superuser_token_headers: dict[str, str]
+    client: TestClient, school_owner_token_headers: dict[str, str]
 ) -> None:
     response = client.post(
         f"{settings.API_V1_STR}/files/upload",
-        headers=superuser_token_headers,
+        headers=school_owner_token_headers,
         files={"file": ("sample.txt", b"hello exam grader", "text/plain")},
     )
     assert response.status_code == 200

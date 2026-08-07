@@ -310,6 +310,10 @@ def detect_page_polygons_with_gemini(
                     ],
                 }
             ],
+            # Perspective correction remains OpenCV-based. The model is only
+            # used to identify page boundaries when the traditional detector
+            # needs a visual judgment.
+            workflow_purpose="region_detection",
         )
     except VisionGradingError as exc:
         return GeminiPagePolygonDetection(
@@ -365,6 +369,7 @@ def detect_page_polygons_with_gemini(
                         ],
                     }
                 ],
+                workflow_purpose="region_detection",
             )
             retry_quads, retry_confidences, retry_labels = (
                 extract_page_polygon_candidates(

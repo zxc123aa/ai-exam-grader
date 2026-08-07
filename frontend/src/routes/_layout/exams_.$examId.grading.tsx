@@ -1,22 +1,21 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
+  AlertCircle,
   CheckCircle2,
   Clock3,
   PenLine,
   Play,
   RefreshCw,
-  Settings2,
+  Send,
 } from "lucide-react"
-import { useMemo } from "react"
+import { useMemo, useState } from "react"
 
 import { ExamsService } from "@/client"
 import { resolveRole } from "@/components/Admin/roleMeta"
-import { ConfBadge } from "@/components/Common/ConfBadge"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { PageHead } from "@/components/Common/PageHead"
 import { ProgressBar } from "@/components/Common/ProgressBar"
-import { RunSettingsForm } from "@/components/Common/RunSettingsForm"
 import { Tag, type TagVariant } from "@/components/Common/Tag"
 import {
   GradingAssignmentsCard,
@@ -25,13 +24,14 @@ import {
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet"
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
 import {
   Table,
   TableBody,
@@ -46,7 +46,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import useAuth from "@/hooks/useAuth"
-import { useRunSettings } from "@/hooks/useRunSettings"
+import useCustomToast from "@/hooks/useCustomToast"
 import { workflowApi } from "@/lib/workflow-api"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/grading")({
@@ -96,10 +96,18 @@ type ReviewItem = {
   risk: string
   priority: number
 }
+type ScoreRelease = {
+  id: string
+  version: number
+  status: "published" | "superseded"
+  item_count: number
+  published_at: string
+}
 const gradingRunStatusTags: Record<
   string,
   { label: string; variant: TagVariant }
 > = {
+  awaiting_credits: { label: "等待服务资源", variant: "amber" },
   queued: { label: "排队中", variant: "indigo" },
   running: { label: "批改中", variant: "sky" },
   completed: { label: "已完成", variant: "mint" },
@@ -109,10 +117,9 @@ const gradingRunStatusTags: Record<
 
 /**
  * 复核原因 → 老师看得懂的文案（唯一的映射处）。
- * 后端只给风险类别与综合置信度：镜像/配准异常归为「答案字迹不清」，
+ * 后端只给风险类别与综合判断：镜像/配准异常归为「答案字迹不清」，
  * 得分压在 0 分或满分边界的归为「分数接近边界」，
- * 其余低置信度/模型失败归为「评分依据不足」。
- * 置信度百分比只在条目最右侧以 muted 小字展示，不进主文案。
+ * 其余自动处理异常归为「评分依据不足」。
  */
 function reviewReasonText(item: ReviewItem): string {
   if (item.risk === "镜像/配准异常") return "答案字迹不清"
@@ -139,34 +146,26 @@ function GradingWorkspace() {
   const { examId } = Route.useParams()
   const client = useQueryClient()
   const { user } = useAuth()
-  // 分配管理仅管理角色；模型/阈值/并发的单次覆盖对所有可批改角色（含普通老师）开放
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+  // 分配管理仅管理角色；老师只看到面向批改任务的业务设置。
   const role = user ? resolveRole(user) : "teacher"
-  const isManager = [
-    "school_owner",
-    "school_admin",
-    "platform_superuser",
-  ].includes(role)
-  const canCustomizeRun = role !== "student"
+  const isManager = ["school_owner", "school_admin"].includes(role)
   const examQuery = useQuery({
     queryKey: ["exam", examId],
     queryFn: () => ExamsService.readExam({ examId }),
   })
   const canManageAssignments =
     isManager || (user != null && examQuery.data?.owner_id === user.id)
+  const canPublishScores =
+    role === "school_owner" ||
+    (user != null && examQuery.data?.owner_id === user.id)
   const assignmentsQuery = useGradingAssignments(examId, canManageAssignments)
   // 共享批卷开启但未分完时后端会 400，前端在按钮旁先提示
   const unassignedCount =
     (assignmentsQuery.data?.enabled &&
       assignmentsQuery.data?.unassigned?.length) ||
     0
-  const { runSettings } = useRunSettings()
-  const {
-    provider,
-    model,
-    threshold,
-    parallelSubmissions,
-    concurrencyPerSubmission,
-  } = runSettings
   const runs = useQuery({
     queryKey: ["grading-runs", examId],
     queryFn: () =>
@@ -177,6 +176,14 @@ function GradingWorkspace() {
     queryKey: ["exam-score-summary", examId],
     queryFn: () => ExamsService.readExamScoresSummary({ examId }),
     refetchInterval: 10000,
+  })
+  const currentRelease = useQuery({
+    queryKey: ["score-release", examId],
+    queryFn: () =>
+      workflowApi<ScoreRelease | null>(
+        `/grading/exams/${examId}/score-releases/current`,
+      ),
+    enabled: canPublishScores,
   })
   // 一个学生多张照片 = 多条 submission，列表按 班级+姓名 合并展示：
   // 配准取最差状态，得分求和，复核链接指向该学生第一条答卷。
@@ -260,11 +267,6 @@ function GradingWorkspace() {
         method: "POST",
         body: JSON.stringify({
           exam_id: examId,
-          provider,
-          model,
-          review_threshold: Number(threshold),
-          max_parallel_submissions: Number(parallelSubmissions),
-          max_concurrency_per_submission: Number(concurrencyPerSubmission),
         }),
       }),
     onSuccess: (run) => {
@@ -287,6 +289,37 @@ function GradingWorkspace() {
     refetchInterval: latest?.status === "running" ? 3000 : false,
   })
   const reviewCount = reviewQueue.data?.length ?? 0
+  const totalPendingReview = (scoreSummary.data?.data ?? []).reduce(
+    (total, item) => total + (item.pending_review_count ?? 0),
+    0,
+  )
+  const unfinishedSubmissionCount = (scoreSummary.data?.data ?? []).filter(
+    (item) => item.total_score == null,
+  ).length
+  const batchStillRunning =
+    latest?.status === "queued" || latest?.status === "running"
+  const readyToPublish =
+    Boolean(scoreSummary.data?.data?.length) &&
+    totalPendingReview === 0 &&
+    unfinishedSubmissionCount === 0 &&
+    !batchStillRunning
+  const publishScores = useMutation({
+    mutationFn: () =>
+      workflowApi<ScoreRelease>(`/grading/exams/${examId}/score-releases`, {
+        method: "POST",
+        body: JSON.stringify({ reason: "教师确认整场成绩" }),
+      }),
+    onSuccess: (release) => {
+      setPublishDialogOpen(false)
+      client.setQueryData(["score-release", examId], release)
+      showSuccessToast(`成绩第 ${release.version} 版已发布，学生现在可以查看`)
+    },
+    onError: (error) => {
+      showErrorToast(
+        error instanceof Error ? error.message : "成绩暂时无法发布，请稍后重试",
+      )
+    },
+  })
   return (
     <div className="flex flex-col gap-6">
       <PageHead
@@ -319,29 +352,13 @@ function GradingWorkspace() {
                 还有 {unassignedCount} 个班未分配老师，分配后才能开始批改
               </span>
             )}
-            {canCustomizeRun && (
-              <Sheet>
-                <SheetTrigger asChild>
-                  <Button variant="ghost" size="sm">
-                    <Settings2 />
-                    批改设置
-                  </Button>
-                </SheetTrigger>
-                <SheetContent side="right" className="w-[360px]">
-                  <SheetHeader>
-                    <SheetTitle>批改设置</SheetTitle>
-                    <SheetDescription>
-                      只对之后发起的批改批次生效，不想折腾就用默认配置，直接点开始批改即可。
-                    </SheetDescription>
-                  </SheetHeader>
-                  <div className="grid gap-4 px-4 py-2">
-                    <RunSettingsForm />
-                  </div>
-                </SheetContent>
-              </Sheet>
-            )}
             <Button
-              className="bg-gradient-primary text-white hover:opacity-90 md:w-56"
+              variant={readyToPublish ? "outline" : "default"}
+              className={
+                readyToPublish
+                  ? "md:w-56"
+                  : "bg-gradient-primary text-white hover:opacity-90 md:w-56"
+              }
               onClick={() => create.mutate()}
               disabled={create.isPending}
             >
@@ -351,6 +368,59 @@ function GradingWorkspace() {
           </div>
         </CardContent>
       </Card>
+      {canPublishScores && (
+        <section className="flex flex-col gap-4 rounded-[10px] border border-border bg-card px-5 py-4 shadow-[0_1px_2px_rgba(0,0,0,.04)] sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-start gap-3">
+            <div className="mt-0.5 flex size-9 shrink-0 items-center justify-center rounded-full bg-muted">
+              {readyToPublish || currentRelease.data ? (
+                <CheckCircle2 className="size-5 text-emerald-600" />
+              ) : (
+                <AlertCircle className="size-5 text-amber-600" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <p className="font-medium text-sm">
+                {currentRelease.data
+                  ? `成绩第 ${currentRelease.data.version} 版已发布`
+                  : readyToPublish
+                    ? "复核已完成，可以发布成绩"
+                    : totalPendingReview > 0
+                      ? `还有 ${totalPendingReview} 道题待复核`
+                      : batchStillRunning
+                        ? "批改完成后再发布成绩"
+                        : "全部答卷形成成绩后即可发布"}
+              </p>
+              <p className="mt-1 text-muted-foreground text-xs">
+                {currentRelease.data
+                  ? "学生看到的是已发布版本；后续改分不会影响已发布成绩，需再次确认发布。"
+                  : "发布后学生才能查看成绩；未发布的建议结果仅老师可见。"}
+              </p>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {totalPendingReview > 0 && (
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  to="/exams/$examId/workbench"
+                  params={{ examId }}
+                  search={{ filter: "needs_review" }}
+                >
+                  去复核
+                </Link>
+              </Button>
+            )}
+            <Button
+              size="sm"
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={!readyToPublish || publishScores.isPending}
+              onClick={() => setPublishDialogOpen(true)}
+            >
+              <Send />
+              {currentRelease.data ? "发布新版本" : "确认并发布成绩"}
+            </Button>
+          </div>
+        </section>
+      )}
       <Card className="rounded-2xl shadow-card">
         <CardHeader>
           <CardTitle className="font-medium text-sm">
@@ -472,14 +542,6 @@ function GradingWorkspace() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-3 text-sm md:grid-cols-8">
-              {canCustomizeRun && (
-                <div>
-                  <span className="text-muted-foreground">模型</span>
-                  <p>
-                    {latest.provider} / {latest.model}
-                  </p>
-                </div>
-              )}
               <div>
                 <span className="text-muted-foreground">进度</span>
                 <p>
@@ -501,19 +563,20 @@ function GradingWorkspace() {
                 <p>{latest.extracted_items}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">判分方式</span>
+                <span className="text-muted-foreground">处理结果</span>
                 <p>
-                  规则 {latest.objective_items} / GPT {latest.subjective_items}
+                  客观题 {latest.objective_items} / 主观题{" "}
+                  {latest.subjective_items}
                 </p>
               </div>
               <div>
-                <span className="text-muted-foreground">平均置信度</span>
+                <span className="text-muted-foreground">自动检查</span>
                 <p>
-                  {latest.average_confidence == null ? (
-                    "--"
-                  ) : (
-                    <ConfBadge value={latest.average_confidence * 100} />
-                  )}
+                  {latest.average_confidence == null
+                    ? "--"
+                    : latest.average_confidence < 0.8
+                      ? "部分题目需复核"
+                      : "未发现集中异常"}
                 </p>
               </div>
               <div>
@@ -525,10 +588,8 @@ function GradingWorkspace() {
                 <p>{latest.failed_count}</p>
               </div>
               <div>
-                <span className="text-muted-foreground">并发 / 降速</span>
-                <p>
-                  {latest.current_concurrency} / {latest.throttle_count}
-                </p>
+                <span className="text-muted-foreground">处理状态</span>
+                <p>{latest.throttle_count ? "服务繁忙，已自动调节" : "正常"}</p>
               </div>
               <div>
                 <span className="text-muted-foreground">提取耗时</span>
@@ -632,11 +693,6 @@ function GradingWorkspace() {
                       </TableCell>
                       <TableCell>
                         <div className="flex items-center justify-end gap-3">
-                          {item.confidence != null && (
-                            <span className="text-muted-foreground text-xs tabular-nums">
-                              置信 {Math.round(item.confidence * 100)}%
-                            </span>
-                          )}
                           <Button variant="outline" size="sm" asChild>
                             <Link
                               to="/exams/$examId/workbench"
@@ -659,6 +715,35 @@ function GradingWorkspace() {
           </CardContent>
         </Card>
       )}
+      <Dialog open={publishDialogOpen} onOpenChange={setPublishDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>确认发布整场成绩？</DialogTitle>
+            <DialogDescription>
+              发布后，学生将立即看到本次确认的分数和评语。系统会保存不可变版本，后续改分需要再次发布。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-[10px] border bg-muted/40 px-4 py-3 text-sm">
+            本次将发布 {mergedStudents.length} 名学生的成绩
+            {currentRelease.data
+              ? `，生成第 ${currentRelease.data.version + 1} 版`
+              : ""}
+            。
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">取消</Button>
+            </DialogClose>
+            <Button
+              className="bg-primary text-primary-foreground hover:bg-primary/90"
+              disabled={publishScores.isPending}
+              onClick={() => publishScores.mutate()}
+            >
+              {publishScores.isPending ? "正在发布…" : "确认发布"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

@@ -1,5 +1,6 @@
 import { useSuspenseQuery } from "@tanstack/react-query"
-import { createFileRoute, redirect } from "@tanstack/react-router"
+import { createFileRoute, Link, redirect } from "@tanstack/react-router"
+import { School } from "lucide-react"
 import { Suspense } from "react"
 
 import { type UserPublic, UsersService } from "@/client"
@@ -9,6 +10,7 @@ import { columns, type UserTableData } from "@/components/Admin/columns"
 import { resolveRole } from "@/components/Admin/roleMeta"
 import { DataTable } from "@/components/Common/DataTable"
 import PendingUsers from "@/components/Pending/PendingUsers"
+import { Button } from "@/components/ui/button"
 import useAuth from "@/hooks/useAuth"
 
 function getUsersQueryOptions() {
@@ -18,7 +20,7 @@ function getUsersQueryOptions() {
   }
 }
 
-/** 可进入用户管理的角色：平台超管 + 学校管理者（学校角色后端已限定本校数据）。 */
+/** 平台超管维护平台账号；学校管理者维护本校账号。 */
 const ADMIN_ROLES = ["platform_superuser", "school_owner", "school_admin"]
 
 export const Route = createFileRoute("/_layout/admin")({
@@ -62,19 +64,32 @@ function UsersTable() {
 
 function Admin() {
   const { user: currentUser } = useAuth()
+  const currentRole = currentUser ? resolveRole(currentUser) : null
   const canBatchImport =
-    currentUser && ADMIN_ROLES.includes(resolveRole(currentUser))
+    currentRole === "school_owner" || currentRole === "school_admin"
+  const isPlatformAccountPage = currentRole === "platform_superuser"
+  const subtitle = isPlatformAccountPage
+    ? "维护点凡平台内部管理员与运营账号"
+    : "维护本校账号、角色和任教信息"
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">用户管理</h1>
-          <p className="text-muted-foreground">
-            Manage user accounts and permissions
-          </p>
+          <h1 className="text-2xl font-bold tracking-tight">
+            {isPlatformAccountPage ? "平台账号" : "用户管理"}
+          </h1>
+          <p className="text-muted-foreground">{subtitle}</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          {isPlatformAccountPage && (
+            <Button variant="outline" asChild>
+              <Link to="/platform">
+                <School />
+                学校账号
+              </Link>
+            </Button>
+          )}
           {canBatchImport && <BatchAddTeachers />}
           <AddUser />
         </div>

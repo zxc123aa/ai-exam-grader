@@ -334,31 +334,28 @@ def test_submission_resolves_to_same_org_class(
     assert len(student_rows) == 1
 
 
-def test_platform_superuser_sees_all_and_create_requires_org(
+def test_platform_superuser_cannot_access_school_exam_business(
     client: TestClient, db: Session, superuser_token_headers: dict[str, str]
 ) -> None:
-    """平台超管：跨校全可见；创建考试必须显式指定 org_id。"""
+    """卖方平台账号不能读取或代建学校考试。"""
     org_a = _create_org(db, "学校H")
     teacher, pw = _create_user(db, UserRole.TEACHER, org_a)
     headers = _headers(client, teacher, pw)
-    exam = _create_exam(client, headers, "平台可见性考试")
+    _create_exam(client, headers, "平台可见性考试")
 
     r = client.get(f"{settings.API_V1_STR}/exams/", headers=superuser_token_headers)
-    assert any(item["id"] == exam["id"] for item in r.json()["data"])
+    assert r.status_code == 403
 
-    # 不带 org_id → 400
     r = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
         json={"title": "缺学校"},
     )
-    assert r.status_code == 400
+    assert r.status_code == 403
 
-    # 显式指定 org_id → 200，考试挂到该校
     r = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=superuser_token_headers,
         json={"title": "平台代建", "org_id": str(org_a.id)},
     )
-    assert r.status_code == 200
-    assert r.json()["org_id"] == str(org_a.id)
+    assert r.status_code == 403

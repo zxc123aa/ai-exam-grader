@@ -356,6 +356,16 @@ def test_bind_account_flow(client: TestClient, db: Session) -> None:
     )
     assert r.status_code == 200
     assert r.json()["user_id"] == str(student_user.id)
+    assert r.json()["account_email"] == student_user.email
+
+    listed = client.get(
+        f"{settings.API_V1_STR}/classes/{class_id}/students", headers=headers
+    )
+    assert listed.status_code == 200
+    listed_student = next(
+        item for item in listed.json()["data"] if item["id"] == student_a["id"]
+    )
+    assert listed_student["account_email"] == student_user.email
 
     # 同一账号已绑定其他学生 → 400
     r = client.post(

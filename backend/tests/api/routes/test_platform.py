@@ -1,6 +1,7 @@
 """阶段 3 测试：平台管理端点、学校设置端点、公开注册关闭、用户管理学校隔离。"""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
@@ -8,14 +9,21 @@ from sqlmodel import Session, select
 from app import crud
 from app.core.config import settings
 from app.models import (
+    BillingRateVersion,
+    ClassGroup,
     Exam,
     ExamQuestion,
     ExamQuestionStatus,
+    ModelUsageEvent,
+    ModelUsageStatus,
     Organization,
     StandardAnswer,
     StandardAnswerRevision,
     StandardAnswerRevisionStatus,
+    Student,
     SystemConfig,
+    TeacherClassLink,
+    UsageReconciliationStatus,
     User,
     UserCreate,
     UserRole,
@@ -63,12 +71,77 @@ def _support_headers(client: TestClient, db: Session) -> dict[str, str]:
     return _headers(client, support, password)
 
 
+def _platform_admin_headers(
+    client: TestClient, db: Session
+) -> tuple[User, dict[str, str]]:
+    admin, password = _create_user(db, UserRole.PLATFORM_ADMIN, None)
+    return admin, _headers(client, admin, password)
+
+
 # ---------- 平台端点权限矩阵 ----------
 
 
-def test_support_can_read_orgs(
-    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+def test_platform_admin_manages_sales_control_plane_only(
+    client: TestClient, db: Session
 ) -> None:
+    _admin, headers = _platform_admin_headers(client, db)
+    org_code = f"admin-org-{random_lower_string()[:12]}"
+
+    created = client.post(
+        f"{PLATFORM_URL}/orgs",
+        headers=headers,
+        json={"name": "平台管理员创建学校", "code": org_code},
+    )
+    assert created.status_code == 200
+    assert (
+        client.get(f"{PLATFORM_URL}/system-config", headers=headers).status_code == 403
+    )
+    assert (
+        client.get(f"{PLATFORM_URL}/billing/rates", headers=headers).status_code == 200
+    )
+    assert (
+        client.get(f"{PLATFORM_URL}/provider-channels", headers=headers).status_code
+        == 403
+    )
+
+    for path in ("/users/", "/exams/", "/classes/"):
+        assert (
+            client.get(f"{settings.API_V1_STR}{path}", headers=headers).status_code
+            == 403
+        )
+
+    platform_account = client.post(
+        f"{settings.API_V1_STR}/users/",
+        headers=headers,
+        json={
+            "email": random_email(),
+            "password": random_lower_string(),
+            "role": "platform_support",
+        },
+    )
+    assert platform_account.status_code == 403
+
+    superuser = crud.get_user_by_email(session=db, email=settings.FIRST_SUPERUSER)
+    assert superuser
+    assert (
+        client.patch(
+            f"{settings.API_V1_STR}/users/{superuser.id}",
+            headers=headers,
+            json={"full_name": "不应成功"},
+        ).status_code
+        == 403
+    )
+
+    support, _password = _create_user(db, UserRole.PLATFORM_SUPPORT, None)
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/users/{support.id}", headers=headers
+        ).status_code
+        == 403
+    )
+
+
+def test_support_can_read_orgs(client: TestClient, db: Session) -> None:
     org = _create_org(db, "运营可见学校")
     headers = _support_headers(client, db)
 
@@ -102,7 +175,7 @@ def test_support_cannot_write_orgs(client: TestClient, db: Session) -> None:
     assert r.status_code == 403
 
     r = client.patch(
-        f"{PLATFORM_URL}/orgs/{org.id}", headers=headers, json={"status": "suspended"}
+        f"{PLATFORM_URL}/orgs/{org.id}", headers=headers, json={"status": "frozen"}
     )
     assert r.status_code == 403
 
@@ -114,9 +187,7 @@ def test_support_cannot_write_orgs(client: TestClient, db: Session) -> None:
     assert r.status_code == 403
 
 
-def test_school_roles_forbidden_from_platform(
-    client: TestClient, db: Session
-) -> None:
+def test_school_roles_forbidden_from_platform(client: TestClient, db: Session) -> None:
     org = _create_org(db, "学校角色禁入平台")
     owner, owner_pw = _create_user(db, UserRole.SCHOOL_OWNER, org)
     teacher, teacher_pw = _create_user(db, UserRole.TEACHER, org)
@@ -126,6 +197,159 @@ def test_school_roles_forbidden_from_platform(
         assert r.status_code == 403
         r = client.get(f"{PLATFORM_URL}/orgs/{org.id}", headers=headers)
         assert r.status_code == 403
+
+
+def _create_usage_event(
+    db: Session,
+    *,
+    org: Organization,
+    purpose: str,
+    status: ModelUsageStatus,
+    total_tokens: int,
+    customer_microcredits: int,
+    internal_cost_micrormb: int,
+    latency_ms: int,
+    fallback_used: bool = False,
+) -> ModelUsageEvent:
+    event = ModelUsageEvent(
+        org_id=org.id,
+        resource_id=f"usage-{uuid.uuid4()}",
+        workflow_purpose=purpose,
+        requested_provider="openai",
+        requested_model="gpt-5.6-sol",
+        actual_provider="relay-a",
+        actual_model="gpt-5.6-sol",
+        input_tokens=max(total_tokens - 100, 0),
+        output_tokens=min(total_tokens, 100),
+        image_tokens=50,
+        reasoning_tokens=25,
+        total_tokens=total_tokens,
+        latency_ms=latency_ms,
+        status=status,
+        fallback_used=fallback_used,
+        http_status=200 if status == ModelUsageStatus.SUCCEEDED else 502,
+        error_code=None if status == ModelUsageStatus.SUCCEEDED else "upstream_error",
+        customer_microcredits=customer_microcredits,
+        internal_cost_micrormb=internal_cost_micrormb,
+        billing_key=f"platform-usage-test:{uuid.uuid4()}",
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return event
+
+
+def test_platform_model_usage_overview_and_filters(
+    client: TestClient, db: Session
+) -> None:
+    org_a = _create_org(db, "调用统计甲校")
+    org_b = _create_org(db, "调用统计乙校")
+    event_a = _create_usage_event(
+        db,
+        org=org_a,
+        purpose="subjective_grading",
+        status=ModelUsageStatus.SUCCEEDED,
+        total_tokens=1_000,
+        customer_microcredits=1_500_000,
+        internal_cost_micrormb=800_000,
+        latency_ms=2_000,
+    )
+    event_a.upstream_cost_micrormb = 950_000
+    event_a.reconciliation_status = UsageReconciliationStatus.MISMATCH
+    db.add(event_a)
+    db.commit()
+    _create_usage_event(
+        db,
+        org=org_a,
+        purpose="question_recognition",
+        status=ModelUsageStatus.FAILED,
+        total_tokens=200,
+        customer_microcredits=250_000,
+        internal_cost_micrormb=100_000,
+        latency_ms=4_000,
+        fallback_used=True,
+    )
+    _create_usage_event(
+        db,
+        org=org_b,
+        purpose="subjective_grading",
+        status=ModelUsageStatus.MISSING_USAGE,
+        total_tokens=0,
+        customer_microcredits=0,
+        internal_cost_micrormb=0,
+        latency_ms=3_000,
+    )
+    headers = _support_headers(client, db)
+
+    overview = client.get(
+        f"{PLATFORM_URL}/model-usage/overview?days=30", headers=headers
+    )
+    assert overview.status_code == 200, overview.text
+    data = overview.json()
+    assert data["summary"]["calls"] == 3
+    assert data["summary"]["succeeded_calls"] == 1
+    assert data["summary"]["failed_calls"] == 1
+    assert data["summary"]["missing_usage_calls"] == 1
+    assert data["summary"]["success_rate"] == 0.3333
+    assert data["summary"]["total_tokens"] == 1_200
+    assert data["summary"]["customer_credits"] == 1.75
+    assert data["summary"]["internal_cost_rmb"] == 0.9
+    assert data["summary"]["upstream_cost_rmb"] == 0.95
+    assert data["summary"]["reconciled_internal_cost_rmb"] == 0.8
+    assert data["summary"]["cost_variance_rmb"] == 0.15
+    assert data["summary"]["reconciled_calls"] == 1
+    assert data["summary"]["unreconciled_calls"] == 2
+    assert data["summary"]["average_latency_ms"] == 3_000
+    assert data["summary"]["fallback_calls"] == 1
+    org_row = next(
+        row for row in data["organizations"] if row["org_id"] == str(org_a.id)
+    )
+    assert org_row["calls"] == 2
+    purpose_row = next(
+        row for row in data["purposes"] if row["key"] == "subjective_grading"
+    )
+    assert purpose_row["label"] == "主观题判分"
+    assert purpose_row["calls"] == 2
+
+    scoped = client.get(
+        f"{PLATFORM_URL}/model-usage/overview?days=30&org_id={org_a.id}",
+        headers=headers,
+    )
+    assert scoped.status_code == 200
+    assert scoped.json()["summary"]["calls"] == 2
+    assert len(scoped.json()["organizations"]) == 1
+
+    records = client.get(
+        f"{PLATFORM_URL}/model-usage"
+        f"?org_id={org_a.id}&purpose=subjective_grading&status=succeeded"
+        "&days=30&offset=0&limit=1",
+        headers=headers,
+    )
+    assert records.status_code == 200, records.text
+    payload = records.json()
+    assert payload["count"] == 1
+    assert len(payload["data"]) == 1
+    item = payload["data"][0]
+    assert item["id"] == str(event_a.id)
+    assert item["org_name"] == "调用统计甲校"
+    assert item["purpose_label"] == "主观题判分"
+    assert item["actual_model"] == "gpt-5.6-sol"
+    assert item["customer_credits"] == 1.5
+    assert item["internal_cost_rmb"] == 0.8
+    assert item["upstream_cost_rmb"] == 0.95
+    assert item["cost_variance_rmb"] == 0.15
+    assert item["reconciliation_status"] == "mismatch"
+
+
+def test_school_cannot_read_platform_model_usage(
+    client: TestClient, db: Session
+) -> None:
+    org = _create_org(db, "学校不可见平台调用")
+    owner, password = _create_user(db, UserRole.SCHOOL_OWNER, org)
+    headers = _headers(client, owner, password)
+    for path in ("/model-usage/overview", "/model-usage"):
+        response = client.get(f"{PLATFORM_URL}{path}", headers=headers)
+        assert response.status_code == 403
 
 
 # ---------- 建学校 / 追加 owner ----------
@@ -230,11 +454,11 @@ def test_update_org_status_and_info(
     r = client.patch(
         f"{PLATFORM_URL}/orgs/{org.id}",
         headers=superuser_token_headers,
-        json={"status": "suspended", "contact_name": "李四"},
+        json={"status": "frozen", "contact_name": "李四"},
     )
     assert r.status_code == 200, r.text
     data = r.json()
-    assert data["status"] == "suspended"
+    assert data["status"] == "frozen"
     assert data["contact_name"] == "李四"
 
     # 非法 status 被 schema 拒绝
@@ -244,6 +468,37 @@ def test_update_org_status_and_info(
         json={"status": "deleted"},
     )
     assert r.status_code == 422
+
+
+def test_org_service_state_is_enforced_for_existing_sessions(
+    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+) -> None:
+    org = _create_org(db, "服务状态学校")
+    owner, password = _create_user(db, UserRole.SCHOOL_OWNER, org)
+    headers = _headers(client, owner, password)
+
+    assert client.get(f"{ORG_URL}/settings", headers=headers).status_code == 200
+    client.patch(
+        f"{PLATFORM_URL}/orgs/{org.id}",
+        headers=superuser_token_headers,
+        json={"status": "read_only"},
+    )
+    assert client.get(f"{ORG_URL}/settings", headers=headers).status_code == 200
+    assert (
+        client.patch(
+            f"{ORG_URL}/settings",
+            headers=headers,
+            json={"contact_name": "不应写入"},
+        ).status_code
+        == 423
+    )
+
+    client.patch(
+        f"{PLATFORM_URL}/orgs/{org.id}",
+        headers=superuser_token_headers,
+        json={"status": "frozen"},
+    )
+    assert client.get(f"{ORG_URL}/settings", headers=headers).status_code == 403
 
 
 def test_org_not_found_404(
@@ -274,7 +529,11 @@ def test_add_org_owner(
     r = client.post(
         f"{PLATFORM_URL}/orgs/{org.id}/owners",
         headers=superuser_token_headers,
-        json={"email": email, "full_name": "第二校长", "password": random_lower_string()},
+        json={
+            "email": email,
+            "full_name": "第二校长",
+            "password": random_lower_string(),
+        },
     )
     assert r.status_code == 200, r.text
     data = r.json()
@@ -324,6 +583,43 @@ def test_org_stats_counts(
     assert data["exam_count"] == 1
     assert data["student_count"] == 2
     assert data["teacher_count"] == 2  # owner + teacher
+
+
+def test_platform_admin_grants_customer_answer_quota(
+    client: TestClient, db: Session
+) -> None:
+    _admin, headers = _platform_admin_headers(client, db)
+    org = _create_org(db, "答卷额度学校")
+    rate = BillingRateVersion(
+        version=f"quota-{uuid.uuid4().hex[:10]}",
+        effective_at=datetime.now(UTC) - timedelta(days=1),
+        input_microcredits_per_million=0,
+        output_microcredits_per_million=0,
+        image_microcredits_per_million=0,
+    )
+    db.add(rate)
+    db.commit()
+    contract = client.put(
+        f"{PLATFORM_URL}/orgs/{org.id}/subscription",
+        headers=headers,
+        json={
+            "contract_no": f"QA-{uuid.uuid4().hex[:12]}",
+            "plan_code": "school-standard",
+            "status": "active",
+            "starts_at": (datetime.now(UTC) - timedelta(days=1)).isoformat(),
+            "ends_at": (datetime.now(UTC) + timedelta(days=365)).isoformat(),
+            "rate_version_id": str(rate.id),
+        },
+    )
+    assert contract.status_code == 200, contract.text
+    granted = client.post(
+        f"{PLATFORM_URL}/orgs/{org.id}/answer-quota",
+        headers=headers,
+        json={"answers": 5000, "source": "subscription", "note": "年度合同"},
+    )
+    assert granted.status_code == 200, granted.text
+    assert granted.json()["available_answers"] == 5000
+    assert granted.json()["consumed_answers"] == 0
 
 
 # ---------- 学校设置端点 ----------
@@ -391,17 +687,24 @@ def test_org_settings_student_forbidden(client: TestClient, db: Session) -> None
     assert r.status_code == 403
 
 
-# ---------- 公开注册关闭 ----------
+# ---------- 公开注册开关 ----------
 
 
 def test_signup_closed(client: TestClient, db: Session) -> None:
     email = random_email()
     r = client.post(
         f"{settings.API_V1_STR}/users/signup",
-        json={"email": email, "password": random_lower_string()},
+        json={
+            "organization_type": "school",
+            "organization_name": "暂未开放学校",
+            "contact_name": "负责人",
+            "email": email,
+            "password": random_lower_string(),
+            "turnstile_token": "local-testing-token",
+        },
     )
     assert r.status_code == 403
-    assert r.json()["detail"] == "公开注册已关闭，请联系学校管理员创建账号"
+    assert r.json()["detail"] == "学校注册暂未开放"
     assert crud.get_user_by_email(session=db, email=email) is None
 
 
@@ -427,13 +730,112 @@ def test_users_list_scoped_to_own_org(
     # 看不到平台账号
     assert settings.FIRST_SUPERUSER not in emails
 
-    # 平台超管看全部
-    r = client.get(
-        f"{settings.API_V1_STR}/users/", headers=superuser_token_headers
+    # 平台账号页只维护点凡内部账号，学校人员统一从平台目录查看。
+    r = client.get(f"{settings.API_V1_STR}/users/", headers=superuser_token_headers)
+    users = {u["email"]: u for u in r.json()["data"]}
+    assert teacher_a.email not in users
+    assert teacher_b.email not in users
+    assert settings.FIRST_SUPERUSER in users
+
+
+def test_platform_directory_distinguishes_duplicate_students_and_bindings(
+    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+) -> None:
+    org_a = _create_org(db, "同名学校甲")
+    org_b = _create_org(db, "同名学校乙")
+    owner_a, _ = _create_user(db, UserRole.SCHOOL_OWNER, org_a)
+    owner_b, _ = _create_user(db, UserRole.SCHOOL_OWNER, org_b)
+    class_a = ClassGroup(name="高一 1 班", owner_id=owner_a.id, org_id=org_a.id)
+    class_b = ClassGroup(name="高二 3 班", owner_id=owner_b.id, org_id=org_b.id)
+    db.add(class_a)
+    db.add(class_b)
+    db.flush()
+
+    student_user, _ = _create_user(db, UserRole.STUDENT, org_a)
+    bound = Student(
+        name="张晨",
+        student_no="A-001",
+        class_id=class_a.id,
+        user_id=student_user.id,
     )
-    emails = {u["email"] for u in r.json()["data"]}
-    assert teacher_b.email in emails
-    assert settings.FIRST_SUPERUSER in emails
+    unbound = Student(name="张晨", student_no="B-009", class_id=class_b.id)
+    db.add(bound)
+    db.add(unbound)
+    db.commit()
+
+    response = client.get(
+        f"{PLATFORM_URL}/directory",
+        headers=superuser_token_headers,
+        params={"q": " 张晨 ", "category": "students"},
+    )
+    assert response.status_code == 200, response.text
+    payload = response.json()
+    assert payload["count"] == 2
+    rows = {item["person_no"]: item for item in payload["data"]}
+    assert rows["A-001"]["org_name"] == org_a.name
+    assert rows["A-001"]["class_name"] == "高一 1 班"
+    assert rows["A-001"]["link_status"] == "bound"
+    assert rows["A-001"]["email"] == student_user.email
+    assert rows["B-009"]["org_name"] == org_b.name
+    assert rows["B-009"]["class_name"] == "高二 3 班"
+    assert rows["B-009"]["link_status"] == "no_account"
+    assert rows["A-001"]["record_id"] != rows["B-009"]["record_id"]
+
+    response = client.get(
+        f"{PLATFORM_URL}/directory",
+        headers=superuser_token_headers,
+        params={"category": "unlinked", "org_id": str(org_b.id)},
+    )
+    assert response.status_code == 200
+    assert [item["person_no"] for item in response.json()["data"]] == ["B-009"]
+
+
+def test_platform_directory_searches_school_class_and_respects_permissions(
+    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+) -> None:
+    org = _create_org(db, "目录检索学校")
+    owner, owner_password = _create_user(db, UserRole.SCHOOL_OWNER, org)
+    teacher, _ = _create_user(db, UserRole.TEACHER, org)
+    teacher.full_name = "王老师"
+    teacher.employee_no = "T-008"
+    class_group = ClassGroup(name="星河班", owner_id=owner.id, org_id=org.id)
+    db.add(teacher)
+    db.add(class_group)
+    db.flush()
+    db.add(TeacherClassLink(user_id=teacher.id, class_id=class_group.id))
+    db.commit()
+
+    for query in ("王老师", "T-008", "星河班", "目录检索学校"):
+        response = client.get(
+            f"{PLATFORM_URL}/directory",
+            headers=superuser_token_headers,
+            params={
+                "q": query,
+                "org_id": str(org.id),
+                "category": "teachers",
+                "limit": 1,
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["count"] == 1
+        item = response.json()["data"][0]
+        assert item["user_id"] == str(teacher.id)
+        assert item["class_names"] == ["星河班"]
+
+    support_response = client.get(
+        f"{PLATFORM_URL}/directory",
+        headers=_support_headers(client, db),
+        params={"org_id": str(org.id), "offset": 0, "limit": 1},
+    )
+    assert support_response.status_code == 200
+    assert support_response.json()["count"] >= 2
+    assert len(support_response.json()["data"]) == 1
+
+    owner_headers = _headers(client, owner, owner_password)
+    assert (
+        client.get(f"{PLATFORM_URL}/directory", headers=owner_headers).status_code
+        == 403
+    )
 
 
 def test_school_owner_cannot_touch_other_org_user(
@@ -452,9 +854,7 @@ def test_school_owner_cannot_touch_other_org_user(
     )
     assert r.status_code == 403
 
-    r = client.delete(
-        f"{settings.API_V1_STR}/users/{teacher_b.id}", headers=headers
-    )
+    r = client.delete(f"{settings.API_V1_STR}/users/{teacher_b.id}", headers=headers)
     assert r.status_code == 403
 
 
@@ -585,19 +985,26 @@ def test_system_config_env_defaults_and_provider_status(
     assert data["grading_model"] == settings.GRADING_DEFAULT_MODEL
     assert data["fallback_models"] == [
         item.strip()
+        for item in settings.REASONING_FALLBACK_MODELS.split(",")
+        if item.strip()
+    ]
+    assert data["vision_fallback_models"] == [
+        item.strip()
         for item in settings.VISION_FALLBACK_MODELS.split(",")
         if item.strip()
     ]
+    assert data["reasoning_fallback_models"] == data["fallback_models"]
     assert data["review_threshold"] == 0.8
-    assert data["max_concurrency"] == 8
+    assert data["max_concurrency"] == 32
 
     statuses = {item["name"]: item["configured"] for item in data["providers"]}
-    assert statuses == {
+    expected = {
         "pomoai": bool(settings.PROVIDER_POMOAI_API_KEY.strip()),
         "fluxnode_gemini": bool(settings.PROVIDER_FLUXNODE_GEMINI_API_KEY.strip()),
         "fluxnode_grok": bool(settings.PROVIDER_FLUXNODE_GROK_API_KEY.strip()),
         "kimi": bool(settings.PROVIDER_KIMI_API_KEY.strip()),
     }
+    assert {name: statuses[name] for name in expected} == expected
     # 任何情况下都不回传 API Key
     assert "api_key" not in r.text and "API_KEY" not in r.text
 
@@ -610,20 +1017,20 @@ def test_system_config_partial_update_and_validation(
         r = client.patch(
             SYSTEM_CONFIG_URL,
             headers=superuser_token_headers,
-            json={"grading_model": "gpt-5.5", "review_threshold": 0.6},
+            json={"grading_model": "gpt-5.6-terra", "review_threshold": 0.6},
         )
         assert r.status_code == 200, r.text
         data = r.json()
         # 更新的键生效，未提交的键保持 env 默认
-        assert data["grading_model"] == "gpt-5.5"
+        assert data["grading_model"] == "gpt-5.6-terra"
         assert data["review_threshold"] == 0.6
         assert data["grading_provider"] == settings.GRADING_DEFAULT_PROVIDER
         assert data["vision_model"] == settings.VISION_DEFAULT_MODEL
-        assert data["max_concurrency"] == 8
+        assert data["max_concurrency"] == 32
 
         # 再次 GET 读到 DB 持久化的值
         r = client.get(SYSTEM_CONFIG_URL, headers=superuser_token_headers)
-        assert r.json()["grading_model"] == "gpt-5.5"
+        assert r.json()["grading_model"] == "gpt-5.6-terra"
 
         # 未知 provider → 422
         r = client.patch(
@@ -638,6 +1045,25 @@ def test_system_config_partial_update_and_validation(
             SYSTEM_CONFIG_URL,
             headers=superuser_token_headers,
             json={"vision_provider": "kimi"},
+        )
+        assert r.status_code == 422
+
+        r = client.patch(
+            SYSTEM_CONFIG_URL,
+            headers=superuser_token_headers,
+            json={"vision_fallback_models": ["gpt-5.6-sol"]},
+        )
+        assert r.status_code == 422
+        r = client.patch(
+            SYSTEM_CONFIG_URL,
+            headers=superuser_token_headers,
+            json={"reasoning_fallback_models": ["gemini-3.5-flash"]},
+        )
+        assert r.status_code == 422
+        r = client.patch(
+            SYSTEM_CONFIG_URL,
+            headers=superuser_token_headers,
+            json={"vision_fallback_models": None},
         )
         assert r.status_code == 422
 
@@ -659,12 +1085,15 @@ def test_system_config_partial_update_and_validation(
 
 
 def test_grading_run_uses_system_config_defaults(
-    client: TestClient, db: Session, superuser_token_headers: dict[str, str]
+    client: TestClient,
+    db: Session,
+    superuser_token_headers: dict[str, str],
+    school_owner_token_headers: dict[str, str],
+    school_owner_user: tuple[User, str],
 ) -> None:
     """DB 里的默认值优先于 env；请求未显式给的字段全部走系统设置。"""
     _clear_system_config(db)
-    superuser = crud.get_user_by_email(session=db, email=settings.FIRST_SUPERUSER)
-    assert superuser
+    school_owner = school_owner_user[0]
     default_org_id = uuid.UUID("00000000-0000-0000-0000-000000000001")
     try:
         r = client.patch(
@@ -682,7 +1111,7 @@ def test_grading_run_uses_system_config_defaults(
 
         exam = Exam(
             title="默认值考试",
-            owner_id=superuser.id,
+            owner_id=school_owner.id,
             org_id=default_org_id,
         )
         db.add(exam)
@@ -717,7 +1146,7 @@ def test_grading_run_uses_system_config_defaults(
             max_score=5,
             content_hash="a" * 64,
             status=StandardAnswerRevisionStatus.PUBLISHED,
-            created_by_id=superuser.id,
+            created_by_id=school_owner.id,
         )
         db.add(revision)
         db.commit()
@@ -728,7 +1157,7 @@ def test_grading_run_uses_system_config_defaults(
 
         r = client.post(
             f"{settings.API_V1_STR}/grading/runs",
-            headers=superuser_token_headers,
+            headers=school_owner_token_headers,
             json={"exam_id": str(exam.id)},
         )
         assert r.status_code == 200, r.text
@@ -746,18 +1175,20 @@ def test_grading_run_uses_system_config_defaults(
 
         r = client.post(
             f"{settings.API_V1_STR}/grading/runs",
-            headers=superuser_token_headers,
+            headers=school_owner_token_headers,
             json={
                 "exam_id": str(exam.id),
+                "review_threshold": 0.99,
                 "max_parallel_submissions": 3,
                 "max_concurrency_per_submission": 5,
             },
         )
         assert r.status_code == 200, r.text
         explicit_snapshot = r.json()["config_snapshot"]
+        assert explicit_snapshot["review_threshold"] == 0.55
         assert explicit_snapshot["max_parallel_submissions"] == 3
-        assert explicit_snapshot["max_concurrency_per_submission"] == 5
-        assert explicit_snapshot["max_concurrency"] == 15
+        assert explicit_snapshot["max_concurrency_per_submission"] == 1
+        assert explicit_snapshot["max_concurrency"] == 3
     finally:
         _clear_system_config(db)
 
@@ -794,21 +1225,21 @@ def test_system_config_pipeline_keys(
             SYSTEM_CONFIG_URL,
             headers=superuser_token_headers,
             json={
-                "region_provider": "kimi",
-                "region_model": "kimi-k2.6",
+                "region_provider": "fluxnode_gemini",
+                "region_model": "gemini-3.6-flash",
                 "recognition_provider": "pomoai",
-                "recognition_model": "gpt-5.5",
+                "recognition_model": "gemini-3.5-flash",
             },
         )
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["region_provider"] == "kimi"
-        assert data["region_model"] == "kimi-k2.6"
+        assert data["region_provider"] == "fluxnode_gemini"
+        assert data["region_model"] == "gemini-3.6-flash"
         assert data["recognition_provider"] == "pomoai"
-        assert data["recognition_model"] == "gpt-5.5"
+        assert data["recognition_model"] == "gemini-3.5-flash"
 
         r = client.get(SYSTEM_CONFIG_URL, headers=superuser_token_headers)
-        assert r.json()["recognition_model"] == "gpt-5.5"
+        assert r.json()["recognition_model"] == "gemini-3.5-flash"
 
         # region 组合不匹配（kimi 没有 gemini-3.5-flash）→ 422
         r = client.patch(

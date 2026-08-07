@@ -7,7 +7,7 @@ import time
 import uuid
 from decimal import Decimal
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import col, select
@@ -47,6 +47,7 @@ from app.models import (
     QuestionRecognitionRunPublic,
     QuestionRecognitionRunsPublic,
     QuestionRegionRole,
+    SchoolModelScope,
     StandardAnswer,
     StandardAnswerPublishRequest,
     StandardAnswerRevision,
@@ -58,15 +59,18 @@ from app.models import (
     WorkflowRunStatus,
     get_datetime_utc,
 )
+from app.services import billing as billing_service
 from app.services.file_storage import get_stored_file_path
 from app.services.org_scope import can_see_exam, can_write_exam
 from app.services.pdf_rendering import get_pdf_page_count
 from app.services.question_answer_workflow import (
-    execute_answer_preparation,
-    execute_question_recognition,
     persist_question_recognition_payload,
 )
-from app.services.system_config import get_grading_defaults
+from app.services.system_config import get_grading_defaults, get_school_model_target
+from app.worker import (
+    process_answer_preparation_run,
+    process_question_recognition_run,
+)
 
 router = APIRouter(
     prefix="/exams",
@@ -190,9 +194,9 @@ def create_question_recognition_run(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     run_in: QuestionRecognitionRunCreate,
-    background_tasks: BackgroundTasks,
 ) -> QuestionRecognitionRunPublic:
-    _owned_exam(session, current_user, exam_id, require_write=True)
+    exam = _owned_exam(session, current_user, exam_id, require_write=True)
+    billing_service.require_model_entitlement(session, exam.org_id)
     document_ids = list(dict.fromkeys(run_in.document_ids))
     documents = list(
         session.exec(
@@ -209,7 +213,7 @@ def create_question_recognition_run(
             status_code=422,
             detail="题目识别只能选择题目源页面：可以是空白卷，也可以是一份代表学生卷；答案文档请在标准答案页面导入",
         )
-    defaults = get_grading_defaults(session)
+    defaults = get_grading_defaults(session, exam.org_id)
     run = QuestionRecognitionRun(
         exam_id=exam_id,
         created_by_id=current_user.id,
@@ -219,9 +223,21 @@ def create_question_recognition_run(
         document_ids=[str(item) for item in document_ids],
     )
     session.add(run)
+    session.flush()
+    reservation = billing_service.reserve_task_or_raise(
+        session,
+        org_id=exam.org_id,
+        task_type="question_recognition",
+        resource_id=str(run.id),
+        idempotency_key=f"{exam.org_id}:question_recognition:{run.id}:v1",
+        expected_calls=max(1, len(document_ids)),
+    )
+    if reservation:
+        run.raw_output = {"billing_reservation_id": str(reservation.id)}
+        session.add(run)
     session.commit()
     session.refresh(run)
-    background_tasks.add_task(execute_question_recognition, str(run.id))
+    process_question_recognition_run.send(str(run.id))
     return _question_run_public(session, run)
 
 
@@ -668,9 +684,9 @@ def create_answer_preparation_run(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     run_in: AnswerPreparationRunCreate,
-    background_tasks: BackgroundTasks,
 ) -> AnswerPreparationRunPublic:
-    _owned_exam(session, current_user, exam_id, require_write=True)
+    exam = _owned_exam(session, current_user, exam_id, require_write=True)
+    billing_service.require_model_entitlement(session, exam.org_id)
     confirmed_count = session.exec(
         select(func.count())
         .select_from(ExamQuestion)
@@ -699,18 +715,46 @@ def create_answer_preparation_run(
             raise HTTPException(status_code=422, detail="答案文档模式只能选择答案文件")
     elif document_ids:
         raise HTTPException(status_code=422, detail="模型解题模式不需要答案文件")
+    defaults = get_grading_defaults(session, exam.org_id)
+    answer_provider, answer_model = get_school_model_target(
+        session,
+        org_id=exam.org_id,
+        scope=SchoolModelScope.REFERENCE_ANSWER,
+        fallback_provider=str(defaults["grading_provider"]),
+        fallback_model=str(defaults["grading_model"]),
+    )
     run = AnswerPreparationRun(
         exam_id=exam_id,
         created_by_id=current_user.id,
         source_type=run_in.source_type,
-        provider=run_in.provider,
-        model=run_in.model,
+        provider=(
+            str(defaults["recognition_provider"])
+            if run_in.source_type == AnswerPreparationSource.DOCUMENT
+            else answer_provider
+        ),
+        model=(
+            str(defaults["recognition_model"])
+            if run_in.source_type == AnswerPreparationSource.DOCUMENT
+            else answer_model
+        ),
         document_ids=[str(item) for item in document_ids],
     )
     session.add(run)
+    session.flush()
+    reservation = billing_service.reserve_task_or_raise(
+        session,
+        org_id=exam.org_id,
+        task_type="answer_preparation",
+        resource_id=str(run.id),
+        idempotency_key=f"{exam.org_id}:answer_preparation:{run.id}:v1",
+        expected_calls=max(1, confirmed_count),
+    )
+    if reservation:
+        run.raw_output = {"billing_reservation_id": str(reservation.id)}
+        session.add(run)
     session.commit()
     session.refresh(run)
-    background_tasks.add_task(execute_answer_preparation, str(run.id))
+    process_answer_preparation_run.send(str(run.id))
     return _answer_run_public(session, run)
 
 
@@ -923,9 +967,7 @@ def confirm_answer_preparation_run(
         for question in questions:
             item = selected[question.id]
             _validate_answer_item(item)
-            source_provider = str(
-                item.raw_result.get("_used_provider") or run.provider
-            )
+            source_provider = str(item.raw_result.get("_used_provider") or run.provider)
             source_model = str(item.raw_result.get("_used_model") or run.model)
             answer = session.exec(
                 select(StandardAnswer).where(

@@ -277,6 +277,17 @@ def test_grading_assignments_put_get_overwrite(
     assert body["enabled"] is False
     assert body["assignments"] == []
     assert {item["class_name"] for item in body["unassigned"]} == {"001班", "002班"}
+    owner_view = client.get(
+        f"{settings.API_V1_STR}/exams/{exam_id}/grading-assignments",
+        headers=ctx["headers_owner"],
+    ).json()
+    candidate = next(
+        item
+        for item in owner_view["candidates"]
+        if item["user_id"] == str(ctx["teacher_a"].id)
+    )
+    assert candidate["user_name"] == "甲老师"
+    assert candidate["class_ids"] == []
 
     # owner 开启并整体覆盖分配（001班→甲老师）
     r = client.put(

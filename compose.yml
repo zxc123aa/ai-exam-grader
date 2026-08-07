@@ -29,6 +29,37 @@ services:
       start_period: 10s
       timeout: 5s
 
+  reference-algorithm:
+    build:
+      context: ./参考算法/2_试卷分析文件
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      PORT: "3417"
+      DEFAULT_PROVIDER: ${VISION_DEFAULT_PROVIDER:-pomoai}
+      DEFAULT_MODEL: ${VISION_DEFAULT_MODEL:-gemini-3.5-flash}
+      AVAILABLE_PROVIDERS: pomoai,fluxnode_gemini,fluxnode_grok,kimi
+      PROVIDER_POMOAI_BASE_URL: ${PROVIDER_POMOAI_BASE_URL:-https://www.pomoai.ai}
+      PROVIDER_POMOAI_API_KEY: ${PROVIDER_POMOAI_API_KEY:-}
+      PROVIDER_POMOAI_MODELS: gemini-3.5-flash,gemini-3.6-flash,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5
+      PROVIDER_FLUXNODE_GEMINI_BASE_URL: ${PROVIDER_FLUXNODE_GEMINI_BASE_URL:-https://fluxnode.org}
+      PROVIDER_FLUXNODE_GEMINI_API_KEY: ${PROVIDER_FLUXNODE_GEMINI_API_KEY:-}
+      PROVIDER_FLUXNODE_GEMINI_MODELS: gemini-3.5-flash,gemini-3.6-flash
+      PROVIDER_FLUXNODE_GROK_BASE_URL: ${PROVIDER_FLUXNODE_GROK_BASE_URL:-https://fluxnode.org}
+      PROVIDER_FLUXNODE_GROK_API_KEY: ${PROVIDER_FLUXNODE_GROK_API_KEY:-}
+      PROVIDER_FLUXNODE_GROK_MODELS: grok-4.5
+      PROVIDER_KIMI_BASE_URL: ${PROVIDER_KIMI_BASE_URL:-https://api.kimi.com/coding/v1}
+      PROVIDER_KIMI_API_KEY: ${PROVIDER_KIMI_API_KEY:-}
+      PROVIDER_KIMI_MODELS: kimi-k2.7-code,kimi-k2.7-code-highspeed,kimi-k2.6,kimi-k2.5
+      MODEL_TIMEOUT_MS: ${VISION_TIMEOUT_SECONDS:-180}000
+      MAX_CONCURRENT_OCR: ${VISION_MAX_CONCURRENCY:-4}
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://localhost:3417/api/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
   ocr-service:
     profiles:
       - ocr-gpu
@@ -50,29 +81,6 @@ services:
       timeout: 10s
       retries: 5
       start_period: 60s
-
-  adminer:
-    image: adminer
-    restart: always
-    networks:
-      - traefik-public
-      - default
-    depends_on:
-      - db
-    environment:
-      - ADMINER_DESIGN=pepa-linha-dark
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.constraint-label=traefik-public
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.rule=Host(`adminer.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.entrypoints=http
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-http.middlewares=https-redirect
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.rule=Host(`adminer.${DOMAIN?Variable not set}`)
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.entrypoints=https
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.tls=true
-      - traefik.http.routers.${STACK_NAME?Variable not set}-adminer-https.tls.certresolver=le
-      - traefik.http.services.${STACK_NAME?Variable not set}-adminer.loadbalancer.server.port=8080
 
   prestart:
     image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
@@ -108,11 +116,26 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
       - SENTRY_DSN=${SENTRY_DSN}
       - REDIS_URL=${REDIS_URL}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - STORAGE_CACHE_DIR=/app/data/storage-cache
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME:-}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
+      - OSS_PREFIX=${OSS_PREFIX:-dianfan}
+      - WECHAT_PAY_MCH_ID=${WECHAT_PAY_MCH_ID:-}
+      - WECHAT_PAY_APP_ID=${WECHAT_PAY_APP_ID:-}
+      - WECHAT_PAY_CERT_SERIAL_NO=${WECHAT_PAY_CERT_SERIAL_NO:-}
+      - WECHAT_PAY_PRIVATE_KEY_PEM=${WECHAT_PAY_PRIVATE_KEY_PEM:-}
+      - WECHAT_PAY_PLATFORM_CERT_PEM=${WECHAT_PAY_PLATFORM_CERT_PEM:-}
+      - WECHAT_PAY_API_V3_KEY=${WECHAT_PAY_API_V3_KEY:-}
+      - WECHAT_PAY_NOTIFY_URL=${WECHAT_PAY_NOTIFY_URL:-}
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
+      - SCAN_ENGINE=${SCAN_ENGINE:-scan_stable_v1}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
+      - REFERENCE_ALGORITHM_URL=http://reference-algorithm:3417
 
   backend:
     image: '${DOCKER_IMAGE_BACKEND?Variable not set}:${TAG-latest}'
@@ -125,6 +148,9 @@ services:
         condition: service_healthy
         restart: true
       redis:
+        condition: service_healthy
+        restart: true
+      reference-algorithm:
         condition: service_healthy
         restart: true
       prestart:
@@ -150,14 +176,29 @@ services:
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
       - SENTRY_DSN=${SENTRY_DSN}
       - REDIS_URL=${REDIS_URL}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - STORAGE_CACHE_DIR=/app/data/storage-cache
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME:-}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
+      - OSS_PREFIX=${OSS_PREFIX:-dianfan}
+      - WECHAT_PAY_MCH_ID=${WECHAT_PAY_MCH_ID:-}
+      - WECHAT_PAY_APP_ID=${WECHAT_PAY_APP_ID:-}
+      - WECHAT_PAY_CERT_SERIAL_NO=${WECHAT_PAY_CERT_SERIAL_NO:-}
+      - WECHAT_PAY_PRIVATE_KEY_PEM=${WECHAT_PAY_PRIVATE_KEY_PEM:-}
+      - WECHAT_PAY_PLATFORM_CERT_PEM=${WECHAT_PAY_PLATFORM_CERT_PEM:-}
+      - WECHAT_PAY_API_V3_KEY=${WECHAT_PAY_API_V3_KEY:-}
+      - WECHAT_PAY_NOTIFY_URL=${WECHAT_PAY_NOTIFY_URL:-}
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
+      - SCAN_ENGINE=${SCAN_ENGINE:-scan_stable_v1}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
+      - REFERENCE_ALGORITHM_URL=http://reference-algorithm:3417
 
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health-check/"]
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/v1/utils/health/ready"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -197,6 +238,9 @@ services:
       redis:
         condition: service_healthy
         restart: true
+      reference-algorithm:
+        condition: service_healthy
+        restart: true
       prestart:
         condition: service_completed_successfully
     env_file:
@@ -212,11 +256,19 @@ services:
       - POSTGRES_USER=${POSTGRES_USER?Variable not set}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD?Variable not set}
       - REDIS_URL=${REDIS_URL}
+      - STORAGE_BACKEND=${STORAGE_BACKEND:-local}
       - LOCAL_UPLOAD_DIR=/app/data/uploads
+      - STORAGE_CACHE_DIR=/app/data/storage-cache
+      - OSS_ENDPOINT=${OSS_ENDPOINT:-}
+      - OSS_BUCKET_NAME=${OSS_BUCKET_NAME:-}
+      - OSS_ACCESS_KEY_ID=${OSS_ACCESS_KEY_ID:-}
+      - OSS_ACCESS_KEY_SECRET=${OSS_ACCESS_KEY_SECRET:-}
+      - OSS_PREFIX=${OSS_PREFIX:-dianfan}
       - OCR_ENGINE=${OCR_ENGINE:-disabled}
       - OCR_HTTP_URL=${OCR_HTTP_URL:-http://ocr-service:8010/ocr}
-      - SCAN_ENGINE=${SCAN_ENGINE:-hybrid_v2}
+      - SCAN_ENGINE=${SCAN_ENGINE:-scan_stable_v1}
       - SCAN_HTTP_URL=${SCAN_HTTP_URL:-http://ocr-service:8010/preprocess}
+      - REFERENCE_ALGORITHM_URL=http://reference-algorithm:3417
     command:
       - dramatiq
       - app.worker
@@ -237,6 +289,8 @@ services:
       dockerfile: frontend/Dockerfile
       args:
         - VITE_API_URL=https://api.${DOMAIN?Variable not set}
+        - VITE_PUBLIC_SIGNUP_ENABLED=${PUBLIC_SIGNUP_ENABLED:-false}
+        - VITE_TURNSTILE_SITE_KEY=${VITE_TURNSTILE_SITE_KEY:-}
         - NODE_ENV=production
     labels:
       - traefik.enable=true

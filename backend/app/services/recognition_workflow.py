@@ -9,6 +9,7 @@ from sqlmodel import Session, select
 
 from app.core.db import engine
 from app.models import (
+    Exam,
     ExamRegion,
     ExamRegionType,
     GradingItem,
@@ -19,10 +20,12 @@ from app.models import (
     StudentSubmission,
     get_datetime_utc,
 )
-from app.services.reference_algorithm import process_stored_file
+from app.services import billing as billing_service
+from app.services.billing import ModelCallContext
 from app.services.question_text_normalization import (
     normalize_recognized_question_text_with_audit,
 )
+from app.services.reference_algorithm import process_stored_file
 from app.services.submission_crops import (
     crop_region_png,
     resolve_exam_region_paper_page,
@@ -37,12 +40,18 @@ class RecognitionPayload:
     region: ExamRegion
     provider: str
     model: str
+    fallback_models: list[str]
     # Global paper page; regions store document-local pages while the
     # submission is a single multi-page file.
     page_number: int | None = None
+    org_id: uuid.UUID | None = None
+    grading_run_id: uuid.UUID | None = None
+    reservation_id: uuid.UUID | None = None
 
 
-def _recognize(payload: RecognitionPayload) -> tuple[RecognitionPayload, dict | None, str | None]:
+def _recognize(
+    payload: RecognitionPayload,
+) -> tuple[RecognitionPayload, dict | None, str | None]:
     try:
         result = extract_answer_image(
             image_bytes=crop_region_png(
@@ -53,37 +62,60 @@ def _recognize(payload: RecognitionPayload) -> tuple[RecognitionPayload, dict | 
             provider=payload.provider,
             model=payload.model,
             question_label=payload.region.label,
+            fallback_models=payload.fallback_models,
+            billing_context=(
+                ModelCallContext(
+                    org_id=payload.org_id,
+                    exam_id=payload.region.exam_id,
+                    grading_run_id=payload.grading_run_id,
+                    reservation_id=payload.reservation_id,
+                    workflow_purpose="answer_recognition",
+                    resource_id=str(payload.item_id),
+                    billing_key=(
+                        f"{payload.org_id}:answer_recognition:{payload.grading_run_id}:"
+                        f"{payload.item_id}:pipeline-v2"
+                    ),
+                )
+                if payload.org_id
+                else None
+            ),
         )
         question_audit = normalize_recognized_question_text_with_audit(
             result.question_text,
             question_key=payload.region.label,
         )
         question_text = str(question_audit["text"])
-        return payload, {
-            "question_text": question_text,
-            **(
-                {"raw_question_text": result.question_text}
-                if question_text != result.question_text.strip()
-                else {}
-            ),
-            **(
-                {"question_normalization": {
-                    key: value
-                    for key, value in question_audit.items()
-                    if key != "text"
-                }}
-                if question_audit.get("changed")
-                else {}
-            ),
-            "student_answer": result.student_answer,
-            "final_answer": result.final_answer,
-            "answer_type": result.answer_type,
-            "confidence": result.confidence,
-            "notes": result.notes,
-            "provider": result.provider,
-            "model": result.model,
-            "elapsed_ms": result.elapsed_ms,
-        }, None
+        return (
+            payload,
+            {
+                "question_text": question_text,
+                **(
+                    {"raw_question_text": result.question_text}
+                    if question_text != result.question_text.strip()
+                    else {}
+                ),
+                **(
+                    {
+                        "question_normalization": {
+                            key: value
+                            for key, value in question_audit.items()
+                            if key != "text"
+                        }
+                    }
+                    if question_audit.get("changed")
+                    else {}
+                ),
+                "student_answer": result.student_answer,
+                "final_answer": result.final_answer,
+                "answer_type": result.answer_type,
+                "confidence": result.confidence,
+                "notes": result.notes,
+                "provider": result.provider,
+                "model": result.model,
+                "elapsed_ms": result.elapsed_ms,
+            },
+            None,
+        )
     except Exception as exc:
         return payload, None, str(exc)[:1000]
 
@@ -102,19 +134,40 @@ def execute_recognition_run(run_id: str) -> None:
         run = session.get(GradingRun, uuid.UUID(run_id))
         if not run:
             return
+        exam = session.get(Exam, run.exam_id)
+        if not exam:
+            return
+        reservation_id = (
+            uuid.UUID(str(run.config_snapshot["billing_reservation_id"]))
+            if run.config_snapshot.get("billing_reservation_id")
+            else None
+        )
         run.status = GradingRunStatus.RUNNING
         run.started_at = get_datetime_utc()
         run.config_snapshot = {
             **run.config_snapshot,
-            "timing": {"layout_ms": 0, "crop_ms": 0, "ocr_ms": 0, "total_elapsed_ms": 0},
+            "timing": {
+                "layout_ms": 0,
+                "crop_ms": 0,
+                "ocr_ms": 0,
+                "total_elapsed_ms": 0,
+            },
         }
         submission_id = uuid.UUID(run.config_snapshot["submission_id"])
         submission = session.get(StudentSubmission, submission_id)
-        stored_file = session.get(StoredFile, submission.stored_file_id) if submission else None
-        regions = list(session.exec(select(ExamRegion).where(
-            ExamRegion.exam_id == run.exam_id,
-            ExamRegion.region_type == ExamRegionType.QUESTION,
-        ).order_by(ExamRegion.page_number, ExamRegion.y)).all())
+        stored_file = (
+            session.get(StoredFile, submission.stored_file_id) if submission else None
+        )
+        regions = list(
+            session.exec(
+                select(ExamRegion)
+                .where(
+                    ExamRegion.exam_id == run.exam_id,
+                    ExamRegion.region_type == ExamRegionType.QUESTION,
+                )
+                .order_by(ExamRegion.page_number, ExamRegion.y)
+            ).all()
+        )
         if not submission or not stored_file:
             run.status = GradingRunStatus.FAILED
             run.error_message = "答卷文件不存在"
@@ -164,9 +217,13 @@ def execute_recognition_run(run_id: str) -> None:
                                 region=region,
                                 provider=run.provider,
                                 model=run.model,
+                                fallback_models=run.fallback_models,
                                 page_number=resolve_exam_region_paper_page(
                                     session, region
                                 ),
+                                org_id=exam.org_id,
+                                grading_run_id=run.id,
+                                reservation_id=reservation_id,
                             ),
                         ): index
                         for index, region in graphical_targets
@@ -174,22 +231,20 @@ def execute_recognition_run(run_id: str) -> None:
                     for future in futures:
                         _payload, supplement, error = future.result()
                         index = futures[future]
-                        if not error and supplement and str(
-                            supplement.get("student_answer") or ""
-                        ).strip():
+                        if (
+                            not error
+                            and supplement
+                            and str(supplement.get("student_answer") or "").strip()
+                        ):
                             graphical_supplements[index] = supplement
-            graphical_ms = round(
-                (time.perf_counter() - graphical_started) * 1000
-            )
+            graphical_ms = round((time.perf_counter() - graphical_started) * 1000)
             reference_timing = dict(reference_payload.get("timing", {}))
             if graphical_targets:
                 reference_timing["graphicalFallbackMs"] = graphical_ms
-                reference_timing["graphicalFallbackCount"] = len(
-                    graphical_supplements
+                reference_timing["graphicalFallbackCount"] = len(graphical_supplements)
+                reference_timing["totalElapsedMs"] = (
+                    int(reference_timing.get("totalElapsedMs") or 0) + graphical_ms
                 )
-                reference_timing["totalElapsedMs"] = int(
-                    reference_timing.get("totalElapsedMs") or 0
-                ) + graphical_ms
             run.total_submissions = 1
             run.total_items = min(len(results), len(regions))
             run.completed_items = run.total_items
@@ -203,7 +258,9 @@ def execute_recognition_run(run_id: str) -> None:
             for index, (region, extracted) in enumerate(pairs):
                 question_audit = normalize_recognized_question_text_with_audit(
                     str(extracted.get("question") or ""),
-                    question_key=str(extracted.get("questionNumber") or region.label or ""),
+                    question_key=str(
+                        extracted.get("questionNumber") or region.label or ""
+                    ),
                 )
                 question_text = str(question_audit["text"])
                 extraction_result = {
@@ -214,11 +271,13 @@ def execute_recognition_run(run_id: str) -> None:
                         else {}
                     ),
                     **(
-                        {"question_normalization": {
-                            key: value
-                            for key, value in question_audit.items()
-                            if key != "text"
-                        }}
+                        {
+                            "question_normalization": {
+                                key: value
+                                for key, value in question_audit.items()
+                                if key != "text"
+                            }
+                        }
                         if question_audit.get("changed")
                         else {}
                     ),
@@ -227,21 +286,13 @@ def execute_recognition_run(run_id: str) -> None:
                     "answer_type": extracted.get("answerType", "未知"),
                     "confidence": extracted.get("confidence", 0),
                     "notes": [extracted.get("notes", "")],
-                    "printed_question_marks": extracted.get(
-                        "printedQuestionMarks", []
-                    ),
+                    "printed_question_marks": extracted.get("printedQuestionMarks", []),
                     "answer_entries": extracted.get("answerEntries", []),
-                    "unassigned_evidence": extracted.get(
-                        "unassignedEvidence", []
-                    ),
+                    "unassigned_evidence": extracted.get("unassignedEvidence", []),
                     "grading_answer": extracted.get("gradingAnswer", ""),
-                    "grading_eligible": bool(
-                        extracted.get("gradingEligible", False)
-                    ),
+                    "grading_eligible": bool(extracted.get("gradingEligible", False)),
                     "answer_structure": extracted.get("answerStructure", {}),
-                    "answer_verification": extracted.get(
-                        "answerVerification", {}
-                    ),
+                    "answer_verification": extracted.get("answerVerification", {}),
                     "provider": run.provider,
                     "model": run.model,
                     "elapsed_ms": extracted.get("elapsedMs", 0),
@@ -257,9 +308,7 @@ def execute_recognition_run(run_id: str) -> None:
                             "补充结果仍需教师对照原图确认。",
                             *list(supplement.get("notes") or []),
                         ],
-                        "elapsed_ms": int(
-                            supplement.get("elapsed_ms") or 0
-                        )
+                        "elapsed_ms": int(supplement.get("elapsed_ms") or 0)
                         + int(extracted.get("elapsedMs") or 0),
                     }
                 item = GradingItem(
@@ -278,13 +327,19 @@ def execute_recognition_run(run_id: str) -> None:
             return
         items = []
         for region in regions:
-            item = session.exec(select(GradingItem).where(
-                GradingItem.grading_run_id == run.id,
-                GradingItem.submission_id == submission.id,
-                GradingItem.exam_region_id == region.id,
-            )).first()
+            item = session.exec(
+                select(GradingItem).where(
+                    GradingItem.grading_run_id == run.id,
+                    GradingItem.submission_id == submission.id,
+                    GradingItem.exam_region_id == region.id,
+                )
+            ).first()
             if not item:
-                item = GradingItem(grading_run_id=run.id, submission_id=submission.id, exam_region_id=region.id)
+                item = GradingItem(
+                    grading_run_id=run.id,
+                    submission_id=submission.id,
+                    exam_region_id=region.id,
+                )
                 session.add(item)
                 session.flush()
             items.append((item, region))
@@ -292,11 +347,23 @@ def execute_recognition_run(run_id: str) -> None:
         run.total_items = len(items)
         session.add(run)
         session.commit()
-        payloads = [RecognitionPayload(item_id=item.id, stored_file=stored_file, region=region,
-                    provider=run.provider, model=run.model,
-                    page_number=resolve_exam_region_paper_page(session, region))
-                    for item, region in items
-                    if item.status not in {GradingItemStatus.COMPLETED, GradingItemStatus.NEEDS_REVIEW}]
+        payloads = [
+            RecognitionPayload(
+                item_id=item.id,
+                stored_file=stored_file,
+                region=region,
+                provider=run.provider,
+                model=run.model,
+                fallback_models=run.fallback_models,
+                page_number=resolve_exam_region_paper_page(session, region),
+                org_id=exam.org_id,
+                grading_run_id=run.id,
+                reservation_id=reservation_id,
+            )
+            for item, region in items
+            if item.status
+            not in {GradingItemStatus.COMPLETED, GradingItemStatus.NEEDS_REVIEW}
+        ]
         max_workers = min(8, max(1, int(run.config_snapshot.get("max_concurrency", 8))))
         futures: dict[Future, RecognitionPayload] = {}
         pending = list(payloads)
@@ -327,13 +394,37 @@ def execute_recognition_run(run_id: str) -> None:
                         item.attempts += 1
                         session.add(item)
                         session.commit()
-            items_now = list(session.exec(select(GradingItem).where(GradingItem.grading_run_id == run.id)).all())
-            run.completed_items = sum(item.status in {GradingItemStatus.COMPLETED, GradingItemStatus.NEEDS_REVIEW, GradingItemStatus.FAILED} for item in items_now)
-            run.extracted_items = sum(bool(item.extraction_result) for item in items_now)
-            run.failed_count = sum(item.status == GradingItemStatus.FAILED for item in items_now)
-            run.review_count = sum(item.status in {GradingItemStatus.NEEDS_REVIEW, GradingItemStatus.FAILED} for item in items_now)
+            items_now = list(
+                session.exec(
+                    select(GradingItem).where(GradingItem.grading_run_id == run.id)
+                ).all()
+            )
+            run.completed_items = sum(
+                item.status
+                in {
+                    GradingItemStatus.COMPLETED,
+                    GradingItemStatus.NEEDS_REVIEW,
+                    GradingItemStatus.FAILED,
+                }
+                for item in items_now
+            )
+            run.extracted_items = sum(
+                bool(item.extraction_result) for item in items_now
+            )
+            run.failed_count = sum(
+                item.status == GradingItemStatus.FAILED for item in items_now
+            )
+            run.review_count = sum(
+                item.status
+                in {GradingItemStatus.NEEDS_REVIEW, GradingItemStatus.FAILED}
+                for item in items_now
+            )
             run.current_concurrency = 0
-            run.status = GradingRunStatus.COMPLETED_WITH_ERRORS if run.failed_count else GradingRunStatus.COMPLETED
+            run.status = (
+                GradingRunStatus.COMPLETED_WITH_ERRORS
+                if run.failed_count
+                else GradingRunStatus.COMPLETED
+            )
         except Exception as exc:
             run.status = GradingRunStatus.FAILED
             run.error_message = str(exc)[:2000]
@@ -342,10 +433,19 @@ def execute_recognition_run(run_id: str) -> None:
         timing = dict((run.config_snapshot or {}).get("timing", {}))
         timing["ocr_ms"] = total_ms
         timing["total_elapsed_ms"] = total_ms
-        timing["item_elapsed_ms"] = sum(
-            int((item.extraction_result or {}).get("elapsed_ms") or 0)
-            for item in items_now
-        ) if 'items_now' in locals() else 0
+        timing["item_elapsed_ms"] = (
+            sum(
+                int((item.extraction_result or {}).get("elapsed_ms") or 0)
+                for item in items_now
+            )
+            if "items_now" in locals()
+            else 0
+        )
         run.config_snapshot = {**run.config_snapshot, "timing": timing}
+        if reservation_id:
+            run.settled_microcredits = billing_service.settle_reservation(
+                session, reservation_id
+            )
+            run.billing_status = "settled"
         session.add(run)
         session.commit()

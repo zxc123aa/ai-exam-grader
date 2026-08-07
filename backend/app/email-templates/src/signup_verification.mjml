@@ -1,0 +1,13 @@
+<mjml>
+  <mj-body background-color="#fafaf9">
+    <mj-section background-color="#ffffff" border="1px solid #ebebe8" border-radius="10px" padding="32px">
+      <mj-column>
+        <mj-text color="#2e5bff" font-size="13px" font-weight="700">DIANFAN · 点凡阅卷</mj-text>
+        <mj-text color="#1a1a1a" font-size="24px" font-weight="700">验证邮箱，开通学校账号</mj-text>
+        <mj-text color="#6b6b6b" line-height="1.7">{{ contact_name }}，你好：<br/>请确认使用 {{ email }} 为“{{ organization_name }}”开通点凡阅卷。</mj-text>
+        <mj-button background-color="#2e5bff" border-radius="8px" href="{{ link }}">验证并开通</mj-button>
+        <mj-text color="#9c9c9c" font-size="13px">链接在 {{ valid_minutes }} 分钟内有效。如果不是你提交的注册，可以忽略这封邮件。</mj-text>
+      </mj-column>
+    </mj-section>
+  </mj-body>
+</mjml>

@@ -1,21 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link as RouterLink } from "@tanstack/react-router"
+import { ArrowRight } from "lucide-react"
 import { useEffect, useState } from "react"
 
 import { PlatformService } from "@/client"
 import { PageHead } from "@/components/Common/PageHead"
-import { Tag } from "@/components/Common/Tag"
+import { ModelOfferingsSection } from "@/components/Platform/ModelOfferingsSection"
 import { requirePlatformSuperuser } from "@/components/Platform/orgMeta"
+import { ProviderChannelsSection } from "@/components/Platform/ProviderChannelsSection"
+import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { LoadingButton } from "@/components/ui/loading-button"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import useCustomToast from "@/hooks/useCustomToast"
 import { handleError } from "@/utils"
@@ -26,84 +22,13 @@ export const Route = createFileRoute("/_layout/platform_/settings")({
   head: () => ({
     meta: [
       {
-        title: "系统设置 - 点凡阅卷",
+        title: "中转与方案 - 点凡阅卷",
       },
     ],
   }),
 })
 
 const CARD_CLASS = "rounded-2xl bg-card p-6 shadow-card"
-
-// 与批改工作台 / 标准答案页的 providerModels 保持一致；
-// 后端 services/system_config.py 会按同一映射校验组合。
-const providerModels: Record<string, string[]> = {
-  pomoai: [
-    "gpt-5.6-sol",
-    "gpt-5.6-terra",
-    "gpt-5.6-luna",
-    "gpt-5.5",
-    "grok-4.5",
-    "gemini-3.5-flash",
-  ],
-  fluxnode_gemini: ["gemini-3.5-flash"],
-  fluxnode_grok: ["grok-4.5"],
-  kimi: [
-    "kimi-k3",
-    "kimi-k2.7-code",
-    "kimi-k2.7-code-highspeed",
-    "kimi-k2.6",
-    "kimi-k2.5",
-  ],
-}
-
-function ProviderModelSelects({
-  idPrefix,
-  provider,
-  model,
-  onProviderChange,
-  onModelChange,
-}: {
-  idPrefix: string
-  provider: string
-  model: string
-  onProviderChange: (value: string) => void
-  onModelChange: (value: string) => void
-}) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <div className="grid gap-1.5">
-        <Label htmlFor={`${idPrefix}-provider`}>服务商</Label>
-        <Select value={provider} onValueChange={onProviderChange}>
-          <SelectTrigger id={`${idPrefix}-provider`}>
-            <SelectValue placeholder="选择服务商" />
-          </SelectTrigger>
-          <SelectContent>
-            {Object.keys(providerModels).map((value) => (
-              <SelectItem key={value} value={value}>
-                {value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="grid gap-1.5">
-        <Label htmlFor={`${idPrefix}-model`}>模型</Label>
-        <Select value={model} onValueChange={onModelChange}>
-          <SelectTrigger id={`${idPrefix}-model`}>
-            <SelectValue placeholder="选择模型" />
-          </SelectTrigger>
-          <SelectContent>
-            {(providerModels[provider] ?? []).map((value) => (
-              <SelectItem key={value} value={value}>
-                {value}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-    </div>
-  )
-}
 
 function PlatformSettings() {
   const queryClient = useQueryClient()
@@ -113,51 +38,35 @@ function PlatformSettings() {
     queryKey: ["platform-system-config"],
     queryFn: () => PlatformService.readSystemConfig(),
   })
+  const { data: billingRates = [] } = useQuery({
+    queryKey: ["platform-billing-rates"],
+    queryFn: () => PlatformService.listBillingRates(),
+  })
 
-  const [regionProvider, setRegionProvider] = useState("")
-  const [regionModel, setRegionModel] = useState("")
-  const [recognitionProvider, setRecognitionProvider] = useState("")
-  const [recognitionModel, setRecognitionModel] = useState("")
-  const [visionProvider, setVisionProvider] = useState("")
-  const [visionModel, setVisionModel] = useState("")
-  const [gradingProvider, setGradingProvider] = useState("")
-  const [gradingModel, setGradingModel] = useState("")
-  const [fallbackModels, setFallbackModels] = useState("")
-  const [reviewThreshold, setReviewThreshold] = useState("")
-  const [maxConcurrency, setMaxConcurrency] = useState("")
+  const [reviewThreshold, setReviewThreshold] = useState(
+    String(config?.review_threshold ?? ""),
+  )
+  const [maxConcurrency, setMaxConcurrency] = useState(
+    String(config?.max_concurrency ?? ""),
+  )
+  const [rateVersion, setRateVersion] = useState("")
+  const [rateInput, setRateInput] = useState("")
+  const [rateOutput, setRateOutput] = useState("")
+  const [rateImage, setRateImage] = useState("")
+  const [costInput, setCostInput] = useState("")
+  const [costOutput, setCostOutput] = useState("")
+  const [costImage, setCostImage] = useState("")
 
   useEffect(() => {
-    if (config) {
-      setRegionProvider(config.region_provider)
-      setRegionModel(config.region_model)
-      setRecognitionProvider(config.recognition_provider)
-      setRecognitionModel(config.recognition_model)
-      setVisionProvider(config.vision_provider)
-      setVisionModel(config.vision_model)
-      setGradingProvider(config.grading_provider)
-      setGradingModel(config.grading_model)
-      setFallbackModels(config.fallback_models.join(", "))
-      setReviewThreshold(String(config.review_threshold))
-      setMaxConcurrency(String(config.max_concurrency))
-    }
+    if (!config) return
+    setReviewThreshold(String(config.review_threshold))
+    setMaxConcurrency(String(config.max_concurrency))
   }, [config])
 
   const mutation = useMutation({
     mutationFn: () =>
       PlatformService.updateSystemConfig({
         requestBody: {
-          region_provider: regionProvider,
-          region_model: regionModel,
-          recognition_provider: recognitionProvider,
-          recognition_model: recognitionModel,
-          vision_provider: visionProvider,
-          vision_model: visionModel,
-          grading_provider: gradingProvider,
-          grading_model: gradingModel,
-          fallback_models: fallbackModels
-            .split(",")
-            .map((item) => item.trim())
-            .filter(Boolean),
           review_threshold: Number(reviewThreshold),
           max_concurrency: Number(maxConcurrency),
         },
@@ -171,12 +80,40 @@ function PlatformSettings() {
     },
   })
 
+  const rateMutation = useMutation({
+    mutationFn: () =>
+      PlatformService.createBillingRate({
+        requestBody: {
+          version: rateVersion.trim(),
+          effective_at: new Date().toISOString(),
+          input_credits_per_million: Number(rateInput),
+          output_credits_per_million: Number(rateOutput),
+          image_credits_per_million: Number(rateImage),
+          internal_input_rmb_per_million: Number(costInput || 0),
+          internal_output_rmb_per_million: Number(costOutput || 0),
+          internal_image_rmb_per_million: Number(costImage || 0),
+        },
+      }),
+    onSuccess: () => {
+      showSuccessToast("费率版本已创建")
+      setRateVersion("")
+      setRateInput("")
+      setRateOutput("")
+      setRateImage("")
+      setCostInput("")
+      setCostOutput("")
+      setCostImage("")
+      queryClient.invalidateQueries({ queryKey: ["platform-billing-rates"] })
+    },
+    onError: handleError.bind(showErrorToast),
+  })
+
   if (isPending || !config) {
     return (
       <div className="flex flex-col gap-6">
         <PageHead
-          title="系统设置"
-          subtitle="判题与识别服务配置，对之后的新批改批次生效"
+          title="中转与方案"
+          subtitle="维护上游调用通道、学校可选方案和计费规则"
         />
         <Skeleton className="h-44 rounded-2xl" />
         <Skeleton className="h-32 rounded-2xl" />
@@ -187,92 +124,37 @@ function PlatformSettings() {
   return (
     <div className="flex flex-col gap-6" data-testid="platform-settings-page">
       <PageHead
-        title="系统设置"
-        subtitle="判题与识别服务配置，对之后的新批改批次生效"
+        title="中转与方案"
+        subtitle="维护上游调用通道、学校可选方案和计费规则"
       />
 
+      <ProviderChannelsSection legacyProviders={config.providers} />
+
+      <ModelOfferingsSection />
+
       <section className={CARD_CLASS}>
-        <h3 className="font-semibold">检测题目区域</h3>
-        <p className="mt-1 text-muted-foreground text-sm">
-          区域校正页的版面分析与题目区域检测默认使用的模型
-        </p>
-        <div className="mt-4">
-          <ProviderModelSelects
-            idPrefix="region"
-            provider={regionProvider}
-            model={regionModel}
-            onProviderChange={(value) => {
-              setRegionProvider(value)
-              setRegionModel(providerModels[value][0])
-            }}
-            onModelChange={setRegionModel}
-          />
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h3 className="font-semibold">功能与模型调度</h3>
+            <p className="mt-1 text-muted-foreground text-sm">
+              模型用途、主备通道和分流权重已统一到独立控制页。
+            </p>
+          </div>
+          <Button variant="outline" size="sm" asChild>
+            <RouterLink to="/platform/routing">
+              打开功能调度
+              <ArrowRight />
+            </RouterLink>
+          </Button>
         </div>
       </section>
 
       <section className={CARD_CLASS}>
-        <h3 className="font-semibold">识别题目内容</h3>
+        <h3 className="font-semibold">批改运行默认值</h3>
         <p className="mt-1 text-muted-foreground text-sm">
-          从卷面识别题干与结构默认使用的模型
+          控制新批次的复核敏感度与任务并发；具体模型和通道由功能调度决定。
         </p>
-        <div className="mt-4">
-          <ProviderModelSelects
-            idPrefix="recognition"
-            provider={recognitionProvider}
-            model={recognitionModel}
-            onProviderChange={(value) => {
-              setRecognitionProvider(value)
-              setRecognitionModel(providerModels[value][0])
-            }}
-            onModelChange={setRecognitionModel}
-          />
-        </div>
-      </section>
-
-      <section className={CARD_CLASS}>
-        <h3 className="font-semibold">批改卷子</h3>
-        <p className="mt-1 text-muted-foreground text-sm">
-          学生答案识别与判分默认使用的模型
-        </p>
-        <div className="mt-4 grid gap-4">
-          <div className="grid gap-1.5">
-            <span className="font-medium text-sm">视觉提取</span>
-            <ProviderModelSelects
-              idPrefix="vision"
-              provider={visionProvider}
-              model={visionModel}
-              onProviderChange={(value) => {
-                setVisionProvider(value)
-                setVisionModel(providerModels[value][0])
-              }}
-              onModelChange={setVisionModel}
-            />
-          </div>
-          <div className="grid gap-1.5">
-            <span className="font-medium text-sm">判题</span>
-            <ProviderModelSelects
-              idPrefix="grading"
-              provider={gradingProvider}
-              model={gradingModel}
-              onProviderChange={(value) => {
-                setGradingProvider(value)
-                setGradingModel(providerModels[value][0])
-              }}
-              onModelChange={setGradingModel}
-            />
-          </div>
-        </div>
-        <div className="mt-4 grid gap-4 sm:grid-cols-3">
-          <div className="grid gap-1.5 sm:col-span-3">
-            <Label htmlFor="fallback-models">备用模型</Label>
-            <Input
-              id="fallback-models"
-              data-testid="fallback-models-input"
-              placeholder="如 pomoai/gpt-5.5，多个用逗号分隔"
-              value={fallbackModels}
-              onChange={(e) => setFallbackModels(e.target.value)}
-            />
-          </div>
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div className="grid gap-1.5">
             <Label htmlFor="review-threshold">默认复核阈值</Label>
             <Input
@@ -293,46 +175,115 @@ function PlatformSettings() {
               data-testid="max-concurrency-input"
               type="number"
               min={1}
-              max={8}
+              max={32}
               step={1}
               value={maxConcurrency}
               onChange={(e) => setMaxConcurrency(e.target.value)}
             />
           </div>
         </div>
+        <div className="mt-4">
+          <LoadingButton
+            data-testid="platform-settings-save"
+            loading={mutation.isPending}
+            disabled={!reviewThreshold || !maxConcurrency}
+            onClick={() => mutation.mutate()}
+          >
+            保存运行默认值
+          </LoadingButton>
+        </div>
       </section>
 
       <section className={CARD_CLASS}>
-        <h3 className="font-semibold">服务状态</h3>
+        <h3 className="font-semibold">计费标准</h3>
         <p className="mt-1 text-muted-foreground text-sm">
-          各服务商的 API Key 配置状态，未配置的服务商无法调用
+          每个合同固定引用一个费率版本；版本创建后不可修改，只能新增后续版本。
         </p>
-        <ul className="mt-4 divide-y" data-testid="provider-status-list">
-          {config.providers.map((provider) => (
-            <li
-              key={provider.name}
-              className="flex items-center justify-between py-2.5"
-            >
-              <span className="text-sm">{provider.name}</span>
-              {provider.configured ? (
-                <Tag variant="mint">已配置</Tag>
-              ) : (
-                <Tag variant="amber">未配置 API Key</Tag>
-              )}
-            </li>
+        {billingRates.length > 0 && (
+          <div className="mt-4 divide-y border-y text-sm">
+            {billingRates.map((rate) => (
+              <div
+                key={rate.id}
+                className="grid gap-2 py-3 sm:grid-cols-[1fr_auto] sm:items-center"
+              >
+                <div>
+                  <span className="font-medium">{rate.version}</span>
+                  <span className="ml-2 text-muted-foreground">
+                    {new Date(rate.effective_at).toLocaleDateString("zh-CN")}{" "}
+                    生效
+                  </span>
+                </div>
+                <span className="text-muted-foreground tabular-nums">
+                  输入 {rate.input_microcredits_per_million / 1_000_000} / 输出{" "}
+                  {rate.output_microcredits_per_million / 1_000_000} / 图片{" "}
+                  {rate.image_microcredits_per_million / 1_000_000} 积分/百万
+                  Token
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="mt-5 grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-1.5">
+            <Label htmlFor="rate-version">版本名称</Label>
+            <Input
+              id="rate-version"
+              placeholder="如 2026-v1"
+              value={rateVersion}
+              onChange={(event) => setRateVersion(event.target.value)}
+            />
+          </div>
+          {[
+            ["输入积分/百万 Token", rateInput, setRateInput],
+            ["输出积分/百万 Token", rateOutput, setRateOutput],
+            ["图片积分/百万 Token", rateImage, setRateImage],
+          ].map(([label, value, setter]) => (
+            <div key={label as string} className="grid gap-1.5">
+              <Label>{label as string}</Label>
+              <Input
+                type="number"
+                min={0}
+                value={value as string}
+                onChange={(event) =>
+                  (setter as (value: string) => void)(event.target.value)
+                }
+              />
+            </div>
           ))}
-        </ul>
+          {[
+            ["输入内部成本（元）", costInput, setCostInput],
+            ["输出内部成本（元）", costOutput, setCostOutput],
+            ["图片内部成本（元）", costImage, setCostImage],
+          ].map(([label, value, setter]) => (
+            <div key={label as string} className="grid gap-1.5">
+              <Label>{label as string}</Label>
+              <Input
+                type="number"
+                min={0}
+                value={value as string}
+                onChange={(event) =>
+                  (setter as (value: string) => void)(event.target.value)
+                }
+              />
+            </div>
+          ))}
+          <div className="flex items-end">
+            <LoadingButton
+              variant="outline"
+              loading={rateMutation.isPending}
+              disabled={
+                !rateVersion.trim() ||
+                rateInput === "" ||
+                rateOutput === "" ||
+                rateImage === ""
+              }
+              onClick={() => rateMutation.mutate()}
+            >
+              新建费率版本
+            </LoadingButton>
+          </div>
+        </div>
       </section>
-
-      <div>
-        <LoadingButton
-          data-testid="platform-settings-save"
-          loading={mutation.isPending}
-          onClick={() => mutation.mutate()}
-        >
-          保存设置
-        </LoadingButton>
-      </div>
     </div>
   )
 }

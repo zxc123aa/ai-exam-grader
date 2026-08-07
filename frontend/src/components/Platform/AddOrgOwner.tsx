@@ -66,6 +66,8 @@ export function AddOrgOwner({ orgId }: { orgId: string }) {
     onError: handleError.bind(showErrorToast),
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: ["platform-org", orgId] })
+      queryClient.invalidateQueries({ queryKey: ["platform-directory"] })
+      queryClient.invalidateQueries({ queryKey: ["platform-orgs"] })
     },
   })
 

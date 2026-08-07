@@ -6,12 +6,16 @@ import type { TagVariant } from "@/components/Common/Tag"
 
 export const ORG_STATUS_LABELS: Record<string, string> = {
   active: "正常",
-  suspended: "已停用",
+  read_only: "只读导出期",
+  frozen: "已冻结",
+  deleting: "等待删除",
 }
 
 export const ORG_STATUS_TAG_VARIANTS: Record<string, TagVariant> = {
   active: "mint",
-  suspended: "red",
+  read_only: "amber",
+  frozen: "red",
+  deleting: "red",
 }
 
 export function formatOrgDate(value?: string | null): string {
@@ -23,7 +27,7 @@ export function formatOrgDate(value?: string | null): string {
   })
 }
 
-/** 仅平台角色（platform_superuser / platform_support）可访问，其余回工作台。 */
+/** 平台角色可访问，其余回工作台。 */
 export async function requirePlatformRole() {
   const user = await UsersService.readUserMe()
   if (!resolveRole(user).startsWith("platform")) {
@@ -31,10 +35,18 @@ export async function requirePlatformRole() {
   }
 }
 
-/** 仅平台超管可访问（系统设置等写敏感页），其余回工作台。 */
+/** 仅平台超管可访问模型与中转等技术设置。 */
 export async function requirePlatformSuperuser() {
   const user = await UsersService.readUserMe()
   if (resolveRole(user) !== "platform_superuser") {
+    throw redirect({ to: "/" })
+  }
+}
+
+/** 平台超管与平台管理员可处理商品、订单和售后。 */
+export async function requirePlatformFinanceRole() {
+  const user = await UsersService.readUserMe()
+  if (!["platform_superuser", "platform_admin"].includes(resolveRole(user))) {
     throw redirect({ to: "/" })
   }
 }
