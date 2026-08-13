@@ -52,7 +52,15 @@ def send_email(
         smtp_options["user"] = settings.SMTP_USER
     if settings.SMTP_PASSWORD:
         smtp_options["password"] = settings.SMTP_PASSWORD
-    response = message.send(to=email_to, smtp=smtp_options)
+    try:
+        response = message.send(to=email_to, smtp=smtp_options)
+    except Exception as exc:
+        # DNS 解析和 TCP 连接失败不会被 emails 包装成 response，只有调用方声明
+        # 必须送达时才向上抛；否则找回密码之类的尽力投递流程不应该返回 500。
+        logger.warning(f"send email failed: {exc}")
+        if raise_on_error:
+            raise RuntimeError(f"SMTP delivery failed: {exc}") from exc
+        return
     logger.info(f"send email result: {response}")
     if raise_on_error and not response.success:
         raise RuntimeError(f"SMTP delivery failed: {response.status_code}")
