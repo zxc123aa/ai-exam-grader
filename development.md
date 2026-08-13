@@ -223,7 +223,9 @@ npx vite build
 
 ### 门禁之外的检查
 
-- **mypy / ty**：`backend/scripts/lint.sh` 和 pre-commit 里都有，但当前 strict 模式下分别有 588 / 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式误报，因此没有纳入 CI。清理计划见 `docs/issue-backlog.md` AEG-060。
+- **mypy / ty**：`backend/scripts/lint.sh` 和 pre-commit 里都有，但当前 strict 模式下分别有 588 / 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式误报，因此没有纳入 CI。清理计划见 `docs/issue-backlog.md` AEG-060。注意 `prek run --all-files` 目前会在 `mypy check` 和 `ty check` 上报红，这是已知状态，不是你的改动引入的。
+- **typos / zizmor**：只在 pre-commit 中运行（zizmor 另有独立 workflow）。`typos` 的允许词表在根 `pyproject.toml` 的 `[tool.typos]`：`mch`（微信商户号）、`rto`、`thr` 等域内缩写已加入白名单。
+- **Generate Frontend SDK**：pre-commit 会在后端改动后重新生成 `frontend/src/client/`。重新生成可能只带来空行缩进差异，提交前确认改动确实来自 API 变化，不要把生成器噪声混进业务 PR。
 - **Playwright E2E**：live 用例需要真实模型 Key、Node 参考服务和系统 Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`），只能本地或手动跑。分层进 CI 的计划见 AEG-061。
 - **`backend/scripts` 与根 `scripts/`**：运维与评测脚本按设计使用 `print`，与 ruff 的 T201 冲突，不纳入 lint 门禁。
 
