@@ -64,7 +64,9 @@ def paper_mask(image: np.ndarray) -> np.ndarray:
     k = max(9, int(min(h, w) * 0.015) | 1)
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1)
+    mask = cv2.morphologyEx(
+        mask, cv2.MORPH_OPEN, np.ones((5, 5), np.uint8), iterations=1
+    )
     return mask
 
 
@@ -116,9 +118,7 @@ def estimate_gutter(image: np.ndarray, bbox: tuple[int, int, int, int]) -> int:
     # Gutter tends to be darker and/or have a strong vertical edge.
     darkness = 255.0 - band.mean(axis=0)
     gx = np.abs(cv2.Sobel(band, cv2.CV_32F, 1, 0, ksize=3)).mean(axis=0)
-    score = cv2.GaussianBlur(
-        (darkness + 0.35 * gx).reshape(1, -1), (31, 1), 0
-    ).ravel()
+    score = cv2.GaussianBlur((darkness + 0.35 * gx).reshape(1, -1), (31, 1), 0).ravel()
     return x0 + c0 + int(np.argmax(score))
 
 
@@ -135,7 +135,10 @@ def detect_page_quad(
     crop = image[:, xa:xb]
     mask = paper_mask(crop)
     contour = largest_contour(mask)
-    if contour is None or cv2.contourArea(contour) < crop.shape[0] * crop.shape[1] * 0.08:
+    if (
+        contour is None
+        or cv2.contourArea(contour) < crop.shape[0] * crop.shape[1] * 0.08
+    ):
         raise PhotoPreprocessingError(f"Could not find a reliable {side} page contour.")
     quad = contour_to_quad(contour)
     quad[:, 0] += xa
@@ -226,7 +229,9 @@ def rotate_clockwise_with_map(image: np.ndarray) -> tuple[np.ndarray, callable]:
     return rotated, map_quad_back
 
 
-def detect_left_right_pages(image: np.ndarray) -> tuple[list[SkillDetectedPage], dict[str, object]]:
+def detect_left_right_pages(
+    image: np.ndarray,
+) -> tuple[list[SkillDetectedPage], dict[str, object]]:
     mask = paper_mask(image)
     bbox = find_spread_bbox(mask)
     gutter_x = estimate_gutter(image, bbox)
@@ -302,7 +307,9 @@ def stitch_pages(pages: list[PreprocessedPage], *, axis: str) -> np.ndarray:
                 resized.append(page.image)
             else:
                 resized.append(
-                    cv2.resize(page.image, (max_width, max(1, int(height * max_width / width))))
+                    cv2.resize(
+                        page.image, (max_width, max(1, int(height * max_width / width)))
+                    )
                 )
         return cv2.vconcat(resized)
 
@@ -314,7 +321,9 @@ def stitch_pages(pages: list[PreprocessedPage], *, axis: str) -> np.ndarray:
             resized.append(page.image)
         else:
             resized.append(
-                cv2.resize(page.image, (max(1, int(width * max_height / height)), max_height))
+                cv2.resize(
+                    page.image, (max(1, int(width * max_height / height)), max_height)
+                )
             )
     return cv2.hconcat(resized)
 
@@ -391,7 +400,9 @@ def preprocess_exam_scan_rectifier_bytes(contents: bytes) -> PreprocessedExamPho
             strategy=split_strategy,
             gutter_ratio=split_debug.get("gutter_ratio"),
             gutter_confidence=None,
-            overlap_pixels=int((image.shape[0] if axis == "y" else image.shape[1]) * 0.05),
+            overlap_pixels=int(
+                (image.shape[0] if axis == "y" else image.shape[1]) * 0.05
+            ),
         ),
         quality_status="review"
         if any(warning.severity == "warning" for warning in warnings)

@@ -39,7 +39,11 @@ def test_import_complete_marking_recognition_without_model_call(
     exam = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=school_owner_token_headers,
-        json={"org_id": DEFAULT_ORG_ID, "title": "Marking handoff exam", "subject": "物理"},
+        json={
+            "org_id": DEFAULT_ORG_ID,
+            "title": "Marking handoff exam",
+            "subject": "物理",
+        },
     ).json()
     document_response = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/files",
@@ -125,7 +129,11 @@ def test_confirm_prepare_and_publish_immutable_revision(
     exam_response = client.post(
         f"{settings.API_V1_STR}/exams/",
         headers=school_owner_token_headers,
-        json={"org_id": DEFAULT_ORG_ID, "title": "Workflow integration exam", "subject": "物理"},
+        json={
+            "org_id": DEFAULT_ORG_ID,
+            "title": "Workflow integration exam",
+            "subject": "物理",
+        },
     )
     assert exam_response.status_code == 200
     exam_id = exam_response.json()["id"]

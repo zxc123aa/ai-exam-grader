@@ -85,11 +85,15 @@ def normalize_recognized_question_text_with_audit(
 
     before = value
     value = re.sub(r"([A-Za-z])_\{?(\d+)\}?", r"\1\2", value)
-    _record_change(changes, rule="normalize_simple_latex_subscript", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_simple_latex_subscript", before=before, after=value
+    )
 
     before = value
     value = re.sub(r"_{2,}", "____", value)
-    _record_change(changes, rule="normalize_blank_underscores", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_blank_underscores", before=before, after=value
+    )
 
     lines: list[str] = []
     removed_section_lines: list[str] = []
@@ -145,7 +149,9 @@ def normalize_recognized_question_text_with_audit(
         r"\1",
         value,
     )
-    _record_change(changes, rule="normalize_formula_operator_spacing", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_formula_operator_spacing", before=before, after=value
+    )
     before = value
     value = re.sub(r"\s+", " ", value)
     _record_change(changes, rule="collapse_whitespace", before=before, after=value)
@@ -194,9 +200,7 @@ def normalize_reference_result_question(result: dict) -> dict:
         "question": normalized,
         "questionNormalized": True,
         "questionNormalization": {
-            key: value
-            for key, value in audit.items()
-            if key not in {"text"}
+            key: value for key, value in audit.items() if key not in {"text"}
         },
     }
     if raw_question.strip():

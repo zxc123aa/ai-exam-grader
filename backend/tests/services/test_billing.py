@@ -137,9 +137,7 @@ def test_answer_quota_is_exactly_once_and_failed_answers_are_released(
     exam = Exam(title="额度测试", owner_id=owner.id, org_id=org.id)
     db.add(exam)
     db.flush()
-    first = _answer_submission(
-        db, exam=exam, uploader_id=owner.id, student_name="张三"
-    )
+    first = _answer_submission(db, exam=exam, uploader_id=owner.id, student_name="张三")
     second = _answer_submission(
         db, exam=exam, uploader_id=owner.id, student_name="李四"
     )
@@ -253,9 +251,7 @@ def test_released_answer_quota_can_be_reserved_again_for_same_run(
     assert grant.reserved_answers == 1
 
 
-def test_stale_answer_quota_reservation_is_released(
-    db: Session, monkeypatch
-) -> None:
+def test_stale_answer_quota_reservation_is_released(db: Session, monkeypatch) -> None:
     org, _rate = _contract(db)
     owner = User(
         email=f"stale-{uuid.uuid4().hex[:8]}@example.com",

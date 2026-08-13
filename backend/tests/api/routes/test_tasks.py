@@ -18,9 +18,7 @@ def test_create_test_task(
     assert 0 <= content["progress"] <= 100
 
 
-def test_read_task(
-    client: TestClient, superuser_token_headers: dict[str, str]
-) -> None:
+def test_read_task(client: TestClient, superuser_token_headers: dict[str, str]) -> None:
     create_response = client.post(
         f"{settings.API_V1_STR}/tasks/test",
         headers=superuser_token_headers,

@@ -1,0 +1,40 @@
+name: Lint Backend
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@ae62891fec2bb8e7d6c99fc78c9fec3a63790f8d # v10.0.0
+        with:
+          enable-cache: true
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      # 只覆盖 app 与 tests：backend/scripts 和根 scripts 是运维与评测脚本，
+      # 允许 print（T201），不纳入门禁。
+      - name: Ruff lint
+        run: uv run ruff check app tests
+        working-directory: backend
+
+      - name: Ruff format
+        run: uv run ruff format app tests --check
+        working-directory: backend

@@ -1,6 +1,44 @@
 # 进度摘要
 
-更新时间：2026-07-24
+更新时间：2026-08-13
+
+### 2026-08-13 CI 流水线与文档补齐
+
+- 补上仓库此前缺失的 GitHub Actions（`.github/workflows/`）：
+  - `lint-backend`：`ruff check` + `ruff format --check`，范围 `backend/app` 与 `backend/tests`。
+  - `test-backend`：`postgres:18` + `redis:7-alpine` service 容器 → `alembic upgrade head` → `backend/scripts/tests-start.sh`（coverage + pytest）→ `scripts/smoke-openapi.py`，覆盖率报告作为 artifact 上传。
+  - `test-frontend`：`npm ci` → `biome ci` → `tsc -p tsconfig.build.json` → `vite build`。
+  - `lint-workflows`：`zizmor` 审计 workflow 自身，与 `.pre-commit-config.yaml` 中的钩子同源。
+- 实测基线（Ubuntu 24.04 + Python 3.13.15 + PostgreSQL 16 + Redis 7.0，非 Docker）：后端 `338 passed, 1 skipped`、覆盖率 67%；`alembic upgrade head` 到唯一 head `c3e5f7a9b1d2`（49 个 revision，无分叉）；OpenAPI 冒烟 25 paths；前端 `tsc`、`biome ci`、`vite build` 均通过；`actionlint` 与 `zizmor` 对四个 workflow 均无告警。
+- CI 暴露并修复了两处环境依赖：
+  - `send_email` 现在区分 SMTP 传输层异常与投递失败。DNS 解析或连接失败以前会让找回密码接口返回 500；现在尽力投递流程只记日志，`raise_on_error=True` 的公开注册验证邮件仍向上报错。
+  - 测试环境必须显式提供 `EMAILS_FROM_EMAIL`（`emails_enabled` 依赖它）和 `BILLING_ENFORCEMENT_ENABLED=false`（测试数据没有学校合同，与 `.env.example` 的本地配置一致；账单与商业化用例自己 monkeypatch 打开门禁）。
+- 一次性执行 `ruff format`，对齐 47 个此前未格式化的文件，之后格式检查才能给出稳定信号。`backend/scripts` 与根 `scripts/` 不纳入 lint 门禁：运维与评测脚本按设计使用 `print`（T201）。
+- mypy 与 ty 暂不纳入门禁：strict 模式下分别有 588 和 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式（`col.in_`、`order_by`、`join` 条件）的误报，需要单独一轮类型清理，见 AEG-060。
+- 文档补齐：本文件、`docs/issue-backlog.md`、`docs/decision-log.md`、`README.md`、`development.md` 已补上 2026-07-25 与 08-07 两次提交带来的商业化能力。此前文档停在 07-24，与代码相差约 28k 行。
+
+### 2026-08-07 商业化试运行发布（commit `0884bfd`，19 个迁移）
+
+代码时间线说明：`a61a5ff`（07-25，9 个迁移）是把下方 07-22 至 07-24 已记录的多租户与工作流工作同步进 git；`0884bfd`（08-07）在其之上加入完整商业化层。两次提交合计约 28k 行，此前均未进入进度摘要。
+
+- **交易闭环**（`/api/v1/commerce`）：`PlanVersion`/`AddonSku` 商品版本、`CommerceOrder`/`OrderItem` 订单、`PaymentAttempt`/`PaymentWebhookEvent` 支付、`InvoiceApplication` 发票、`RefundRequest` 退款、`OutboxEvent` 事务外发。订单状态 `pending_payment → paid → fulfilled`，可至 `refunded`。幂等由四层保证：订单 `idempotency_key` 唯一、支付 `provider_transaction_id` 唯一、微信回调按 `event_id` 去重、支付与履约在 `pg_advisory_xact_lock` + `SELECT … FOR UPDATE` 内串行。一张订单最多一张发票和一笔退款（DB 唯一约束）；续费按 `ends_at = max(paid_at, 上一份 ends_at) + validity_days` 顺延；自动退款仅支持整单且额度未预留未消费，退款后恢复仍有效的上一份合同。
+- **计费双轨**：面向学校的「答卷额度」（`AnswerQuotaGrant`/`Reservation`/`Allocation` + `BillableAnswerSheet`，`(org_id, exam_id, billing_identity)` 唯一保证同一份答卷只计费一次，FIFO 消耗）与平台内部的「Token 积分」成本护栏（`CreditGrant`/`Reservation`/`LedgerEntry` + `ModelUsageEvent`）。`GradingRun` 增加 `estimated/reserved/settled_microcredits`、`billing_status` 和 `awaiting_credits` 状态：创建批次时预扣答卷额度（不足 402）与积分，worker 完成后结算。`python -m app.maintenance reconcile-billing` 释放超时预占，`dispatch-outbox` 投递履约事件。
+- **模型渠道控制面**（`/api/v1/platform/provider-channels`）：`ProviderChannel` + AES-GCM 加密凭证（AAD 绑定 channel_id，主密钥 `PROVIDER_CREDENTIAL_MASTER_KEY`）、`ProviderModelMapping`（canonical → upstream，含模型发现）、`ModelRoutePolicy`/`ModelRouteVersion`/`ModelRouteVersionTarget`（发布即冻结快照，可灰度回滚）、`ProviderHealthState` 熔断（连续失败置 `circuit_open_until`）、`ProviderInternalRateVersion` 上游成本、`ProviderReconciliationBatch` 对账（支持 New API 同步）、`ProviderAuditLog`。并发用 Redis ZSET 槽位分全局/学校/渠道三级并限制每分钟调用；计费门禁开启时 Redis 故障 fail-closed。私网地址需进 allowlist，公网必须 HTTPS。
+- **公开模型目录**：`PlatformModelOffering` + `OrganizationModelSelection`（按 vision / reference_answer / grading 三个 scope 选型）。学校只能看到 `display_name` 与用途，看不到渠道、上游模型名和成本；offering 发布前校验渠道映射、结构化输出能力和对应用途的路由版本已发布。
+- **公开注册与试用**：`PendingOrganizationSignup` + Cloudflare Turnstile + Redis 限流；邮箱验证通过后原子创建学校（code `DF-XXXXXX`）、`school_owner`、30 天试用合同、200 份答卷额度和保守用量策略（30 次/分、2 个并发任务）。缺少匹配 `PUBLIC_SIGNUP_TRIAL_RATE_VERSION` 的费率版本时返回 503 且不建租户。默认 `PUBLIC_SIGNUP_ENABLED=false`。
+- **学校服务状态**：`active` / `read_only` / `frozen` / `deleting`。`read_only` 的非 GET 请求返回 423，`frozen`/`deleting` 返回 403，且只有 `active` 学校能抢到任务租约。
+- **成绩发布**：`ScoreRelease`/`ScoreReleaseItem` 版本化快照，`(exam_id, version)` 唯一。发布门槛为无待复核题且每份答卷已评题数不少于已确认题数；旧版本置 `superseded`；学生端只读快照，不直接看实时批注。
+- **基础设施硬化**：OSS 私有 Bucket（`STORAGE_BACKEND=oss` + `backend/scripts/migrate_storage_to_oss.py` 幂等迁移）、`/api/v1/utils/health/live|ready`（ready 校验 DB + Redis + 存储）、`OrganizationJobLease` 学校级任务租约（`(task_type, resource_id)` 唯一，TTL 5 分钟 + 60 秒心跳）、事务 outbox、新增 `platform_admin` 角色。
+- **测试**：后端新增 `test_commerce`(8)、`test_billing`(9)、`test_provider_channels`(12)、`test_provider_gateway`(5)、`test_provider_security`(5)、`test_model_offerings`(5)、`test_public_signup`(4)、`test_score_releases`(2)、`test_model_concurrency`(4)、`test_new_api_billing`(2)、`test_job_control`(2)、`test_object_storage`(2)、`test_health`(1)、`test_config_production`(3)。前端新增 Playwright `platform-commerce`、`platform-org-billing`、`platform-provider-channels`、`platform-model-usage`、`platform-directory`、`sign-up`。
+- **基准脚本**（离线，不进 CI）：`scripts/grading_concurrency_benchmark.py` 测不同并发配置下的批改吞吐，`scripts/grading_method_benchmark.py` 对比视觉判分路径准确性，`scripts/model_answer_benchmark.py` 让三个模型独立解 18 道物理题并交叉裁判。
+
+### 2026-08-07 Staging 试运行环境上线
+
+- 公网入口 `https://app.dianfandig.com`，跑在 `155.94.192.143`，与服务器上既有的 AISubAPI、独立 PostgreSQL/Redis、Nginx UI 共存但完全隔离。
+- 发布使用独立 `compose.staging.yml` 和 `dianfan-staging` project，不读本地开发 override（后者会抢 80/443 并起本地 Traefik）。远端目录固定为 `/opt/dianfan-grading`，共享数据在 `shared/`，发布源码在 `releases/<release-sha>/`，`current` 指向当前发布。
+- `服务器部署/deploy-staging.sh <release-sha> <stage>` 分 `config`/`infra`/`build`/`app`/`status`/`logs` 六个阶段；`generate-staging-env.sh` 为每个环境随机生成 `SECRET_KEY`、数据库口令和 `PROVIDER_CREDENTIAL_MASTER_KEY`；`sanitize-staging.sql` 清空渠道凭据并把渠道退回 draft。
+- 运维安全：SSH 收敛到 `22022`，公网 `22` 已由 UFW 撤销，fail2ban `sshd` jail 已启用（起因是密码爆破挤满 `MaxStartups` 导致 SSH 假性不可用）。合作伙伴账号 `dianfan-ops` 只有普通 SSH 登录权限，不含 sudo、Docker、生产配置、数据库和上传文件访问。
+- 公开注册在 staging 仍默认关闭，启用前需要配置 SMTP 与 Turnstile 站点，且 `VITE_TURNSTILE_SITE_KEY` 是构建期参数，改动后必须重跑 `build` 和 `app` 阶段。
 
 ### 2026-07-24 协作批卷 + 视觉系统切换 + 稳定性修复
 
@@ -71,7 +109,13 @@
 
 ## 当前阶段
 
-2026-07-14：AEG-040 至 AEG-048 已完成。题目主数据、多区域关联、Node 参考识别、答案生成/导入、不可变答案修订和批改版本锁定已落地。规范与验收入口为 `docs/question-answer-workflow-spec.md`。
+2026-08-13：**商业化试运行**。教师批卷主流程（导入 → 框选 → 确认题目 → 标准答案 → 批改 → 复核 → 成绩发布）已端到端打通；多租户角色体系、SaaS 计费与答卷额度、模型渠道控制面、公开模型目录、订单与支付闭环已落地；staging 环境 `https://app.dianfandig.com` 已对外可访问；CI 已就位。
+
+当前阶段的主要工作不再是补业务功能，而是：真实规模验证（数百份量级的识别准确率与成本）、把仍在 In Progress 的算法项（题目自动分割、扫描质量门禁确认闭环）收口、以及把商业化闭环缺的最后一段（学校端自助购课界面、outbox 真实投递）补齐。
+
+- 题目—答案工作流规范与验收入口：`docs/question-answer-workflow-spec.md`。
+- 生产运行手册（含商业运营闭环、OSS 迁移、备份恢复、告警与故障处置）：`docs/production-operations.md`。
+- staging 部署与服务器边界：`服务器部署/新服务器登录说明.md`、`服务器部署/AGENTS.md`。
 
 ### 2026-07-14 题目—答案—批改闭环
 
@@ -237,14 +281,23 @@
 
 ## 下一步
 
-1. 在复核页确认第 18、19、20、22 题，形成教师最终成绩并保留 AI 建议与修改审计。
-2. 为作图题输出作用点、方向、固定端、绕线顺序和承重绳段数等结构化视觉证据。
-3. 补充答案文档多页/大文件分批策略和中转站 Token 用量统计。
-4. 继续完善学生多文件答卷归组，使一名学生的多张图片形成同一 Submission 文档集。
+1. 扩大真实规模验证：数百份量级的批改，观察识别准确率、耗时和模型成本，并核对答卷额度与积分账本。
+2. 补齐商业化闭环最后一段：学校端自助购课界面（下单/微信支付 API 已就绪，前端只有平台侧工作台）、outbox 真实投递（当前只写日志）。
+3. 把题目自动分割从 `3 pass / 3 review / 1 fail` 提升到无 fail（AEG-035），并完成扫描质量门禁的教师确认闭环（AEG-032）。
+4. 复核效率优化：批量通过、按题型筛选、键盘快捷键；成绩与批注导出（Excel/PDF）。
+5. 在复核页确认物理样本剩余作图题与低置信度涂改题，并为作图题输出结构化视觉证据。
+6. 让 Playwright 的非 live 用例进入 CI（AEG-061），以及 mypy/ty 类型债清理（AEG-060）。
 
 ## 风险与阻塞
 
-- GitHub token 缺少 `workflow` scope，远程 `main` 暂未包含 `.github/workflows`；恢复前需要 `gh auth refresh -h github.com -s workflow`。
+- staging 是单机单实例，与 `docs/production-operations.md` 要求的「Web/API 至少 2 个实例、worker 至少 2 个实例、RDS 与 Redis 高可用」不一致；正式商用前必须补齐，或明确 staging 仅作试运行。
+- staging 仍使用容器内 PostgreSQL 与本地上传目录，尚未切到 RDS 与私有 OSS；`backend/scripts/migrate_storage_to_oss.py` 已就绪但未执行。
+- 商业化闭环有两处未闭合：学校端没有自助下单界面（API 与 SDK 已具备），`OutboxEvent` 的 dispatcher 只记录日志并标记完成，没有真正对接邮件或财务系统。
+- 微信支付退款目前只推进数据库状态机，未见调用微信退款接口；上线收款前必须确认真实退款链路与对账口径。
+- mypy 588 条、ty 489 条告警，绝大多数是 SQLModel 表达式误报，但也因此掩盖了真实类型问题；类型门禁暂不可用。
+- Playwright 的 live 用例依赖真实模型 Key 与本机 Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`），无法进 CI；CI 目前只覆盖后端 pytest 与前端构建。
+- `.env` 已从仓库移除并改为 `.env.example`（commit `0884bfd`），但历史提交中仍存在旧的 `.env`：`SECRET_KEY`、`FIRST_SUPERUSER_PASSWORD`、`POSTGRES_PASSWORD` 带真实值，自 2026-06-30 起存在于 4 个提交中（provider API key 当时为空）。这三项应视为已泄露并轮换；在轮换并重写历史之前，仓库绝对不能改为 public。
+- CI 已全绿但**不是阻断门禁**：私有仓库的分支保护需要 GitHub Pro/Team/Enterprise，当前免费计划下 API 返回 `403 Upgrade to GitHub Pro`。过渡期靠人工确认 PR 检查为绿；升级后执行 `scripts/setup-branch-protection.sh` 即可开启，见 AEG-064。
 - WSL 内 `docker` 命令未进 PATH，但 Windows Docker CLI 可通过 `/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe` 使用。
 - 后端容器 build 拉取 `python:3.13` 时遇到 Docker Hub 网络超时；数据库和 Redis 容器已可用。
 - 当前 Ubuntu 26.04 环境不被 Playwright 官方浏览器下载支持，测试使用系统 Chromium：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`。

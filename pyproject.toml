@@ -20,6 +20,8 @@ extend-exclude = [
     "backend/htmlcov/",
     "frontend/dist/",
     "frontend/public/assets/images/",
+    # 识别评测的运行产物，含大量 UUID
+    "参考算法/evaluation/",
 ]
 
 [tool.typos.default]
@@ -28,7 +30,17 @@ extend-ignore-re = [
     "@[a-zA-Z0-9](?:-?[a-zA-Z0-9])*",
     # Name of the package in the PR title
     "Bump certifi ",
+    # 截断后的 API Key 尾四位，测试断言使用
+    '"alue"',
 ]
 
 [tool.typos.default.extend-identifiers]
 alls = "alls"
+
+[tool.typos.default.extend-words]
+# 微信支付商户号 WECHAT_PAY_MCH_ID
+mch = "mch"
+# Recovery Time Objective，见 docs/production-operations.md
+rto = "rto"
+# threshold 缩写，如 l_thr / v_thr
+thr = "thr"

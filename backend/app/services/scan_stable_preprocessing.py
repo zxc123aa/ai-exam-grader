@@ -69,12 +69,8 @@ def find_stable_paper_quad(image: np.ndarray) -> tuple[np.ndarray, np.ndarray, d
     candidates: list[tuple[int, np.ndarray, float, float, np.ndarray]] = []
     for threshold in range(int(otsu_t), 246, 5):
         _ret, binary = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
-        binary = cv2.morphologyEx(
-            binary, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8)
-        )
-        binary = cv2.morphologyEx(
-            binary, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8)
-        )
+        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, np.ones((9, 9), np.uint8))
+        binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, np.ones((9, 9), np.uint8))
         contours, _hierarchy = cv2.findContours(
             binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
         )
@@ -132,16 +128,20 @@ def find_stable_paper_quad(image: np.ndarray) -> tuple[np.ndarray, np.ndarray, d
         (image.shape[1], image.shape[0]),
         interpolation=cv2.INTER_NEAREST,
     )
-    return quad, mask, {
-        "otsu_threshold": round(float(otsu_t), 2),
-        "selected_threshold": int(threshold),
-        "area_fraction": round(float(frac), 4),
-        "rectangularity": round(float(rect), 4),
-        "candidate_count": len(candidates),
-        "stable_run_length": len(best_run),
-        "open_sides": sorted(open_sides),
-        "quad_expand": EXPAND,
-    }
+    return (
+        quad,
+        mask,
+        {
+            "otsu_threshold": round(float(otsu_t), 2),
+            "selected_threshold": int(threshold),
+            "area_fraction": round(float(frac), 4),
+            "rectangularity": round(float(rect), 4),
+            "candidate_count": len(candidates),
+            "stable_run_length": len(best_run),
+            "open_sides": sorted(open_sides),
+            "quad_expand": EXPAND,
+        },
+    )
 
 
 def warp_with_matrix(
@@ -186,7 +186,9 @@ def warp_with_matrix(
     return warped, matrix
 
 
-def _runs_of(mask: np.ndarray, start: int, stop: int, min_width: int) -> list[tuple[int, int]]:
+def _runs_of(
+    mask: np.ndarray, start: int, stop: int, min_width: int
+) -> list[tuple[int, int]]:
     runs: list[tuple[int, int]] = []
     index = start
     while index < stop:
@@ -208,9 +210,9 @@ def find_gutter_cuts(warped: np.ndarray) -> tuple[int, int, int, dict]:
     background = cv2.GaussianBlur(
         cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel), (0, 0), 21
     )
-    normalized = cv2.divide(
-        gray.astype(np.float32), background.astype(np.float32) + 1e-6
-    ) * 255
+    normalized = (
+        cv2.divide(gray.astype(np.float32), background.astype(np.float32) + 1e-6) * 255
+    )
     height = normalized.shape[0]
     band = normalized[int(height * 0.05) : int(height * 0.95)]
     if band.size == 0:
@@ -226,9 +228,7 @@ def find_gutter_cuts(warped: np.ndarray) -> tuple[int, int, int, dict]:
         cv2.erode(smoothed.reshape(1, -1), open_kernel), open_kernel
     ).ravel()
 
-    safe_runs = _runs_of(
-        opened < 2.5, lo, hi, max(4, int(width * 0.01))
-    )
+    safe_runs = _runs_of(opened < 2.5, lo, hi, max(4, int(width * 0.01)))
     pad = max(14, int(width * 0.008))
     if not safe_runs:
         valley = lo + int(np.argmin(smoothed[lo:hi]))
@@ -252,16 +252,21 @@ def find_gutter_cuts(warped: np.ndarray) -> tuple[int, int, int, dict]:
     if cut_right < cut_left:
         cut_left = cut_right = (gutter_start + gutter_end) // 2
         method = "narrow_gutter_midpoint"
-    return cut_left, cut_right, pad, {
-        "method": method,
-        "gutter_start": int(gutter_start),
-        "gutter_end": int(gutter_end),
-        "cut_left": int(cut_left),
-        "cut_right": int(cut_right),
-        "pad": int(pad),
-        "safe_run_count": len(safe_runs),
-        "opening_width": int(opening_width),
-    }
+    return (
+        cut_left,
+        cut_right,
+        pad,
+        {
+            "method": method,
+            "gutter_start": int(gutter_start),
+            "gutter_end": int(gutter_end),
+            "cut_left": int(cut_left),
+            "cut_right": int(cut_right),
+            "pad": int(pad),
+            "safe_run_count": len(safe_runs),
+            "opening_width": int(opening_width),
+        },
+    )
 
 
 def clear_border_blobs(
@@ -299,14 +304,13 @@ def enhance_stable_page(
     background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
     background = cv2.GaussianBlur(background, (0, 0), 21)
     normalized = np.clip(
-        cv2.divide(gray.astype(np.float32), background.astype(np.float32) + 1e-6)
-        * 255,
+        cv2.divide(gray.astype(np.float32), background.astype(np.float32) + 1e-6) * 255,
         0,
         255,
     )
-    out = np.clip(
-        (normalized - black) * 255.0 / max(1, white - black), 0, 255
-    ).astype(np.uint8)
+    out = np.clip((normalized - black) * 255.0 / max(1, white - black), 0, 255).astype(
+        np.uint8
+    )
     out = cv2.addWeighted(out, 1.4, cv2.GaussianBlur(out, (0, 0), 2), -0.4, 0)
     out = np.clip(out, 0, 255).astype(np.uint8)
     out = clear_border_blobs(out)
@@ -359,14 +363,10 @@ def content_protect_crop(
     content_x = np.where(column_ink > height * 0.004)[0]
     content_y = np.where(row_ink > width * 0.004)[0]
     content_left, content_right = (
-        (int(content_x[0]), int(content_x[-1]))
-        if len(content_x)
-        else (0, width - 1)
+        (int(content_x[0]), int(content_x[-1])) if len(content_x) else (0, width - 1)
     )
     content_top, content_bottom = (
-        (int(content_y[0]), int(content_y[-1]))
-        if len(content_y)
-        else (0, height - 1)
+        (int(content_y[0]), int(content_y[-1])) if len(content_y) else (0, height - 1)
     )
 
     def junk_width(profile: np.ndarray, limit: int) -> int:
@@ -390,7 +390,9 @@ def content_protect_crop(
     base_bottom = max(0, int(base.get("bottom", int(height * INSET_FRAC))) - 4)
 
     def clamp_cut(base_cut: int, junk_cut: int, distance_to_content: int) -> int:
-        return base_cut + max(0, min(junk_cut + extra, distance_to_content - base_cut - pad))
+        return base_cut + max(
+            0, min(junk_cut + extra, distance_to_content - base_cut - pad)
+        )
 
     cuts = {
         "left": clamp_cut(
@@ -435,7 +437,9 @@ def content_protect_crop(
         flags.append("possible_overcrop_tb")
     if len(cropped_x) and len(cropped_y):
         content_box = np.zeros_like(cropped_dark)
-        content_box[cropped_y[0] : cropped_y[-1] + 1, cropped_x[0] : cropped_x[-1] + 1] = True
+        content_box[
+            cropped_y[0] : cropped_y[-1] + 1, cropped_x[0] : cropped_x[-1] + 1
+        ] = True
         residual = float((cropped_dark & ~content_box).mean())
         if residual > 0.03:
             flags.append(f"possible_undercrop_residual_{residual:.0%}")
@@ -443,7 +447,9 @@ def content_protect_crop(
     return cv2.cvtColor(cropped, cv2.COLOR_GRAY2BGR), cuts, flags
 
 
-def map_warp_rect_to_source(inverse_matrix: np.ndarray, points: np.ndarray) -> np.ndarray:
+def map_warp_rect_to_source(
+    inverse_matrix: np.ndarray, points: np.ndarray
+) -> np.ndarray:
     mapped = cv2.perspectiveTransform(
         points.astype(np.float32).reshape(1, -1, 2), inverse_matrix
     ).reshape(-1, 2)

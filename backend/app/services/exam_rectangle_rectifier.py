@@ -27,9 +27,7 @@ from app.services.exam_photo_preprocessing import (
 
 
 def encode_jpeg(image: np.ndarray) -> bytes:
-    ok, buffer = cv2.imencode(
-        ".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 95]
-    )
+    ok, buffer = cv2.imencode(".jpg", image, [int(cv2.IMWRITE_JPEG_QUALITY), 95])
     if not ok:
         raise PhotoPreprocessingError("Could not encode rotated scan candidate")
     return buffer.tobytes()
@@ -191,15 +189,19 @@ def detect_fold_split_line(
         return float(fallback_x), float(fallback_x), {"method": "fallback_no_candidate"}
 
     best = max(candidates, key=lambda item: item["score"])
-    return best["x_top"], best["x_bottom"], {
-        "method": "hough_fold_line",
-        "x_top": round(best["x_top"], 2),
-        "x_bottom": round(best["x_bottom"], 2),
-        "angle": round(best["angle"], 3),
-        "length": round(best["length"], 2),
-        "score": round(best["score"], 2),
-        "candidate_count": len(candidates),
-    }
+    return (
+        best["x_top"],
+        best["x_bottom"],
+        {
+            "method": "hough_fold_line",
+            "x_top": round(best["x_top"], 2),
+            "x_bottom": round(best["x_bottom"], 2),
+            "angle": round(best["angle"], 3),
+            "length": round(best["length"], 2),
+            "score": round(best["score"], 2),
+            "candidate_count": len(candidates),
+        },
+    )
 
 
 def build_single_page_quads_from_spread(
@@ -365,8 +367,7 @@ def paper_score_mask(image: np.ndarray) -> np.ndarray:
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
     _hue, saturation, value = cv2.split(hsv)
     return (
-        ((value > 135) & (saturation < 70))
-        | ((value > 155) & (saturation < 95))
+        ((value > 135) & (saturation < 70)) | ((value > 155) & (saturation < 95))
     ).astype("uint8")
 
 
@@ -534,14 +535,17 @@ def preprocess_exam_rectangle_rectifier_bytes(contents: bytes) -> PreprocessedEx
 
     candidates: list[dict[str, object]] = []
     source_portrait = image.shape[0] > image.shape[1] * 1.25
-    best: tuple[
-        float,
-        int,
-        np.ndarray,
-        list[np.ndarray],
-        dict[str, object],
-        str,
-    ] | None = None
+    best: (
+        tuple[
+            float,
+            int,
+            np.ndarray,
+            list[np.ndarray],
+            dict[str, object],
+            str,
+        ]
+        | None
+    ) = None
     for rotation in (0, 90, 270, 180):
         started = time.perf_counter()
         rotated = rotate_clockwise(image, rotation)
@@ -555,7 +559,9 @@ def preprocess_exam_rectangle_rectifier_bytes(contents: bytes) -> PreprocessedEx
             pass
         try:
             spread_quads, spread_debug = build_single_page_quads_from_spread(rotated)
-            candidates_for_rotation.append(("two_page_spread", spread_quads, spread_debug))
+            candidates_for_rotation.append(
+                ("two_page_spread", spread_quads, spread_debug)
+            )
         except (PhotoPreprocessingError, OSError):
             pass
         for candidate_kind, page_quads, rectangle_debug in candidates_for_rotation:
@@ -604,7 +610,9 @@ def preprocess_exam_rectangle_rectifier_bytes(contents: bytes) -> PreprocessedEx
                 )
 
     if best is None:
-        raise PhotoPreprocessingError("No rectangle-frame rectification candidate worked")
+        raise PhotoPreprocessingError(
+            "No rectangle-frame rectification candidate worked"
+        )
 
     (
         best_score,

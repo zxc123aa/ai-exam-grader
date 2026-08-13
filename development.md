@@ -180,6 +180,66 @@ ruff-format..............................................................Passed
 biome check..............................................................Passed
 ```
 
+## CI 检查与本地复现
+
+`.github/workflows/` 下有四条流水线，push 到 `main`、开 PR 和手动触发时都会跑：
+
+| Workflow | 内容 |
+| --- | --- |
+| `lint-backend` | `ruff check` + `ruff format --check`，范围 `backend/app` 与 `backend/tests` |
+| `test-backend` | `postgres:18` + `redis:7-alpine` service 容器 → `alembic upgrade head` → `backend/scripts/tests-start.sh`（coverage + pytest）→ `scripts/smoke-openapi.py`，覆盖率报告作为 artifact |
+| `test-frontend` | `npm ci` → `biome ci` → `tsc -p tsconfig.build.json` → `vite build` |
+| `lint-workflows` | `zizmor` 审计 workflow 自身 |
+
+### 本地跑后端检查
+
+测试会清库，因此 `POSTGRES_DB` 必须包含 `test`，否则 `tests/conftest.py` 会主动拒绝执行（这是保护开发库的安全门，不要绕过）。
+
+```bash
+# lint
+uv run ruff check backend/app backend/tests
+uv run ruff format backend/app backend/tests --check
+
+# 测试：需要 PostgreSQL 与 Redis 可达
+cd backend
+export POSTGRES_DB=app_test
+export EMAILS_FROM_EMAIL=noreply@example.com   # emails_enabled 依赖它，找回密码用例需要
+export BILLING_ENFORCEMENT_ENABLED=false       # 测试数据没有学校合同，与 .env.example 一致
+uv run alembic upgrade head
+uv run bash scripts/tests-start.sh
+```
+
+`BILLING_ENFORCEMENT_ENABLED` 默认是 `true`（生产语义）。计费与商业化用例会自己 monkeypatch 打开门禁，所以关掉它不会降低这部分覆盖；但如果保持打开，几个上传答卷的用例会因为学校没有合同而收到 402。
+
+### 本地跑前端检查
+
+```bash
+npm ci                                   # 依赖装在仓库根，frontend 是 npm workspace 成员
+cd frontend
+npx biome ci .                           # 注意：npm run lint 会带 --write 改文件，CI 用 biome ci
+npx tsc -p tsconfig.build.json
+npx vite build
+```
+
+### 让 CI 成为阻断门禁
+
+CI 目前只是提示：私有仓库的分支保护需要 GitHub Pro/Team/Enterprise 计划，免费计划下 GitHub 会返回 `403 Upgrade to GitHub Pro or make this repository public`。升级后由仓库管理员执行一次即可，不需要改动代码：
+
+```bash
+GH_TOKEN=<管理员 PAT，需 Administration: write> ./scripts/setup-branch-protection.sh
+./scripts/setup-branch-protection.sh --show   # 查看当前状态与实际的检查名
+```
+
+注意本仓库历史提交中的 `.env` 带真实密钥，**不要**为了免费获得该能力而把仓库改成 public。背景与出路见 `docs/issue-backlog.md` AEG-064。
+
+### 门禁之外的检查
+
+- **mypy / ty**：`backend/scripts/lint.sh` 和 pre-commit 里都有，但当前 strict 模式下分别有 588 / 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式误报，因此没有纳入 CI。清理计划见 `docs/issue-backlog.md` AEG-060。注意 `prek run --all-files` 目前会在 `mypy check` 和 `ty check` 上报红，这是已知状态，不是你的改动引入的。
+- **typos / zizmor**：只在 pre-commit 中运行（zizmor 另有独立 workflow）。`typos` 的允许词表在根 `pyproject.toml` 的 `[tool.typos]`：`mch`（微信商户号）、`rto`、`thr` 等域内缩写已加入白名单。
+- **Generate Frontend SDK**：pre-commit 会在后端改动后重新生成 `frontend/src/client/`。重新生成可能只带来空行缩进差异，提交前确认改动确实来自 API 变化，不要把生成器噪声混进业务 PR。
+- **Playwright E2E**：live 用例需要真实模型 Key、Node 参考服务和系统 Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`），只能本地或手动跑。分层进 CI 的计划见 AEG-061。
+- **`backend/scripts` 与根 `scripts/`**：运维与评测脚本按设计使用 `print`，与 ruff 的 T201 冲突，不纳入 lint 门禁。
+
 ## URLs
 
 The production or staging URLs would use these same paths, but with your own domain.

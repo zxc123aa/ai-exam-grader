@@ -177,9 +177,7 @@ def _channel_public(
         credential_fingerprint=credential.fingerprint if credential else None,
         credential_last_four=credential.last_four if credential else None,
         billing_credential_configured=bool(
-            credential
-            and credential.billing_ciphertext
-            and credential.billing_nonce
+            credential and credential.billing_ciphertext and credential.billing_nonce
         ),
         billing_credential_last_four=(
             credential.billing_last_four if credential else None

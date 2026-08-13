@@ -59,9 +59,7 @@ def test_user_me_includes_org_id_and_org_name(client: TestClient, db: Session) -
 def test_platform_user_me_has_null_org(
     client: TestClient, superuser_token_headers: dict[str, str]
 ) -> None:
-    r = client.get(
-        f"{settings.API_V1_STR}/users/me", headers=superuser_token_headers
-    )
+    r = client.get(f"{settings.API_V1_STR}/users/me", headers=superuser_token_headers)
     assert r.status_code == 200
     data = r.json()
     assert data["role"] == UserRole.PLATFORM_SUPERUSER

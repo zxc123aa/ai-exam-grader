@@ -110,9 +110,7 @@ def build_blurry_scan_photo() -> bytes:
 
 
 def test_preprocess_exam_photo_splits_landscape_spread() -> None:
-    result = preprocess_exam_photo_bytes(
-        build_scan_photo(size=(360, 220), spread=True)
-    )
+    result = preprocess_exam_photo_bytes(build_scan_photo(size=(360, 220), spread=True))
 
     assert len(result.pages) == 2
     assert result.split.strategy in {"detected_gutter", "center_fallback"}

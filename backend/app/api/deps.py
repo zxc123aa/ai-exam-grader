@@ -94,11 +94,15 @@ def is_platform_superuser(user: User) -> bool:
 
 def is_platform_user(user: User) -> bool:
     """平台侧角色（超管 + 管理员 + 运营），仅访问卖方控制面。"""
-    return user.role in (
-        UserRole.PLATFORM_SUPERUSER,
-        UserRole.PLATFORM_ADMIN,
-        UserRole.PLATFORM_SUPPORT,
-    ) or user.is_superuser
+    return (
+        user.role
+        in (
+            UserRole.PLATFORM_SUPERUSER,
+            UserRole.PLATFORM_ADMIN,
+            UserRole.PLATFORM_SUPPORT,
+        )
+        or user.is_superuser
+    )
 
 
 def is_school_manager(user: User) -> bool:

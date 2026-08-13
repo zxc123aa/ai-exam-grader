@@ -71,7 +71,9 @@ def resolve_exam_region_paper_page(session: Session, region: ExamRegion) -> int:
         select(ExamDocument)
         .where(ExamDocument.exam_id == region.exam_id)
         .where(ExamDocument.document_type == ExamDocumentType.BLANK_EXAM)
-        .order_by(col(ExamDocument.sort_order).asc(), col(ExamDocument.created_at).asc())
+        .order_by(
+            col(ExamDocument.sort_order).asc(), col(ExamDocument.created_at).asc()
+        )
     ).all()
     page_offset = 0
     for document in documents:
