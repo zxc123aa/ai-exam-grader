@@ -52,3 +52,23 @@
 ## 当前数据备注
 - 演示考试「扫描流程验证-物理双页卷」（默认学校，001/002 班各 4 人，18 题满分 100）。
 - 测试学校「示范二中」(code=demo2) 及 demo2.owner@example.com；学生账号 liuyuxin@example.com（绑刘雨欣）。
+
+## Cursor Cloud specific instructions
+系统依赖（uv、PostgreSQL 18、Redis 7、后端/前端依赖、`.env`）已随 VM 快照装好，启动脚本每次开机跑 `uv sync` + `npm ci` 刷新代码依赖。以下是**非显而易见的启动/运行注意事项**（容器内无 systemd，服务不会自动起）。
+
+### 每次新 VM 手动起服务
+- PostgreSQL 18（PGDG 安装，非 systemd）：`sudo pg_ctlcluster 18 main start`
+- Redis 7：`sudo redis-server /etc/redis/redis.conf --daemonize yes`
+- 数据库角色 `postgres` / 密码 `postgres`；库 `app`（开发）与 `app_test`（测试）已建好；`.env` 已从 `.env.example` 复制并填好本地占位密钥（`POSTGRES_PASSWORD=postgres`）。
+- 迁移 + 种子（首个超管 admin@example.com / changethis）：`cd backend && uv run alembic upgrade head && uv run python app/initial_data.py`（数据随快照保留，一般只在有新迁移时重跑）。
+
+### 开发运行命令（标准命令见 development.md / package.json）
+- 后端：`cd backend && uv run fastapi dev app/main.py`（:8000）。
+- Worker：`cd backend && uv run dramatiq app.worker`。注意：锁文件未含 `watchdog`，**不支持 `--watch`**（compose 里用了 `--watch`，本地加会报 `unrecognized arguments: --watch`）。
+- 前端：`cd frontend && npx vite`（:5173）。容器内**没装 bun**，用 `npx vite` 代替 `bun run dev`。
+- uv 装在 `~/.local/bin` 并软链到 `/usr/local/bin/uv`。
+
+### 陷阱
+- 跑后端测试用的 `POSTGRES_DB=app_test`、`EMAILS_FROM_EMAIL`、`BILLING_ENFORCEMENT_ENABLED` 等变量**不要泄漏到开发/服务进程**：后端/worker 若带着 `POSTGRES_DB=app_test` 启动会连到未播种超管的测试库，登录报 400。起服务前确保未 export 这些变量。
+- 后端测试若直接用完整 `.env` 跑，`test_platform` 有 4 个系统配置用例会因 `.env` 里 `VISION_FALLBACK_MODELS=gpt-5.5` 泄漏进测试进程而失败（CI 不带 `.env` 模型变量，故绿）。要对齐 CI，跑测试时移除/注释 `.env` 的 `VISION_FALLBACK_MODELS`。测试命令见「技术要点」。
+- 批改全链路（视觉/LLM 评分、Node 参考算法 :3417、GPU OCR :8010）需真实模型 Key（`.env` 的 `PROVIDER_*`），默认未配置，属**可选服务**；核心 loop（登录 / 建校 / 学校与账号管理）无需它们即可跑通。
