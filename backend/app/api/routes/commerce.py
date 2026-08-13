@@ -162,13 +162,9 @@ def update_plan_publication(
 
 
 @router.get("/admin/addons", response_model=list[AddonSku])
-def list_addons(
-    session: SessionDep, _current_user: PlatformFinance
-) -> list[AddonSku]:
+def list_addons(session: SessionDep, _current_user: PlatformFinance) -> list[AddonSku]:
     return list(
-        session.exec(
-            select(AddonSku).order_by(col(AddonSku.created_at).desc())
-        ).all()
+        session.exec(select(AddonSku).order_by(col(AddonSku.created_at).desc())).all()
     )
 
 
@@ -335,7 +331,9 @@ def list_invoices(
     )
 
 
-@router.patch("/admin/invoices/{application_id}", response_model=InvoiceApplicationPublic)
+@router.patch(
+    "/admin/invoices/{application_id}", response_model=InvoiceApplicationPublic
+)
 def review_invoice(
     session: SessionDep,
     _current_user: PlatformFinance,
@@ -372,7 +370,9 @@ def request_refund(
         )
     )
     if order.fulfilled_at is None:
-        raise HTTPException(status_code=409, detail="未完成订单无需退款，请直接关闭订单")
+        raise HTTPException(
+            status_code=409, detail="未完成订单无需退款，请直接关闭订单"
+        )
     if refund_in.amount_cents > order.amount_cents:
         raise HTTPException(status_code=422, detail="退款金额不能超过订单金额")
     if refund_in.amount_cents != order.amount_cents:
@@ -431,9 +431,7 @@ def review_refund(
 
 
 @router.get("/org/billing", response_model=BillingSummaryPublic)
-def org_billing(
-    session: SessionDep, current_user: SchoolBuyer
-) -> BillingSummaryPublic:
+def org_billing(session: SessionDep, current_user: SchoolBuyer) -> BillingSummaryPublic:
     assert current_user.org_id is not None
     return billing_service.billing_summary(session, current_user.org_id)
 
@@ -457,9 +455,7 @@ async def wechat_webhook(
         payload = await request.json()
         event_id = str(payload["id"])
         existing = session.exec(
-            select(PaymentWebhookEvent).where(
-                PaymentWebhookEvent.event_id == event_id
-            )
+            select(PaymentWebhookEvent).where(PaymentWebhookEvent.event_id == event_id)
         ).first()
         if existing and existing.processed_at:
             return {"code": "SUCCESS", "message": "成功"}

@@ -53,9 +53,7 @@ def test_job_lease_reclaims_expired_slot(db: Session) -> None:
     assert token is not None
     with Session(db.bind) as check:
         leases = check.exec(
-            select(OrganizationJobLease).where(
-                OrganizationJobLease.org_id == org.id
-            )
+            select(OrganizationJobLease).where(OrganizationJobLease.org_id == org.id)
         ).all()
         assert [item.resource_id for item in leases] == ["fresh-run"]
     job_control.release_job_lease(token)

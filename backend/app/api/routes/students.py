@@ -71,11 +71,7 @@ def _release_class_position(
             my_key = key
     if my_key is None:
         return None, 0, None
-    classmates = [
-        (key, value)
-        for key, value in totals.items()
-        if key[0] == my_key[0]
-    ]
+    classmates = [(key, value) for key, value in totals.items() if key[0] == my_key[0]]
     scored = sorted(
         (row for row in classmates if row[1]["has_score"]),
         key=lambda row: row[1]["score"],
@@ -109,9 +105,7 @@ def find_my_submissions(
     """我参加的答卷：优先按 student_id 匹配，再按「班级 + 姓名」兜底。"""
     submissions = list(
         session.exec(
-            select(StudentSubmission).where(
-                StudentSubmission.student_id == student.id
-            )
+            select(StudentSubmission).where(StudentSubmission.student_id == student.id)
         ).all()
     )
     matched_ids = {submission.id for submission in submissions}
@@ -190,11 +184,7 @@ def _compute_class_position(
         return None, 0, class_name
     class_name = my_entry["class_name"]
     class_key = (class_name or "").strip()
-    classmates = [
-        entry
-        for key, entry in merged.items()
-        if key[0] == class_key
-    ]
+    classmates = [entry for key, entry in merged.items() if key[0] == class_key]
     scored = sorted(
         (entry for entry in classmates if entry["total_score"] is not None),
         key=lambda entry: entry["total_score"],
@@ -221,9 +211,7 @@ def _get_my_exam_context(
 
 
 @router.get("/me/exams", response_model=StudentExamListPublic)
-def read_my_exams(
-    session: SessionDep, current_user: CurrentStudentUser
-) -> Any:
+def read_my_exams(session: SessionDep, current_user: CurrentStudentUser) -> Any:
     _student, _class_name, submissions = _get_my_exam_context(
         session=session, current_user=current_user
     )
@@ -249,7 +237,9 @@ def read_my_exams(
             session, release, my_submission_ids
         )
         labels = {item.label for item in release_items}
-        total_score = sum(item.score for item in release_items if item.score is not None)
+        total_score = sum(
+            item.score for item in release_items if item.score is not None
+        )
         total_max_score = sum(
             item.max_score for item in release_items if item.max_score is not None
         )
@@ -284,9 +274,7 @@ def read_my_exams(
     return StudentExamListPublic(data=items, count=len(items))
 
 
-@router.get(
-    "/me/exams/{exam_id}/report", response_model=StudentExamReportPublic
-)
+@router.get("/me/exams/{exam_id}/report", response_model=StudentExamReportPublic)
 def read_my_exam_report(
     session: SessionDep, current_user: CurrentStudentUser, exam_id: uuid.UUID
 ) -> Any:
@@ -296,9 +284,7 @@ def read_my_exam_report(
     my_submission_ids = {submission.id for submission in submissions}
     # 数据隔离：未参加的考试一律 404，不区分「不存在」与「属于别人」
     exam = session.get(Exam, exam_id)
-    if not exam or not any(
-        submission.exam_id == exam_id for submission in submissions
-    ):
+    if not exam or not any(submission.exam_id == exam_id for submission in submissions):
         raise HTTPException(status_code=404, detail="Exam not found")
 
     release = _published_release(session, exam_id)
@@ -333,9 +319,7 @@ def read_my_exam_report(
         question.score for question in questions if question.score is not None
     )
     total_max_score = sum(
-        question.max_score
-        for question in questions
-        if question.max_score is not None
+        question.max_score for question in questions if question.max_score is not None
     )
     return StudentExamReportPublic(
         exam_id=exam.id,

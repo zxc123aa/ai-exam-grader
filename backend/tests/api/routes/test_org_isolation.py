@@ -43,9 +43,7 @@ startxref
 """
 
 
-def _create_org(
-    db: Session, name: str, *, sharing: bool = False
-) -> Organization:
+def _create_org(db: Session, name: str, *, sharing: bool = False) -> Organization:
     org = Organization(
         name=name,
         code=f"org-{random_lower_string()[:16]}",
@@ -79,9 +77,7 @@ def _headers(client: TestClient, user: User, password: str) -> dict[str, str]:
     )
 
 
-def _create_exam(
-    client: TestClient, headers: dict[str, str], title: str
-) -> dict:
+def _create_exam(client: TestClient, headers: dict[str, str], title: str) -> dict:
     r = client.post(
         f"{settings.API_V1_STR}/exams/", headers=headers, json={"title": title}
     )
@@ -89,9 +85,7 @@ def _create_exam(
     return r.json()
 
 
-def _create_class(
-    client: TestClient, headers: dict[str, str], name: str
-) -> dict:
+def _create_class(client: TestClient, headers: dict[str, str], name: str) -> dict:
     r = client.post(
         f"{settings.API_V1_STR}/classes/", headers=headers, json={"name": name}
     )
@@ -119,9 +113,7 @@ def test_exam_isolation_between_orgs(client: TestClient, db: Session) -> None:
     r = client.get(f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_b)
     assert r.status_code == 404
 
-    r = client.get(
-        f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_admin_b
-    )
+    r = client.get(f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_admin_b)
     assert r.status_code == 404
 
     # 考试输出带 org_id，且等于创建者所在学校
@@ -232,9 +224,7 @@ def test_teacher_sharing_enabled_readonly(client: TestClient, db: Session) -> No
         json={"title": "越权改名"},
     )
     assert r.status_code == 403
-    r = client.delete(
-        f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_2
-    )
+    r = client.delete(f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_2)
     assert r.status_code == 403
     r = client.post(
         f"{settings.API_V1_STR}/exams/{exam['id']}/submissions",
@@ -245,9 +235,7 @@ def test_teacher_sharing_enabled_readonly(client: TestClient, db: Session) -> No
     assert r.status_code == 403
 
 
-def test_school_owner_can_write_school_exams(
-    client: TestClient, db: Session
-) -> None:
+def test_school_owner_can_write_school_exams(client: TestClient, db: Session) -> None:
     """school_owner 可见可写本校任意考试；school_admin 可见但不可写。"""
     org = _create_org(db, "学校E")
     teacher, pw_t = _create_user(db, UserRole.TEACHER, org)
@@ -280,15 +268,11 @@ def test_school_owner_can_write_school_exams(
     )
     assert r.status_code == 403
 
-    r = client.delete(
-        f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_o
-    )
+    r = client.delete(f"{settings.API_V1_STR}/exams/{exam['id']}", headers=headers_o)
     assert r.status_code == 200
 
 
-def test_submission_resolves_to_same_org_class(
-    client: TestClient, db: Session
-) -> None:
+def test_submission_resolves_to_same_org_class(client: TestClient, db: Session) -> None:
     """答卷按 (org_id, class_name) 归位：落到本校同名班，不影响他校同名班。"""
     org_a = _create_org(db, "学校F")
     org_b = _create_org(db, "学校G")

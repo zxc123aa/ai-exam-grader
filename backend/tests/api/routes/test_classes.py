@@ -71,9 +71,7 @@ def _create_teacher(
     return user, _headers(client, user, password)
 
 
-def _create_class(
-    client: TestClient, headers: dict[str, str], name: str
-) -> dict:
+def _create_class(client: TestClient, headers: dict[str, str], name: str) -> dict:
     r = client.post(
         f"{settings.API_V1_STR}/classes/", headers=headers, json={"name": name}
     )
@@ -104,17 +102,13 @@ def test_class_crud(client: TestClient, db: Session) -> None:
     assert r.json()["name"] == "高三2班"
     assert r.json()["grade_level"] == "高三"
 
-    r = client.delete(
-        f"{settings.API_V1_STR}/classes/{class_id}", headers=headers
-    )
+    r = client.delete(f"{settings.API_V1_STR}/classes/{class_id}", headers=headers)
     assert r.status_code == 200
     r = client.get(f"{settings.API_V1_STR}/classes/", headers=headers)
     assert r.json()["count"] == 0
 
 
-def test_create_class_duplicate_name_conflict(
-    client: TestClient, db: Session
-) -> None:
+def test_create_class_duplicate_name_conflict(client: TestClient, db: Session) -> None:
     _, headers = _create_teacher(client, db)
     _create_class(client, headers, "重名班")
     r = client.post(
@@ -123,9 +117,7 @@ def test_create_class_duplicate_name_conflict(
     assert r.status_code == 409
 
 
-def test_delete_class_with_students_conflict(
-    client: TestClient, db: Session
-) -> None:
+def test_delete_class_with_students_conflict(client: TestClient, db: Session) -> None:
     _, headers = _create_teacher(client, db)
     class_id = _create_class(client, headers, "有学生的班")["id"]
     r = client.post(
@@ -134,15 +126,11 @@ def test_delete_class_with_students_conflict(
         json={"name": "学生甲"},
     )
     assert r.status_code == 200
-    r = client.delete(
-        f"{settings.API_V1_STR}/classes/{class_id}", headers=headers
-    )
+    r = client.delete(f"{settings.API_V1_STR}/classes/{class_id}", headers=headers)
     assert r.status_code == 409
 
 
-def test_student_crud_and_duplicate_name(
-    client: TestClient, db: Session
-) -> None:
+def test_student_crud_and_duplicate_name(client: TestClient, db: Session) -> None:
     _, headers = _create_teacher(client, db)
     class_id = _create_class(client, headers, "学生CRUD班")["id"]
 
@@ -188,9 +176,7 @@ def test_student_crud_and_duplicate_name(
     assert r.json()["count"] == 0
 
 
-def test_batch_create_students_skips_existing(
-    client: TestClient, db: Session
-) -> None:
+def test_batch_create_students_skips_existing(client: TestClient, db: Session) -> None:
     _, headers = _create_teacher(client, db)
     class_id = _create_class(client, headers, "批量班")["id"]
     client.post(

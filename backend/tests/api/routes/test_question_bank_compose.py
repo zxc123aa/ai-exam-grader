@@ -62,7 +62,12 @@ def _seed_published_answer(
         max_score=max_score,
         rubric_text="评分规则",
         scoring_points=[
-            {"id": "p1", "description": "结果正确", "points": max_score, "required": True}
+            {
+                "id": "p1",
+                "description": "结果正确",
+                "points": max_score,
+                "required": True,
+            }
         ],
         status=StandardAnswerStatus.READY,
         question_text=question.question_text,
@@ -216,7 +221,9 @@ def test_question_bank_and_compose(
 
     with Session(engine) as session:
         new_answers = session.exec(
-            select(StandardAnswer).where(StandardAnswer.exam_id == uuid.UUID(new_exam_id))
+            select(StandardAnswer).where(
+                StandardAnswer.exam_id == uuid.UUID(new_exam_id)
+            )
         ).all()
         assert len(new_answers) == 1
         new_answer = new_answers[0]

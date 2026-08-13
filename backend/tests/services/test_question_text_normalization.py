@@ -43,7 +43,9 @@ B. $W_1 > W_2$, $P_1 = P_2$"""
         "举重题。 A. W1=W2, P1=P2 B. W1>W2, P1=P2"
     )
     assert (
-        normalize_recognized_question_text("12. 鸡蛋由于具有______并未飞出。", question_key="12")
+        normalize_recognized_question_text(
+            "12. 鸡蛋由于具有______并未飞出。", question_key="12"
+        )
         == "鸡蛋由于具有____并未飞出。"
     )
 
@@ -59,7 +61,10 @@ def test_normalize_reference_result_question_preserves_raw_question_for_audit() 
     assert normalized["question"] == "如图所示，用尺子快速水平击打盖在杯口的硬纸片。"
     assert normalized["rawQuestion"] == result["question"]
     assert normalized["questionNormalized"] is True
-    assert normalized["questionNormalization"]["version"] == "question_text_normalization_v1"
+    assert (
+        normalized["questionNormalization"]["version"]
+        == "question_text_normalization_v1"
+    )
     assert normalized["questionNormalization"]["changed"] is True
     assert normalized["questionNormalization"]["riskLevel"] == "low"
     assert any(
@@ -78,7 +83,11 @@ def test_physics_reference_prediction_passes_gold_after_question_normalization(
         / "outputs/ocr-ground-truth/physics-2021-2022-b/reference-node-run/current_prediction.json"
     )
     evaluator_path = root / "scripts/evaluate_ocr_char_accuracy.py"
-    if not gold_path.exists() or not prediction_path.exists() or not evaluator_path.exists():
+    if (
+        not gold_path.exists()
+        or not prediction_path.exists()
+        or not evaluator_path.exists()
+    ):
         pytest.skip("physics OCR regression fixtures are not present in this workspace")
 
     prediction = json.loads(prediction_path.read_text(encoding="utf-8"))

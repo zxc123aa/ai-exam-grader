@@ -26,7 +26,11 @@ class StorageBackend(Protocol):
 
 def normalize_storage_key(storage_key: str) -> str:
     key = PurePosixPath(storage_key.replace("\\", "/"))
-    if key.is_absolute() or not key.parts or any(part in {"", ".", ".."} for part in key.parts):
+    if (
+        key.is_absolute()
+        or not key.parts
+        or any(part in {"", ".", ".."} for part in key.parts)
+    ):
         raise ObjectStorageError("Invalid storage key")
     return key.as_posix()
 
@@ -93,7 +97,9 @@ class OssStorageBackend:
         target.parent.mkdir(parents=True, exist_ok=True)
         temp_path = target.with_name(f".{target.name}.{uuid.uuid4().hex}.tmp")
         try:
-            self.bucket.get_object_to_file(self._object_key(storage_key), str(temp_path))
+            self.bucket.get_object_to_file(
+                self._object_key(storage_key), str(temp_path)
+            )
             temp_path.replace(target)
         except oss2.exceptions.OssError as exc:
             raise ObjectStorageError("Unable to read object from OSS") from exc

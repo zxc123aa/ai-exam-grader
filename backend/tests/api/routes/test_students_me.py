@@ -38,9 +38,7 @@ def _headers(client: TestClient, user: User, password: str) -> dict[str, str]:
     )
 
 
-def _create_class(
-    client: TestClient, headers: dict[str, str], name: str
-) -> dict:
+def _create_class(client: TestClient, headers: dict[str, str], name: str) -> dict:
     r = client.post(
         f"{settings.API_V1_STR}/classes/", headers=headers, json={"name": name}
     )
@@ -131,12 +129,8 @@ def _make_annotation(
     return annotation
 
 
-def _publish_scores(
-    db: Session, *, exam_id: uuid.UUID, teacher_id: uuid.UUID
-) -> None:
-    release = ScoreRelease(
-        exam_id=exam_id, version=1, published_by_id=teacher_id
-    )
+def _publish_scores(db: Session, *, exam_id: uuid.UUID, teacher_id: uuid.UUID) -> None:
+    release = ScoreRelease(exam_id=exam_id, version=1, published_by_id=teacher_id)
     db.add(release)
     db.flush()
     submissions = list(
@@ -146,7 +140,9 @@ def _publish_scores(
     )
     annotations = db.exec(
         select(SubmissionAnnotation).where(
-            col(SubmissionAnnotation.submission_id).in_([item.id for item in submissions])
+            col(SubmissionAnnotation.submission_id).in_(
+                [item.id for item in submissions]
+            )
         )
     ).all()
     db.add_all(
@@ -410,9 +406,7 @@ def test_student_exam_list_and_report(client: TestClient, db: Session) -> None:
     _publish_scores(db, exam_id=exam2_id, teacher_id=teacher.id)
 
     # 考试列表
-    r = client.get(
-        f"{settings.API_V1_STR}/students/me/exams", headers=student_headers
-    )
+    r = client.get(f"{settings.API_V1_STR}/students/me/exams", headers=student_headers)
     assert r.status_code == 200, r.text
     data = r.json()
     assert data["count"] == 2

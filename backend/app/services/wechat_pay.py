@@ -42,7 +42,9 @@ def _authorization(method: str, path: str, body: str) -> str:
     return f"WECHATPAY2-SHA256-RSA2048 {token}"
 
 
-def create_native_payment(*, order_no: str, description: str, amount_cents: int) -> dict:
+def create_native_payment(
+    *, order_no: str, description: str, amount_cents: int
+) -> dict:
     required = (
         settings.WECHAT_PAY_MCH_ID,
         settings.WECHAT_PAY_APP_ID,

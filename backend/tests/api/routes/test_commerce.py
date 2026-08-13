@@ -91,9 +91,7 @@ def create_school_owner_headers(
     )
 
 
-def create_order(
-    client: TestClient, headers: dict[str, str], plan_code: str
-) -> dict:
+def create_order(client: TestClient, headers: dict[str, str], plan_code: str) -> dict:
     response = client.post(
         f"{BASE}/orders",
         headers=headers,
@@ -116,8 +114,12 @@ def test_order_creation_is_idempotent(
         "idempotency_key": f"order-{uuid.uuid4()}",
         "items": [{"item_type": "plan", "code": plan_code, "quantity": 1}],
     }
-    first = client.post(f"{BASE}/orders", headers=school_owner_token_headers, json=payload)
-    second = client.post(f"{BASE}/orders", headers=school_owner_token_headers, json=payload)
+    first = client.post(
+        f"{BASE}/orders", headers=school_owner_token_headers, json=payload
+    )
+    second = client.post(
+        f"{BASE}/orders", headers=school_owner_token_headers, json=payload
+    )
 
     assert first.status_code == 200
     assert second.status_code == 200
@@ -177,9 +179,7 @@ def test_school_cannot_read_another_school_order(
         client, db, uuid.UUID("00000000-0000-0000-0000-000000000002")
     )
 
-    response = client.get(
-        f"{BASE}/orders/{order['id']}", headers=other_headers
-    )
+    response = client.get(f"{BASE}/orders/{order['id']}", headers=other_headers)
 
     assert response.status_code == 404
 

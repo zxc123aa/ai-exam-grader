@@ -67,7 +67,9 @@ def _consume_rate_limit(*, scope: str, value: str, limit: int, seconds: int) -> 
     except RedisError:
         if settings.ENVIRONMENT == "local":
             return
-        raise HTTPException(status_code=503, detail="注册保护服务暂时不可用，请稍后再试")
+        raise HTTPException(
+            status_code=503, detail="注册保护服务暂时不可用，请稍后再试"
+        )
     finally:
         client.close()
     if int(count) > limit:
@@ -94,7 +96,9 @@ def verify_turnstile(token: str, remote_ip: str) -> None:
         response.raise_for_status()
         result = response.json()
     except (httpx.HTTPError, ValueError):
-        raise HTTPException(status_code=503, detail="人机验证服务暂时不可用，请稍后再试")
+        raise HTTPException(
+            status_code=503, detail="人机验证服务暂时不可用，请稍后再试"
+        )
     if not result.get("success"):
         raise HTTPException(status_code=422, detail="人机验证未通过，请重新验证")
 
@@ -185,7 +189,9 @@ def resend_signup(
         .with_for_update()
     ).first()
     if not pending:
-        raise HTTPException(status_code=404, detail="没有找到待验证的注册信息，请重新注册")
+        raise HTTPException(
+            status_code=404, detail="没有找到待验证的注册信息，请重新注册"
+        )
     now = datetime.now(UTC)
     elapsed = (now - pending.last_sent_at).total_seconds()
     if elapsed < 60:

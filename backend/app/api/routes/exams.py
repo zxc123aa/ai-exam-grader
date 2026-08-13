@@ -236,7 +236,9 @@ def read_exam_workflow_summary(
         )
     ).one()
     region_count = session.exec(
-        select(func.count()).select_from(ExamRegion).where(ExamRegion.exam_id == exam.id)
+        select(func.count())
+        .select_from(ExamRegion)
+        .where(ExamRegion.exam_id == exam.id)
     ).one()
     confirmed_question_count = session.exec(
         select(func.count())
@@ -290,15 +292,69 @@ def read_exam_workflow_summary(
         and latest_run.status in {GradingRunStatus.QUEUED, GradingRunStatus.RUNNING}
     )
     conditions = [
-        (paper_count == 0, "import_paper", "导入模板卷", "", "先上传模板卷，系统会自动准备后续步骤。"),
-        (region_count == 0, "mark_questions", "确认题目区域", "marking", "确认每道题在卷面上的位置。"),
-        (confirmed_question_count == 0, "confirm_questions", "确认题目内容", "questions", "检查题目内容，确认后再准备参考答案。"),
-        (ready_answer_count < confirmed_question_count, "prepare_answers", "确认参考答案", "answers", "检查参考答案和评分点，确认无误后开始批改。"),
-        (submission_count == 0, "import_submissions", "导入学生答卷", "grading", "导入学生答卷后即可开始批改。"),
-        (run_active, "wait_grading", "查看批改进度", "grading", "批改正在后台进行，你可以离开页面，异常结果会集中提醒。"),
-        (not run_finished, "start_grading", "开始批改", "grading", "准备工作已完成，可以开始本次批改。"),
-        (review_count > 0, "review_exceptions", f"复核 {review_count} 处异常", "workbench", "正常结果已经处理，只需集中检查这些异常。"),
-        (not published, "publish_scores", "发布成绩", "scores", "复核完成后发布成绩，学生才能查看。"),
+        (
+            paper_count == 0,
+            "import_paper",
+            "导入模板卷",
+            "",
+            "先上传模板卷，系统会自动准备后续步骤。",
+        ),
+        (
+            region_count == 0,
+            "mark_questions",
+            "确认题目区域",
+            "marking",
+            "确认每道题在卷面上的位置。",
+        ),
+        (
+            confirmed_question_count == 0,
+            "confirm_questions",
+            "确认题目内容",
+            "questions",
+            "检查题目内容，确认后再准备参考答案。",
+        ),
+        (
+            ready_answer_count < confirmed_question_count,
+            "prepare_answers",
+            "确认参考答案",
+            "answers",
+            "检查参考答案和评分点，确认无误后开始批改。",
+        ),
+        (
+            submission_count == 0,
+            "import_submissions",
+            "导入学生答卷",
+            "grading",
+            "导入学生答卷后即可开始批改。",
+        ),
+        (
+            run_active,
+            "wait_grading",
+            "查看批改进度",
+            "grading",
+            "批改正在后台进行，你可以离开页面，异常结果会集中提醒。",
+        ),
+        (
+            not run_finished,
+            "start_grading",
+            "开始批改",
+            "grading",
+            "准备工作已完成，可以开始本次批改。",
+        ),
+        (
+            review_count > 0,
+            "review_exceptions",
+            f"复核 {review_count} 处异常",
+            "workbench",
+            "正常结果已经处理，只需集中检查这些异常。",
+        ),
+        (
+            not published,
+            "publish_scores",
+            "发布成绩",
+            "scores",
+            "复核完成后发布成绩，学生才能查看。",
+        ),
     ]
     next_action, next_label, route, message = (
         "view_results",

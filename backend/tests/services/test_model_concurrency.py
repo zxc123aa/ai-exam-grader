@@ -121,7 +121,5 @@ def test_model_slots_fail_closed_in_billing_mode(monkeypatch) -> None:
     )
 
     with pytest.raises(model_concurrency.ModelConcurrencyUnavailable):
-        with model_concurrency.distributed_model_slot(
-            org_id=uuid.uuid4(), org_limit=5
-        ):
+        with model_concurrency.distributed_model_slot(org_id=uuid.uuid4(), org_limit=5):
             pass

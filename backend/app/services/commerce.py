@@ -147,9 +147,7 @@ def record_payment_and_fulfill(
         )
     )
     order = session.exec(
-        select(CommerceOrder)
-        .where(CommerceOrder.id == order_id)
-        .with_for_update()
+        select(CommerceOrder).where(CommerceOrder.id == order_id).with_for_update()
     ).first()
     if not order:
         raise HTTPException(status_code=404, detail="订单不存在")
@@ -271,9 +269,7 @@ def finalize_refund(
     session: Session, *, refund_id: uuid.UUID, reviewed_by_id: uuid.UUID
 ) -> RefundRequest:
     refund = session.exec(
-        select(RefundRequest)
-        .where(RefundRequest.id == refund_id)
-        .with_for_update()
+        select(RefundRequest).where(RefundRequest.id == refund_id).with_for_update()
     ).first()
     if not refund:
         raise HTTPException(status_code=404, detail="退款申请不存在")

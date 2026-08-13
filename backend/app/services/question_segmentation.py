@@ -55,7 +55,10 @@ def decode_image(contents: bytes) -> np.ndarray:
 
 
 def find_question_region_candidates(
-    image: np.ndarray, *, page_number: int, engine: QuestionSegmentationEngine = ENGINE_NAME
+    image: np.ndarray,
+    *,
+    page_number: int,
+    engine: QuestionSegmentationEngine = ENGINE_NAME,
 ) -> list[ExamRegionCandidate]:
     if engine == OCR_ANCHOR_ENGINE_NAME:
         boxes = find_ocr_anchor_candidate_boxes(image)
@@ -95,11 +98,15 @@ def find_ocr_anchor_candidate_boxes(image: np.ndarray) -> list[CandidateBox]:
     use_two_columns = has_left_anchor and has_right_anchor
     boxes: list[CandidateBox] = []
     for anchor in anchors:
-        column = get_anchor_column(anchor, image_width=width, use_two_columns=use_two_columns)
+        column = get_anchor_column(
+            anchor, image_width=width, use_two_columns=use_two_columns
+        )
         same_column_anchors = [
             item
             for item in anchors
-            if get_anchor_column(item, image_width=width, use_two_columns=use_two_columns)
+            if get_anchor_column(
+                item, image_width=width, use_two_columns=use_two_columns
+            )
             == column
         ]
         next_anchor = next(
@@ -263,7 +270,9 @@ def build_anchor_candidate_box(
         return None
     left = max(0, column_left + x_pad)
     right = min(image_width, column_right - x_pad)
-    confidences = [line.confidence for line in region_lines if line.confidence is not None]
+    confidences = [
+        line.confidence for line in region_lines if line.confidence is not None
+    ]
     confidence = sum(confidences) / len(confidences) if confidences else 0.75
     return CandidateBox(
         x=left,
@@ -297,9 +306,13 @@ def find_layout_candidate_boxes(image: np.ndarray) -> list[CandidateBox]:
         cv2.MORPH_RECT,
         (max(20, width // 35), max(6, height // 90)),
     )
-    block_mask = cv2.morphologyEx(block_mask, cv2.MORPH_CLOSE, close_kernel, iterations=1)
+    block_mask = cv2.morphologyEx(
+        block_mask, cv2.MORPH_CLOSE, close_kernel, iterations=1
+    )
 
-    contours, _ = cv2.findContours(block_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours, _ = cv2.findContours(
+        block_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
     raw_boxes: list[tuple[int, int, int, int]] = []
     min_area = width * height * 0.002
     for contour in contours:
@@ -392,7 +405,10 @@ def pad_box(
 
 
 def score_candidate_box(
-    *, threshold: np.ndarray, box: tuple[int, int, int, int], image_shape: tuple[int, int]
+    *,
+    threshold: np.ndarray,
+    box: tuple[int, int, int, int],
+    image_shape: tuple[int, int],
 ) -> float:
     image_height, image_width = image_shape
     x, y, width, height = box
@@ -403,4 +419,6 @@ def score_candidate_box(
     width_score = min(1.0, width / (image_width * 0.55))
     height_score = min(1.0, height / (image_height * 0.12))
     density_score = min(1.0, ink_density / 0.08)
-    return max(0.0, min(1.0, width_score * 0.35 + height_score * 0.25 + density_score * 0.4))
+    return max(
+        0.0, min(1.0, width_score * 0.35 + height_score * 0.25 + density_score * 0.4)
+    )

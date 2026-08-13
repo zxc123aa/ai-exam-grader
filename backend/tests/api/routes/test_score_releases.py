@@ -162,7 +162,9 @@ def test_score_release_requires_review_then_creates_immutable_versions(
 def test_score_release_rejects_incomplete_submissions(
     client: TestClient, db: Session
 ) -> None:
-    org = Organization(name="不完整成绩学校", code=f"incomplete-{random_lower_string()}")
+    org = Organization(
+        name="不完整成绩学校", code=f"incomplete-{random_lower_string()}"
+    )
     db.add(org)
     db.commit()
     db.refresh(org)

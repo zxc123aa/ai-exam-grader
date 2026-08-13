@@ -117,9 +117,7 @@ def _create_annotation(
     return annotation
 
 
-def _make_shared_exam(
-    client: TestClient, db: Session
-) -> dict:
+def _make_shared_exam(client: TestClient, db: Session) -> dict:
     """搭一套共享批卷场景：学校 + owner(考试 owner) + 两名老师 + 两个班各一份答卷。"""
     org = _create_org(db, "共享批卷学校")
     owner, pw_owner = _create_user(db, UserRole.TEACHER, org, "王老师")
@@ -179,7 +177,10 @@ def test_teaching_profile_put_get_and_permissions(
     r = client.put(
         f"{settings.API_V1_STR}/users/{teacher.id}/teaching",
         headers=headers_owner,
-        json={"class_ids": [class_1["id"], class_2["id"]], "subjects": ["物理", "数学"]},
+        json={
+            "class_ids": [class_1["id"], class_2["id"]],
+            "subjects": ["物理", "数学"],
+        },
     )
     assert r.status_code == 200, r.text
     body = r.json()
@@ -261,9 +262,7 @@ def test_teaching_profile_cross_school_and_role_guards(
 # ---------------------------------------------------------------------------
 # 共享批卷分配 CRUD
 # ---------------------------------------------------------------------------
-def test_grading_assignments_put_get_overwrite(
-    client: TestClient, db: Session
-) -> None:
+def test_grading_assignments_put_get_overwrite(client: TestClient, db: Session) -> None:
     ctx = _make_shared_exam(client, db)
     exam_id = ctx["exam"]["id"]
 
@@ -476,9 +475,7 @@ def test_assigned_teacher_exam_list_and_detail_flags(
     assert mine[0]["is_assigned"] is True
 
     # 详情同样可见
-    r = client.get(
-        f"{settings.API_V1_STR}/exams/{exam_id}", headers=ctx["headers_a"]
-    )
+    r = client.get(f"{settings.API_V1_STR}/exams/{exam_id}", headers=ctx["headers_a"])
     assert r.status_code == 200
     assert r.json()["is_assigned"] is True
 

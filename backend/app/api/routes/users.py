@@ -233,9 +233,7 @@ def create_teachers_batch(
                 )
             )
             continue
-        if email in seen_emails or crud.get_user_by_email(
-            session=session, email=email
-        ):
+        if email in seen_emails or crud.get_user_by_email(session=session, email=email):
             skipped += 1
             row_results.append(
                 TeacherBatchRowResult(
@@ -280,9 +278,7 @@ def create_teachers_batch(
         session.flush()
         for class_name in class_names:
             session.add(
-                TeacherClassLink(
-                    user_id=user.id, class_id=class_by_name[class_name].id
-                )
+                TeacherClassLink(user_id=user.id, class_id=class_by_name[class_name].id)
             )
     if not batch_in.dry_run:
         session.commit()

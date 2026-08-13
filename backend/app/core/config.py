@@ -196,7 +196,9 @@ class Settings(BaseSettings):
 
         if self.ENVIRONMENT == "production":
             if len(self.SECRET_KEY) < 32:
-                raise ValueError("SECRET_KEY must be at least 32 characters in production")
+                raise ValueError(
+                    "SECRET_KEY must be at least 32 characters in production"
+                )
             if not str(self.FRONTEND_HOST).startswith("https://"):
                 raise ValueError("FRONTEND_HOST must use HTTPS in production")
             if self.STORAGE_BACKEND != "oss":

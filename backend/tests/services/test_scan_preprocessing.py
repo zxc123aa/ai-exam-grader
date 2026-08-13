@@ -20,9 +20,7 @@ def build_png_page() -> bytes:
 
 def build_jpeg_spread() -> bytes:
     buffer = BytesIO()
-    Image.new("RGB", (400, 240), color=(245, 245, 238)).save(
-        buffer, format="JPEG"
-    )
+    Image.new("RGB", (400, 240), color=(245, 245, 238)).save(buffer, format="JPEG")
     return buffer.getvalue()
 
 
@@ -105,9 +103,7 @@ def test_preprocess_scan_photo_uses_scan_http_service(monkeypatch) -> None:
             return FakeResponse()
 
     monkeypatch.setattr(settings, "SCAN_ENGINE", "scan_http")
-    monkeypatch.setattr(
-        settings, "SCAN_HTTP_URL", "http://ocr-service:8010/preprocess"
-    )
+    monkeypatch.setattr(settings, "SCAN_HTTP_URL", "http://ocr-service:8010/preprocess")
     monkeypatch.setattr(scan_preprocessing.httpx, "Client", FakeClient)
 
     result = scan_preprocessing.preprocess_scan_photo_bytes(
@@ -303,9 +299,7 @@ def test_doc_preprocessor_rejects_geometry_regression(monkeypatch) -> None:
     )
 
     assert result.debug["doc_unwarping_applied"] == 0
-    assert all(
-        page.quality["doc_unwarping_applied"] is False for page in result.pages
-    )
+    assert all(page.quality["doc_unwarping_applied"] is False for page in result.pages)
     assert any(
         warning.code == "doc_unwarping_quality_rejected"
         for warning in result.quality_warnings

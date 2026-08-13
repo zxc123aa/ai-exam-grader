@@ -8,7 +8,9 @@ from types import ModuleType
 
 
 def load_gate_module() -> ModuleType:
-    script = Path(__file__).resolve().parents[3] / "scripts" / "fast_reconstruction_gate.py"
+    script = (
+        Path(__file__).resolve().parents[3] / "scripts" / "fast_reconstruction_gate.py"
+    )
     spec = importlib.util.spec_from_file_location("fast_reconstruction_gate", script)
     assert spec is not None
     assert spec.loader is not None
@@ -58,7 +60,9 @@ def write_candidate_round(base: Path) -> Path:
         json.dumps({"metadata": {}, "blocks": []}), encoding="utf-8"
     )
     (round_dir / "qc_report.md").write_text("状态：PARTIAL\n", encoding="utf-8")
-    (round_dir / "uncertainties.md").write_text("## U001\n\n## U002\n", encoding="utf-8")
+    (round_dir / "uncertainties.md").write_text(
+        "## U001\n\n## U002\n", encoding="utf-8"
+    )
     (round_dir / "diff_against_previous.md").write_text("# Diff\n", encoding="utf-8")
     return round_dir
 
