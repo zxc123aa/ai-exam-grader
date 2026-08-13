@@ -976,16 +976,17 @@
 
 - 类型：Architecture
 - 优先级：P0
-- 状态：Blocked
+- 状态：Done
 - 所属周期：周期 9 阶段 B
-- 阻塞原因：依赖合规路径决策（学校委托 vs C 端直连），见方案文档第 11 节。
+- 决策依据：D-029 学生身份走 C 端账号，与学校租户解耦。
 - 背景：`Student` 是班级内实体（`UniqueConstraint(class_id, name)` 且不支持修改 `class_id`），升班等于新建档案，历史断裂；学生端兜底匹配用「当前班名 + 姓名」，旧班答卷可能查不到。同时 `get_current_user` 对每个请求执行 `assert_organization_access`，学校冻结后学生一律 403。
 - 目标：身份跨班、跨学年、跨学校稳定，且不随学校租户状态失效。
 - 验收标准：
-  - 新增 `LearnerProfile`（锚定学生自己的登录账号，不带 org_id）与 `LearnerEnrollment`（在校经历，可多条）。
-  - 转班、升学、转学通过结束旧 enrollment + 新增一条表达，错题本连续。
-  - 错题本读取只依赖 learner 身份，学校 `frozen` 不影响学生查阅历史。
-  - 存量 `Student` 与 `{学号}@school.local` 账号有明确回填与升级路径。
+  - 新增 `LearnerProfile`（锚定学生自己的登录账号，不带 org_id）与 `LearnerEnrollment`（在校经历，可多条）。已完成。
+  - 转班、升学、转学通过新增 enrollment 表达，错题本连续。已完成（`test_learner_keeps_history_across_class_change`）。
+  - 错题本读取只依赖 learner 身份，学校 `frozen` 不影响学生查阅历史。已完成（学生角色豁免学校服务状态门禁）。
+  - 存量 `Student` 与 `{学号}@school.local` 账号有明确回填与升级路径。已完成（迁移内回填 + 首次访问自动认领孤立条目）。
+  - 在校经历快照学校名与班级名，学校被删也能说清「这题是哪一年在哪个班考的」。已完成。
 
 ### AEG-069 复习闭环
 
@@ -1004,13 +1005,15 @@
 
 - 类型：Design
 - 优先级：P1
-- 状态：Blocked
+- 状态：Ready
 - 所属周期：周期 9 阶段 C
-- 阻塞原因：待决策微信小程序优先还是 `plan.md` §15 的 React Native App。方案文档建议小程序优先并给出理由。
-- 验收标准：
-  - 形态决策写入决策记录。
-  - 家长视角与学生视角的权限边界明确。
+- 决策依据：D-028 学生端以微信小程序为主，Web 端保留。
+- 待办（需要产品侧提供资产后才能开工）：
+  - 微信小程序主体注册与服务类目，取得 AppID / AppSecret（工程侧无法自助完成）。
+  - 微信登录：`wx.login` 换 openid/unionid，与 `LearnerProfile` 换绑，学生从此可脱离学校创建的账号。
+  - 家长视角与学生视角的权限边界。
   - 视觉与 `AGENTS.md` 的小程序色板一致。
+- 已就绪的前置：学生端 API 已与学校租户解耦，小程序与 Web 共用同一套 `/students/me/*` 接口。
 
 ### AEG-071 未成年人合规与数据可携带
 
