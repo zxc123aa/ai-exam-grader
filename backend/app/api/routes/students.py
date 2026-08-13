@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlmodel import Session, col, select
 
 from app.api.deps import (
@@ -31,10 +31,16 @@ from app.models import (
     WrongbookEntriesPublic,
     WrongbookEntryDetail,
     WrongbookEntryListItem,
+    WrongbookMasteryItem,
+    WrongbookMasteryPublic,
+    WrongbookReviewCreate,
+    WrongbookReviewPublic,
     WrongQuestionEntry,
     WrongQuestionEntryStatus,
+    WrongQuestionReview,
     WrongQuestionSource,
 )
+from app.services import wrongbook_review
 from app.services.object_storage import materialize_storage_key
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -320,6 +326,51 @@ def _my_entries_by_label(
     return {entry.question_label: (entry, source) for entry, source in rows}
 
 
+def _my_wrongbook_scope(student: Student, user_id: uuid.UUID) -> list[Any]:
+    """我的、且当前有效的错题条目。所有错题本查询都从这里出发。"""
+    return [
+        _my_entry_filter(student, user_id),
+        WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
+    ]
+
+
+def _entry_source_join(statement: Any) -> Any:
+    """条目 join 题面快照。显式指定左侧，否则只选 source 列时无法推断 FROM。"""
+    return statement.select_from(WrongQuestionEntry).join(
+        WrongQuestionSource,
+        WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+    )
+
+
+def _wrongbook_facets(
+    session: Session, scope: list[Any]
+) -> tuple[list[str], list[str]]:
+    """筛选项只从我自己的条目里取，且不受当前筛选影响，避免按钮自己消失。"""
+    subjects = [
+        value
+        for value in session.exec(
+            _entry_source_join(select(WrongQuestionSource.subject).distinct()).where(
+                *scope, col(WrongQuestionSource.subject).is_not(None)
+            )
+        ).all()
+        if value
+    ]
+    knowledge_points = [
+        value
+        for value in session.exec(
+            _entry_source_join(
+                select(
+                    func.jsonb_array_elements_text(
+                        WrongQuestionSource.knowledge_point_names
+                    ).label("name")
+                ).distinct()
+            ).where(*scope)
+        ).all()
+        if value
+    ]
+    return sorted(subjects), sorted(knowledge_points)
+
+
 @router.get("/me/wrongbook/entries", response_model=WrongbookEntriesPublic)
 def read_my_wrongbook(
     session: SessionDep,
@@ -331,47 +382,44 @@ def read_my_wrongbook(
     skip: int = 0,
     limit: int = 50,
 ) -> Any:
-    """我的错题本。只读发布时写入的快照，与考试和答卷的存续无关。"""
+    """我的错题本。只读发布时写入的快照，与考试和答卷的存续无关。
+
+    过滤、排序和分页都交给数据库：错题本按设计会累积多年，不能把全部条目取回内存。
+    """
     student = get_current_student_profile(session=session, current_user=current_user)
-    base = (
-        select(WrongQuestionEntry, WrongQuestionSource)
-        .join(
-            WrongQuestionSource,
-            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+    scope = _my_wrongbook_scope(student, current_user.id)
+    filters = list(scope)
+    if wrong_only:
+        filters.append(WrongQuestionEntry.is_wrong.is_(True))  # type: ignore[union-attr]
+    if subject:
+        filters.append(WrongQuestionSource.subject == subject)
+    if exam_id:
+        filters.append(WrongQuestionSource.exam_id == exam_id)
+    if knowledge_point:
+        # JSONB 包含查询，配 GIN 索引；不要把整列取回来在 Python 里判断
+        filters.append(
+            col(WrongQuestionSource.knowledge_point_names).contains([knowledge_point])
         )
-        .where(
-            _my_entry_filter(student, current_user.id),
-            WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
+
+    count = session.exec(_entry_source_join(select(func.count())).where(*filters)).one()
+    rows = session.exec(
+        _entry_source_join(
+            select(WrongQuestionEntry, WrongQuestionSource, WrongQuestionReview)
         )
-    )
-    rows = list(session.exec(base).all())
-    # 筛选项从我自己的条目里取，学生看不到与自己无关的学科和知识点。
-    subjects = sorted(
-        {source.subject for _entry, source in rows if source.subject}, reverse=False
-    )
-    knowledge_points = sorted(
-        {
-            name
-            for _entry, source in rows
-            for name in source.knowledge_point_names or []
-            if name
-        }
-    )
-    selected = [
-        (entry, source)
-        for entry, source in rows
-        if (not wrong_only or entry.is_wrong)
-        and (not subject or source.subject == subject)
-        and (not exam_id or source.exam_id == exam_id)
-        and (
-            not knowledge_point
-            or knowledge_point in (source.knowledge_point_names or [])
+        .outerjoin(
+            WrongQuestionReview,
+            WrongQuestionReview.entry_id == WrongQuestionEntry.id,  # type: ignore[arg-type]
         )
-    ]
-    selected.sort(
-        key=lambda row: (row[0].released_at, row[0].question_label), reverse=True
-    )
-    page = selected[skip : skip + limit] if limit > 0 else selected
+        .where(*filters)
+        .order_by(
+            col(WrongQuestionEntry.released_at).desc(),
+            col(WrongQuestionEntry.question_label).desc(),
+            col(WrongQuestionEntry.id).desc(),
+        )
+        .offset(max(0, skip))
+        .limit(min(max(1, limit), 200))
+    ).all()
+    subjects, knowledge_points = _wrongbook_facets(session, scope)
     return WrongbookEntriesPublic(
         data=[
             WrongbookEntryListItem(
@@ -387,12 +435,138 @@ def read_my_wrongbook(
                 knowledge_point_names=source.knowledge_point_names or [],
                 has_image=bool(entry.image_storage_key),
                 released_at=entry.released_at,
+                review_count=review.review_count if review else 0,
+                next_due_at=review.next_due_at if review else None,
             )
-            for entry, source in page
+            for entry, source, review in rows
         ],
-        count=len(selected),
+        count=count,
         subjects=subjects,
         knowledge_points=knowledge_points,
+    )
+
+
+def _entry_list_item(
+    entry: WrongQuestionEntry,
+    source: WrongQuestionSource,
+    review: WrongQuestionReview | None = None,
+) -> WrongbookEntryListItem:
+    return WrongbookEntryListItem(
+        entry_id=entry.id,
+        exam_id=source.exam_id,
+        exam_title=source.exam_title,
+        subject=source.subject,
+        exam_date=source.exam_date,
+        question_label=entry.question_label,
+        score=entry.score,
+        max_score=entry.max_score,
+        is_wrong=entry.is_wrong,
+        knowledge_point_names=source.knowledge_point_names or [],
+        has_image=bool(entry.image_storage_key),
+        released_at=entry.released_at,
+        review_count=review.review_count if review else 0,
+        next_due_at=review.next_due_at if review else None,
+    )
+
+
+@router.get("/me/wrongbook/due", response_model=WrongbookEntriesPublic)
+def read_my_due_reviews(
+    session: SessionDep, current_user: CurrentStudentUser, limit: int = 20
+) -> Any:
+    """今天该复习的错题。没复习过的排最前，其余按到期时间。"""
+    student = get_current_student_profile(session=session, current_user=current_user)
+    rows = wrongbook_review.due_entries(
+        session, student=student, user_id=current_user.id, limit=limit
+    )
+    total = wrongbook_review.due_count(
+        session, student=student, user_id=current_user.id
+    )
+    return WrongbookEntriesPublic(
+        data=[_entry_list_item(entry, source) for entry, source in rows],
+        count=total,
+    )
+
+
+@router.get("/me/wrongbook/cram", response_model=WrongbookEntriesPublic)
+def read_my_cram_list(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    subject: str | None = None,
+    limit: int = 30,
+) -> Any:
+    """考前突击清单：按知识点错误率、是否长期未复习和卷面失分比例排序。"""
+    student = get_current_student_profile(session=session, current_user=current_user)
+    wrongbook_review.rebuild_mastery(session, student=student, user_id=current_user.id)
+    rows = wrongbook_review.cram_list(
+        session,
+        student=student,
+        user_id=current_user.id,
+        subject=subject,
+        limit=limit,
+    )
+    return WrongbookEntriesPublic(
+        data=[_entry_list_item(entry, source) for entry, source, _score in rows],
+        count=len(rows),
+    )
+
+
+@router.get("/me/wrongbook/mastery", response_model=WrongbookMasteryPublic)
+def read_my_mastery(session: SessionDep, current_user: CurrentStudentUser) -> Any:
+    """按知识点的掌握度。派生数据，每次请求按当前错题本重算。"""
+    student = get_current_student_profile(session=session, current_user=current_user)
+    rows = wrongbook_review.rebuild_mastery(
+        session, student=student, user_id=current_user.id
+    )
+    return WrongbookMasteryPublic(
+        data=[
+            WrongbookMasteryItem(
+                subject=item.subject or None,
+                knowledge_point_name=item.knowledge_point_name,
+                attempts=item.attempts,
+                wrong_count=item.wrong_count,
+                wrong_rate=(
+                    round(item.wrong_count / item.attempts * 100)
+                    if item.attempts
+                    else 0
+                ),
+                last_wrong_at=item.last_wrong_at,
+                last_reviewed_at=item.last_reviewed_at,
+            )
+            for item in rows
+        ],
+        count=len(rows),
+    )
+
+
+@router.post(
+    "/me/wrongbook/entries/{entry_id}/review", response_model=WrongbookReviewPublic
+)
+def review_my_wrongbook_entry(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    entry_id: uuid.UUID,
+    review_in: WrongbookReviewCreate,
+) -> Any:
+    """提交一次复习结果，推进下次到期时间。"""
+    entry, source = _owned_entry(session, current_user=current_user, entry_id=entry_id)
+    student = get_current_student_profile(session=session, current_user=current_user)
+    review = wrongbook_review.record_review(
+        session,
+        entry=entry,
+        source=source,
+        student=student,
+        user_id=current_user.id,
+        result=review_in.result,
+    )
+    return WrongbookReviewPublic(
+        entry_id=entry.id,
+        result=review.result,
+        review_count=review.review_count,
+        interval_days=review.interval_days,
+        next_due_at=review.next_due_at,
+        due_count=wrongbook_review.due_count(
+            session, student=student, user_id=current_user.id
+        ),
     )
 
 

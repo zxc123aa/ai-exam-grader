@@ -2882,7 +2882,11 @@ class WrongQuestionEntry(SQLModel, table=True):
     # 归属保留两个弱引用：学校侧档案会因升班或删除而失效，
     # 登录账号是当前唯一稳定的锚点（终身身份见 AEG-068）。
     student_id: uuid.UUID | None = Field(
-        default=None, foreign_key="student.id", nullable=True, ondelete="SET NULL"
+        default=None,
+        foreign_key="student.id",
+        nullable=True,
+        index=True,
+        ondelete="SET NULL",
     )
     student_user_id: uuid.UUID | None = Field(
         default=None,
@@ -2942,6 +2946,128 @@ class WrongQuestionEntry(SQLModel, table=True):
     )
 
 
+class WrongQuestionReviewResult(StrEnum):
+    AGAIN = "again"
+    HARD = "hard"
+    GOOD = "good"
+    EASY = "easy"
+
+
+class WrongQuestionReview(SQLModel, table=True):
+    """一次复习记录与下次到期时间。
+
+    归属跟着条目走（`WrongQuestionEntry.student_user_id`/`student_id`），这里冗余
+    `owner_user_id` 只为了按人查「今天要复习什么」时不用再 join 一层。
+    """
+
+    __table_args__ = (
+        UniqueConstraint("entry_id", name="uq_wrongquestionreview_entry"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    entry_id: uuid.UUID = Field(
+        foreign_key="wrongquestionentry.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    owner_user_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="user.id",
+        nullable=True,
+        index=True,
+        ondelete="SET NULL",
+    )
+    reviewed_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    result: WrongQuestionReviewResult = Field(
+        sa_column=Column(
+            SAEnum(
+                WrongQuestionReviewResult,
+                name="wrongquestionreviewresult",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        )
+    )
+    review_count: int = Field(default=1, ge=1)
+    interval_days: int = Field(default=1, ge=0)
+    next_due_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        index=True,
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class LearnerMastery(SQLModel, table=True):
+    """按知识点聚合的掌握度。派生数据，可随时重算。
+
+    阶段 A 的快照里知识点是名称而不是 id（`WrongQuestionSource.knowledge_point_names`
+    是 JSONB 名称数组），所以这里先按名称聚合；等 `LearnerProfile` 落地时一并规范化
+    成知识点 id（AEG-068）。
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "owner_key", "subject", "knowledge_point_name", name="uq_learnermastery_key"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 归属键：优先 user:{登录账号}，无账号时回落 student:{学校侧档案}
+    owner_key: str = Field(max_length=100, index=True)
+    subject: str = Field(default="", max_length=100)
+    knowledge_point_name: str = Field(max_length=100)
+    attempts: int = Field(default=0, ge=0)
+    wrong_count: int = Field(default=0, ge=0)
+    last_wrong_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    last_reviewed_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class WrongbookReviewCreate(SQLModel):
+    result: WrongQuestionReviewResult
+
+
+class WrongbookReviewPublic(SQLModel):
+    entry_id: uuid.UUID
+    result: WrongQuestionReviewResult
+    review_count: int
+    interval_days: int
+    next_due_at: datetime
+    due_count: int = 0
+
+
+class WrongbookMasteryItem(SQLModel):
+    subject: str | None = None
+    knowledge_point_name: str
+    attempts: int = 0
+    wrong_count: int = 0
+    wrong_rate: int = 0
+    last_wrong_at: datetime | None = None
+    last_reviewed_at: datetime | None = None
+
+
+class WrongbookMasteryPublic(SQLModel):
+    data: list[WrongbookMasteryItem]
+    count: int
+
+
 class WrongbookEntryListItem(SQLModel):
     entry_id: uuid.UUID
     exam_id: uuid.UUID | None = None
@@ -2955,6 +3081,8 @@ class WrongbookEntryListItem(SQLModel):
     knowledge_point_names: list[str] = Field(default_factory=list)
     has_image: bool = False
     released_at: datetime
+    review_count: int = 0
+    next_due_at: datetime | None = None
 
 
 class WrongbookEntriesPublic(SQLModel):

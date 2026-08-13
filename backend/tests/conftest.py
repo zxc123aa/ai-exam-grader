@@ -38,6 +38,7 @@ from app.models import (
     GradingRun,
     InvoiceApplication,
     KnowledgePoint,
+    LearnerMastery,
     ModelRoutePolicy,
     ModelRouteTarget,
     ModelRouteVersion,
@@ -83,6 +84,7 @@ from app.models import (
     UserCreate,
     UserRole,
     WrongQuestionEntry,
+    WrongQuestionReview,
     WrongQuestionSource,
 )
 from tests.utils.user import (
@@ -115,6 +117,8 @@ def db() -> Generator[Session]:
             session.commit()
         yield session
         for model in (
+            WrongQuestionReview,
+            LearnerMastery,
             WrongQuestionEntry,
             WrongQuestionSource,
             ExamQuestionKnowledgeLink,
