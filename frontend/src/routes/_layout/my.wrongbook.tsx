@@ -1,6 +1,7 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { BookMarked, UserRound } from "lucide-react"
+import { BookMarked, Printer, RotateCcw, UserRound } from "lucide-react"
+import type React from "react"
 import { useEffect, useState } from "react"
 import type { WrongbookEntryListItem } from "@/client"
 import { ApiError, StudentsService } from "@/client"
@@ -165,8 +166,16 @@ function EntryDetail({ entryId }: { entryId: string }) {
   )
 }
 
-function EntryCard({ entry }: { entry: WrongbookEntryListItem }) {
-  const [open, setOpen] = useState(false)
+function EntryCard({
+  entry,
+  defaultOpen = false,
+  footer,
+}: {
+  entry: WrongbookEntryListItem
+  defaultOpen?: boolean
+  footer?: React.ReactNode
+}) {
+  const [open, setOpen] = useState(defaultOpen)
   const rate =
     entry.score != null && entry.max_score
       ? Math.round((entry.score / entry.max_score) * 100)
@@ -190,6 +199,9 @@ function EntryCard({ entry }: { entry: WrongbookEntryListItem }) {
           / {formatScore(entry.max_score)} 分
         </span>
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          {(entry.review_count ?? 0) > 0 && (
+            <Tag variant="neutral">复习 {entry.review_count} 次</Tag>
+          )}
           {(entry.knowledge_point_names ?? []).map((name) => (
             <Tag key={name} variant="neutral">
               {name}
@@ -200,24 +212,228 @@ function EntryCard({ entry }: { entry: WrongbookEntryListItem }) {
       <p className="mt-1 text-muted-foreground text-xs">
         {[entry.exam_title, ...meta].join(" · ")}
       </p>
-      <div className="mt-3">
-        <Button
-          variant="ghost"
-          size="sm"
-          className="px-0"
-          onClick={() => setOpen((value) => !value)}
-        >
-          {open ? "收起" : "看看为什么错"}
-        </Button>
-      </div>
+      {!defaultOpen && (
+        <div className="mt-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="px-0"
+            onClick={() => setOpen((value) => !value)}
+          >
+            {open ? "收起" : "看看为什么错"}
+          </Button>
+        </div>
+      )}
       {open && <EntryDetail entryId={entry.entry_id} />}
+      {footer}
     </div>
   )
 }
 
+const REVIEW_CHOICES: Array<{
+  result: "again" | "hard" | "good" | "easy"
+  label: string
+}> = [
+  { result: "again", label: "还是不会" },
+  { result: "hard", label: "有点吃力" },
+  { result: "good", label: "会了" },
+  { result: "easy", label: "很轻松" },
+]
+
+/** 复习面板：一次只看一题，点完自动进入下一题。只问「还会不会」，不让学生重做。 */
+function ReviewPanel({ onExit }: { onExit: () => void }) {
+  const queryClient = useQueryClient()
+  const [index, setIndex] = useState(0)
+  const query = useQuery({
+    queryKey: ["my-wrongbook-due"],
+    queryFn: () => StudentsService.readMyDueReviews({ limit: 20 }),
+  })
+  const mutation = useMutation({
+    mutationFn: ({
+      entryId,
+      result,
+    }: {
+      entryId: string
+      result: "again" | "hard" | "good" | "easy"
+    }) =>
+      StudentsService.reviewMyWrongbookEntry({
+        entryId,
+        requestBody: { result },
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["my-wrongbook"] })
+      queryClient.invalidateQueries({ queryKey: ["my-wrongbook-mastery"] })
+      setIndex((value) => value + 1)
+    },
+  })
+
+  if (query.isPending) return <Skeleton className="h-64 w-full rounded-2xl" />
+  const entries = query.data?.data ?? []
+  const current = entries[index]
+
+  if (!current) {
+    return (
+      <div className="rounded-2xl bg-card p-8 text-center shadow-card">
+        <p className="font-semibold">今天的复习做完了</p>
+        <p className="mt-1 text-muted-foreground text-sm">
+          {entries.length > 0
+            ? `复习了 ${entries.length} 题，明天会安排下一批`
+            : "暂时没有到期的错题，等下次考试出分后再来"}
+        </p>
+        <Button className="mt-4" onClick={onExit}>
+          返回错题本
+        </Button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <p className="text-muted-foreground text-sm">
+          第 {index + 1} / {entries.length} 题
+        </p>
+        <Button variant="ghost" size="sm" onClick={onExit}>
+          稍后再练
+        </Button>
+      </div>
+      <EntryCard
+        key={current.entry_id}
+        entry={current}
+        defaultOpen
+        footer={
+          <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
+            {REVIEW_CHOICES.map((choice) => (
+              <Button
+                key={choice.result}
+                variant={choice.result === "good" ? "default" : "outline"}
+                size="sm"
+                disabled={mutation.isPending}
+                onClick={() =>
+                  mutation.mutate({
+                    entryId: current.entry_id,
+                    result: choice.result,
+                  })
+                }
+              >
+                {choice.label}
+              </Button>
+            ))}
+          </div>
+        }
+      />
+    </div>
+  )
+}
+
+function MasterySection() {
+  const query = useQuery({
+    queryKey: ["my-wrongbook-mastery"],
+    queryFn: () => StudentsService.readMyMastery(),
+  })
+  if (query.isPending) return <Skeleton className="h-32 w-full rounded-2xl" />
+  const rows = query.data?.data ?? []
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">
+        题目还没有标注知识点，暂时统计不出薄弱环节。
+      </p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      {rows.map((row) => (
+        <div
+          key={`${row.subject ?? ""}-${row.knowledge_point_name}`}
+          className="rounded-2xl bg-card p-4 shadow-card"
+        >
+          <div className="flex items-baseline gap-2">
+            <span className="font-medium">{row.knowledge_point_name}</span>
+            {row.subject && (
+              <span className="text-muted-foreground text-xs">
+                {row.subject}
+              </span>
+            )}
+            <span
+              className={cn(
+                "ml-auto font-semibold",
+                (row.wrong_rate ?? 0) >= 60
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-amber-600 dark:text-amber-400",
+              )}
+            >
+              错 {row.wrong_rate ?? 0}%
+            </span>
+          </div>
+          <p className="mt-1 text-muted-foreground text-xs">
+            做过 {row.attempts ?? 0} 题 · 错 {row.wrong_count ?? 0} 题
+            {row.last_reviewed_at
+              ? ` · 最近复习 ${formatDate(row.last_reviewed_at)}`
+              : " · 还没复习过"}
+          </p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function CramSection({ subject }: { subject: string | null }) {
+  const query = useQuery({
+    queryKey: ["my-wrongbook-cram", subject],
+    queryFn: () =>
+      StudentsService.readMyCramList({
+        subject: subject ?? undefined,
+        limit: 30,
+      }),
+  })
+  if (query.isPending) return <Skeleton className="h-32 w-full rounded-2xl" />
+  const rows = query.data?.data ?? []
+  if (rows.length === 0) {
+    return (
+      <p className="text-muted-foreground text-sm">暂时没有需要突击的错题。</p>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between print:hidden">
+        <p className="text-muted-foreground text-sm">
+          按薄弱程度排序的 {rows.length} 题，可以打印出来做
+        </p>
+        <Button variant="outline" size="sm" onClick={() => window.print()}>
+          <Printer className="mr-1.5 size-4" />
+          打印清单
+        </Button>
+      </div>
+      <ol className="flex flex-col gap-2">
+        {rows.map((row, order) => (
+          <li
+            key={row.entry_id}
+            className="rounded-xl border p-3 text-sm leading-6"
+          >
+            <span className="font-medium">
+              {order + 1}. {row.exam_title} {row.question_label}
+            </span>
+            <span className="ml-2 text-muted-foreground">
+              {formatScore(row.score)} / {formatScore(row.max_score)} 分
+            </span>
+            {(row.knowledge_point_names ?? []).length > 0 && (
+              <span className="ml-2 text-muted-foreground text-xs">
+                {(row.knowledge_point_names ?? []).join("、")}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </div>
+  )
+}
+
+type WrongbookTab = "entries" | "review" | "mastery" | "cram"
+
 function MyWrongbookPage() {
   const [subject, setSubject] = useState<string | null>(null)
   const [knowledgePoint, setKnowledgePoint] = useState<string | null>(null)
+  const [tab, setTab] = useState<WrongbookTab>("entries")
   const query = useQuery({
     queryKey: ["my-wrongbook", subject, knowledgePoint],
     queryFn: () =>
@@ -228,12 +444,18 @@ function MyWrongbookPage() {
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 3,
   })
+  const dueQuery = useQuery({
+    queryKey: ["my-wrongbook-due"],
+    queryFn: () => StudentsService.readMyDueReviews({ limit: 20 }),
+    retry: false,
+  })
 
   const isUnbound =
     query.error instanceof ApiError && query.error.status === 404
   const entries = query.data?.data ?? []
   const subjects = query.data?.subjects ?? []
   const knowledgePoints = query.data?.knowledge_points ?? []
+  const dueCount = dueQuery.data?.count ?? 0
 
   return (
     <div className="flex flex-col gap-6">
@@ -242,7 +464,53 @@ function MyWrongbookPage() {
         subtitle="每次考试出分后自动收进来，不用自己录"
       />
 
-      {query.isPending ? (
+      {!isUnbound && !query.isPending && (
+        <>
+          {dueCount > 0 && tab !== "review" && (
+            <button
+              type="button"
+              onClick={() => setTab("review")}
+              className="flex items-center justify-between rounded-2xl bg-card p-5 text-left shadow-card transition-shadow hover:shadow-card-lg print:hidden"
+            >
+              <div>
+                <p className="font-semibold">今天要复习 {dueCount} 题</p>
+                <p className="mt-0.5 text-muted-foreground text-sm">
+                  每题只用回答「还会不会」，几分钟就能过一遍
+                </p>
+              </div>
+              <RotateCcw className="size-5 text-muted-foreground" />
+            </button>
+          )}
+          <div className="flex flex-wrap gap-2 print:hidden">
+            {(
+              [
+                ["entries", "全部错题"],
+                ["review", "今天复习"],
+                ["mastery", "薄弱知识点"],
+                ["cram", "考前清单"],
+              ] as Array<[WrongbookTab, string]>
+            ).map(([value, label]) => (
+              <Button
+                key={value}
+                variant={tab === value ? "secondary" : "ghost"}
+                size="sm"
+                onClick={() => setTab(value)}
+              >
+                {label}
+                {value === "review" && dueCount > 0 ? ` (${dueCount})` : ""}
+              </Button>
+            ))}
+          </div>
+        </>
+      )}
+
+      {tab === "review" && !isUnbound && (
+        <ReviewPanel onExit={() => setTab("entries")} />
+      )}
+      {tab === "mastery" && !isUnbound && <MasterySection />}
+      {tab === "cram" && !isUnbound && <CramSection subject={subject} />}
+
+      {tab !== "entries" && !isUnbound ? null : query.isPending ? (
         <div className="flex flex-col gap-4">
           {["s1", "s2", "s3"].map((key) => (
             <Skeleton key={key} className="h-28 rounded-2xl" />

@@ -2178,7 +2178,39 @@ export type WrongbookEntryListItem = {
     knowledge_point_names?: Array<(string)>;
     has_image?: boolean;
     released_at: string;
+    review_count?: number;
+    next_due_at?: (string | null);
 };
+
+export type WrongbookMasteryItem = {
+    subject?: (string | null);
+    knowledge_point_name: string;
+    attempts?: number;
+    wrong_count?: number;
+    wrong_rate?: number;
+    last_wrong_at?: (string | null);
+    last_reviewed_at?: (string | null);
+};
+
+export type WrongbookMasteryPublic = {
+    data: Array<WrongbookMasteryItem>;
+    count: number;
+};
+
+export type WrongbookReviewCreate = {
+    result: WrongQuestionReviewResult;
+};
+
+export type WrongbookReviewPublic = {
+    entry_id: string;
+    result: WrongQuestionReviewResult;
+    review_count: number;
+    interval_days: number;
+    next_due_at: string;
+    due_count?: number;
+};
+
+export type WrongQuestionReviewResult = 'again' | 'hard' | 'good' | 'easy';
 
 export type ClassesReadClassesResponse = (ClassGroupsPublic);
 
@@ -3340,6 +3372,28 @@ export type StudentsReadMyWrongbookData = {
 };
 
 export type StudentsReadMyWrongbookResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyDueReviewsData = {
+    limit?: number;
+};
+
+export type StudentsReadMyDueReviewsResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyCramListData = {
+    limit?: number;
+    subject?: (string | null);
+};
+
+export type StudentsReadMyCramListResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyMasteryResponse = (WrongbookMasteryPublic);
+
+export type StudentsReviewMyWrongbookEntryData = {
+    entryId: string;
+    requestBody: WrongbookReviewCreate;
+};
+
+export type StudentsReviewMyWrongbookEntryResponse = (WrongbookReviewPublic);
 
 export type StudentsReadMyWrongbookEntryData = {
     entryId: string;

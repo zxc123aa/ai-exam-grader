@@ -11448,6 +11448,12 @@ export const WorkflowRunStatusSchema = {
     title: 'WorkflowRunStatus'
 } as const;
 
+export const WrongQuestionReviewResultSchema = {
+    type: 'string',
+    enum: ['again', 'hard', 'good', 'easy'],
+    title: 'WrongQuestionReviewResult'
+} as const;
+
 export const WrongbookEntriesPublicSchema = {
     properties: {
         data: {
@@ -11767,9 +11773,152 @@ export const WrongbookEntryListItemSchema = {
             type: 'string',
             format: 'date-time',
             title: 'Released At'
+        },
+        review_count: {
+            type: 'integer',
+            title: 'Review Count',
+            default: 0
+        },
+        next_due_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Next Due At'
         }
     },
     type: 'object',
     required: ['entry_id', 'exam_title', 'question_label', 'released_at'],
     title: 'WrongbookEntryListItem'
+} as const;
+
+export const WrongbookMasteryItemSchema = {
+    properties: {
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        knowledge_point_name: {
+            type: 'string',
+            title: 'Knowledge Point Name'
+        },
+        attempts: {
+            type: 'integer',
+            title: 'Attempts',
+            default: 0
+        },
+        wrong_count: {
+            type: 'integer',
+            title: 'Wrong Count',
+            default: 0
+        },
+        wrong_rate: {
+            type: 'integer',
+            title: 'Wrong Rate',
+            default: 0
+        },
+        last_wrong_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Wrong At'
+        },
+        last_reviewed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Reviewed At'
+        }
+    },
+    type: 'object',
+    required: ['knowledge_point_name'],
+    title: 'WrongbookMasteryItem'
+} as const;
+
+export const WrongbookMasteryPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/WrongbookMasteryItem'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'WrongbookMasteryPublic'
+} as const;
+
+export const WrongbookReviewCreateSchema = {
+    properties: {
+        result: {
+            '$ref': '#/components/schemas/WrongQuestionReviewResult'
+        }
+    },
+    type: 'object',
+    required: ['result'],
+    title: 'WrongbookReviewCreate'
+} as const;
+
+export const WrongbookReviewPublicSchema = {
+    properties: {
+        entry_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Entry Id'
+        },
+        result: {
+            '$ref': '#/components/schemas/WrongQuestionReviewResult'
+        },
+        review_count: {
+            type: 'integer',
+            title: 'Review Count'
+        },
+        interval_days: {
+            type: 'integer',
+            title: 'Interval Days'
+        },
+        next_due_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Next Due At'
+        },
+        due_count: {
+            type: 'integer',
+            title: 'Due Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['entry_id', 'result', 'review_count', 'interval_days', 'next_due_at'],
+    title: 'WrongbookReviewPublic'
 } as const;
