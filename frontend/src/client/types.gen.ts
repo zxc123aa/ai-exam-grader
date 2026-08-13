@@ -1834,6 +1834,9 @@ export type StudentExamReportQuestion = {
     score_source?: (string | null);
     comment?: (string | null);
     suggested_comment?: (string | null);
+    entry_id?: (string | null);
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
 };
 
 export type StudentPublic = {
@@ -2126,6 +2129,56 @@ export type ValidationError = {
 };
 
 export type WorkflowRunStatus = 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+
+export type WrongbookEntriesPublic = {
+    data: Array<WrongbookEntryListItem>;
+    count: number;
+    subjects?: Array<(string)>;
+    knowledge_points?: Array<(string)>;
+};
+
+export type WrongbookEntryDetail = {
+    entry_id: string;
+    exam_id?: (string | null);
+    exam_title: string;
+    subject?: (string | null);
+    grade_level?: (string | null);
+    exam_date?: (string | null);
+    class_name_at_time?: (string | null);
+    question_label: string;
+    question_text?: (string | null);
+    question_type?: (string | null);
+    score?: (number | null);
+    max_score?: (number | null);
+    is_wrong?: boolean;
+    standard_answer_text?: (string | null);
+    scoring_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    student_answer_text?: (string | null);
+    missed_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    teacher_comment?: (string | null);
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
+    released_at: string;
+};
+
+export type WrongbookEntryListItem = {
+    entry_id: string;
+    exam_id?: (string | null);
+    exam_title: string;
+    subject?: (string | null);
+    exam_date?: (string | null);
+    question_label: string;
+    score?: (number | null);
+    max_score?: (number | null);
+    is_wrong?: boolean;
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
+    released_at: string;
+};
 
 export type ClassesReadClassesResponse = (ClassGroupsPublic);
 
@@ -3276,6 +3329,30 @@ export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsData = {
 export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse = (StandardAnswerRevisionsPublic);
 
 export type StudentsReadMyExamsResponse = (StudentExamListPublic);
+
+export type StudentsReadMyWrongbookData = {
+    examId?: (string | null);
+    knowledgePoint?: (string | null);
+    limit?: number;
+    skip?: number;
+    subject?: (string | null);
+    wrongOnly?: boolean;
+};
+
+export type StudentsReadMyWrongbookResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyWrongbookEntryData = {
+    entryId: string;
+};
+
+export type StudentsReadMyWrongbookEntryResponse = (WrongbookEntryDetail);
+
+export type StudentsReadMyWrongbookEntryImageData = {
+    authorization?: (string | null);
+    entryId: string;
+};
+
+export type StudentsReadMyWrongbookEntryImageResponse = (unknown);
 
 export type StudentsReadMyExamReportData = {
     examId: string;

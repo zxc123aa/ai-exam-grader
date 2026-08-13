@@ -33,6 +33,40 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
+def get_user_from_authorization_header(
+    *, session: Session, authorization: str | None = None
+) -> User:
+    """从 Authorization 头解析用户，供图片等由 `<img>`/fetch 直接取的端点使用。
+
+    这些端点不能走标准依赖注入的 OAuth2 流程，但同样不接受 URL 里的 token。
+    """
+    token = None
+    if authorization:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer" and value:
+            token = value
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
+    user = session.get(User, token_data.sub)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return user
+
+
 def assert_organization_access(
     session: SessionDep, user: User, *, method: str = "GET"
 ) -> None:

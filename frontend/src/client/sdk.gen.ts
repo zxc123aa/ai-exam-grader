@@ -3,7 +3,7 @@
 import type { CancelablePromise } from './core/CancelablePromise';
 import { OpenAPI } from './core/OpenAPI';
 import { request as __request } from './core/request';
-import type { ClassesReadClassesResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesUpdateClassData, ClassesUpdateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesReadStudentsData, ClassesReadStudentsResponse, ClassesCreateStudentData, ClassesCreateStudentResponse, ClassesCreateStudentsBatchData, ClassesCreateStudentsBatchResponse, ClassesUpdateStudentData, ClassesUpdateStudentResponse, ClassesDeleteStudentData, ClassesDeleteStudentResponse, ClassesBindStudentAccountData, ClassesBindStudentAccountResponse, ClassesUnbindStudentAccountData, ClassesUnbindStudentAccountResponse, CommerceCatalogResponse, CommerceListPlansResponse, CommerceCreatePlanData, CommerceCreatePlanResponse, CommerceListAddonsResponse, CommerceCreateAddonData, CommerceCreateAddonResponse, CommerceUpdatePlanPublicationData, CommerceUpdatePlanPublicationResponse, CommerceUpdateAddonPublicationData, CommerceUpdateAddonPublicationResponse, CommerceListOrdersResponse, CommerceCreateOrderData, CommerceCreateOrderResponse, CommerceReadOrderData, CommerceReadOrderResponse, CommerceStartWechatPayData, CommerceStartWechatPayResponse, CommerceConfirmBankTransferData, CommerceConfirmBankTransferResponse, CommerceApplyInvoiceData, CommerceApplyInvoiceResponse, CommerceListInvoicesResponse, CommerceReviewInvoiceData, CommerceReviewInvoiceResponse, CommerceRequestRefundData, CommerceRequestRefundResponse, CommerceListRefundsResponse, CommerceReviewRefundData, CommerceReviewRefundResponse, CommerceOrgBillingResponse, CommerceWechatWebhookData, CommerceWechatWebhookResponse, ExamsReadExamWorkflowSummaryData, ExamsReadExamWorkflowSummaryResponse, ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadQuestionBankData, ExamsReadQuestionBankResponse, ExamsComposeExamData, ExamsComposeExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsReadGradingAssignmentsData, ExamsReadGradingAssignmentsResponse, ExamsUpdateGradingAssignmentsData, ExamsUpdateGradingAssignmentsResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsCreateExamAnalysisReportData, ExamsCreateExamAnalysisReportResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, GradingPublishExamScoresData, GradingPublishExamScoresResponse, GradingGetCurrentScoreReleaseData, GradingGetCurrentScoreReleaseResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, ModelOfferingsListModelOfferingsResponse, ModelOfferingsCreateModelOfferingData, ModelOfferingsCreateModelOfferingResponse, ModelOfferingsUpdateModelOfferingData, ModelOfferingsUpdateModelOfferingResponse, ModelOfferingsListOfferingRatesData, ModelOfferingsListOfferingRatesResponse, ModelOfferingsCreateOfferingRateData, ModelOfferingsCreateOfferingRateResponse, OrgReadOrgSettingsResponse, OrgUpdateOrgSettingsData, OrgUpdateOrgSettingsResponse, OrgReadOrgOnboardingResponse, OrgReadOrgModelSettingsResponse, OrgUpdateOrgModelSettingData, OrgUpdateOrgModelSettingResponse, OrgReadBillingEntitlementResponse, OrgReadBillingSummaryResponse, OrgReadBillingUsageData, OrgReadBillingUsageResponse, OrgReadBillingLedgerData, OrgReadBillingLedgerResponse, PlatformReadModelUsageOverviewData, PlatformReadModelUsageOverviewResponse, PlatformListModelUsageEventsData, PlatformListModelUsageEventsResponse, PlatformReadPlatformDirectoryData, PlatformReadPlatformDirectoryResponse, PlatformListOrgsResponse, PlatformCreateOrgData, PlatformCreateOrgResponse, PlatformReadOrgData, PlatformReadOrgResponse, PlatformUpdateOrgData, PlatformUpdateOrgResponse, PlatformAddOrgOwnerData, PlatformAddOrgOwnerResponse, PlatformReadSystemConfigResponse, PlatformUpdateSystemConfigData, PlatformUpdateSystemConfigResponse, PlatformListBillingRatesResponse, PlatformCreateBillingRateData, PlatformCreateBillingRateResponse, PlatformUpsertOrgSubscriptionData, PlatformUpsertOrgSubscriptionResponse, PlatformGrantOrgCreditsData, PlatformGrantOrgCreditsResponse, PlatformGrantOrgAnswerQuotaData, PlatformGrantOrgAnswerQuotaResponse, PlatformReadOrgBillingData, PlatformReadOrgBillingResponse, PlatformReadOrgBillingLedgerData, PlatformReadOrgBillingLedgerResponse, PlatformReadOrgUsagePolicyData, PlatformReadOrgUsagePolicyResponse, PlatformUpdateOrgUsagePolicyData, PlatformUpdateOrgUsagePolicyResponse, PrivateCreateUserData, PrivateCreateUserResponse, ProviderChannelsListChannelsResponse, ProviderChannelsCreateChannelData, ProviderChannelsCreateChannelResponse, ProviderChannelsImportEnvironmentChannelsResponse, ProviderChannelsUpdateChannelData, ProviderChannelsUpdateChannelResponse, ProviderChannelsRotateCredentialData, ProviderChannelsRotateCredentialResponse, ProviderChannelsRotateBillingCredentialData, ProviderChannelsRotateBillingCredentialResponse, ProviderChannelsListModelMappingsData, ProviderChannelsListModelMappingsResponse, ProviderChannelsCreateModelMappingData, ProviderChannelsCreateModelMappingResponse, ProviderChannelsDiscoverUpstreamModelsData, ProviderChannelsDiscoverUpstreamModelsResponse, ProviderChannelsUpdateModelMappingData, ProviderChannelsUpdateModelMappingResponse, ProviderChannelsListRoutePoliciesData, ProviderChannelsListRoutePoliciesResponse, ProviderChannelsListFunctionModelDefaultsResponse, ProviderChannelsUpdateFunctionModelDefaultData, ProviderChannelsUpdateFunctionModelDefaultResponse, ProviderChannelsAddRouteTargetData, ProviderChannelsAddRouteTargetResponse, ProviderChannelsReadRoutePolicyData, ProviderChannelsReadRoutePolicyResponse, ProviderChannelsUpsertRoutePolicyData, ProviderChannelsUpsertRoutePolicyResponse, ProviderChannelsListRouteVersionsData, ProviderChannelsListRouteVersionsResponse, ProviderChannelsPublishRouteVersionData, ProviderChannelsPublishRouteVersionResponse, ProviderChannelsListInternalRatesData, ProviderChannelsListInternalRatesResponse, ProviderChannelsCreateInternalRateData, ProviderChannelsCreateInternalRateResponse, ProviderChannelsTestChannelData, ProviderChannelsTestChannelResponse, ProviderChannelsResetChannelHealthData, ProviderChannelsResetChannelHealthResponse, ProviderChannelsListReconciliationsData, ProviderChannelsListReconciliationsResponse, ProviderChannelsImportReconciliationData, ProviderChannelsImportReconciliationResponse, ProviderChannelsSyncNewApiReconciliationData, ProviderChannelsSyncNewApiReconciliationResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, StudentsReadMyExamsResponse, StudentsReadMyExamReportData, StudentsReadMyExamReportResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersCreateTeachersBatchData, UsersCreateTeachersBatchResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterOrganizationData, UsersRegisterOrganizationResponse, UsersResendOrganizationSignupData, UsersResendOrganizationSignupResponse, UsersVerifyOrganizationSignupData, UsersVerifyOrganizationSignupResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersReadTeachingProfileData, UsersReadTeachingProfileResponse, UsersUpdateTeachingProfileData, UsersUpdateTeachingProfileResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse, UtilsLivenessResponse, UtilsReadinessResponse } from './types.gen';
+import type { ClassesReadClassesResponse, ClassesCreateClassData, ClassesCreateClassResponse, ClassesUpdateClassData, ClassesUpdateClassResponse, ClassesDeleteClassData, ClassesDeleteClassResponse, ClassesReadStudentsData, ClassesReadStudentsResponse, ClassesCreateStudentData, ClassesCreateStudentResponse, ClassesCreateStudentsBatchData, ClassesCreateStudentsBatchResponse, ClassesUpdateStudentData, ClassesUpdateStudentResponse, ClassesDeleteStudentData, ClassesDeleteStudentResponse, ClassesBindStudentAccountData, ClassesBindStudentAccountResponse, ClassesUnbindStudentAccountData, ClassesUnbindStudentAccountResponse, CommerceCatalogResponse, CommerceListPlansResponse, CommerceCreatePlanData, CommerceCreatePlanResponse, CommerceListAddonsResponse, CommerceCreateAddonData, CommerceCreateAddonResponse, CommerceUpdatePlanPublicationData, CommerceUpdatePlanPublicationResponse, CommerceUpdateAddonPublicationData, CommerceUpdateAddonPublicationResponse, CommerceListOrdersResponse, CommerceCreateOrderData, CommerceCreateOrderResponse, CommerceReadOrderData, CommerceReadOrderResponse, CommerceStartWechatPayData, CommerceStartWechatPayResponse, CommerceConfirmBankTransferData, CommerceConfirmBankTransferResponse, CommerceApplyInvoiceData, CommerceApplyInvoiceResponse, CommerceListInvoicesResponse, CommerceReviewInvoiceData, CommerceReviewInvoiceResponse, CommerceRequestRefundData, CommerceRequestRefundResponse, CommerceListRefundsResponse, CommerceReviewRefundData, CommerceReviewRefundResponse, CommerceOrgBillingResponse, CommerceWechatWebhookData, CommerceWechatWebhookResponse, ExamsReadExamWorkflowSummaryData, ExamsReadExamWorkflowSummaryResponse, ExamsReadExamsData, ExamsReadExamsResponse, ExamsCreateExamData, ExamsCreateExamResponse, ExamsReadQuestionBankData, ExamsReadQuestionBankResponse, ExamsComposeExamData, ExamsComposeExamResponse, ExamsReadExamData, ExamsReadExamResponse, ExamsUpdateExamData, ExamsUpdateExamResponse, ExamsDeleteExamData, ExamsDeleteExamResponse, ExamsReadGradingAssignmentsData, ExamsReadGradingAssignmentsResponse, ExamsUpdateGradingAssignmentsData, ExamsUpdateGradingAssignmentsResponse, ExamsUploadExamFileData, ExamsUploadExamFileResponse, ExamsReadExamFilesData, ExamsReadExamFilesResponse, ExamsClearExamPaperFilesData, ExamsClearExamPaperFilesResponse, ExamsUploadExamFilesData, ExamsUploadExamFilesResponse, ExamsReorderExamFilesData, ExamsReorderExamFilesResponse, ExamsDeleteExamFileData, ExamsDeleteExamFileResponse, ExamsRecognizeExamFilesWithReferenceAlgorithmData, ExamsRecognizeExamFilesWithReferenceAlgorithmResponse, ExamsReadExamFileContentData, ExamsReadExamFileContentResponse, ExamsReadExamFileSourceImageData, ExamsReadExamFileSourceImageResponse, ExamsReadExamFilePageImageData, ExamsReadExamFilePageImageResponse, ExamsReadExamFilePreprocessingPreviewData, ExamsReadExamFilePreprocessingPreviewResponse, ExamsPreviewExamFileWithQuadsData, ExamsPreviewExamFileWithQuadsResponse, ExamsPreprocessExamFileWithQuadsData, ExamsPreprocessExamFileWithQuadsResponse, ExamsAutoRectifyExamFileData, ExamsAutoRectifyExamFileResponse, ExamsAutoRectifyExamFilesData, ExamsAutoRectifyExamFilesResponse, ExamsReadExamRegionCandidatesData, ExamsReadExamRegionCandidatesResponse, ExamsRecognizeExamDocumentWithReferenceAlgorithmData, ExamsRecognizeExamDocumentWithReferenceAlgorithmResponse, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmData, ExamsRecognizeExamDocumentPageWithReferenceAlgorithmResponse, ExamsUploadStudentSubmissionData, ExamsUploadStudentSubmissionResponse, ExamsReadStudentSubmissionsData, ExamsReadStudentSubmissionsResponse, ExamsReadExamScoresSummaryData, ExamsReadExamScoresSummaryResponse, ExamsCreateExamAnalysisReportData, ExamsCreateExamAnalysisReportResponse, ExamsPreprocessStudentSubmissionPhotoData, ExamsPreprocessStudentSubmissionPhotoResponse, ExamsAppendStudentSubmissionPagesData, ExamsAppendStudentSubmissionPagesResponse, ExamsReadStudentSubmissionData, ExamsReadStudentSubmissionResponse, ExamsUpdateStudentSubmissionRegistrationData, ExamsUpdateStudentSubmissionRegistrationResponse, ExamsCreateStudentSubmissionProcessingTaskData, ExamsCreateStudentSubmissionProcessingTaskResponse, ExamsReadStudentSubmissionPageImageData, ExamsReadStudentSubmissionPageImageResponse, ExamsReadStudentSubmissionTemplateRegionsData, ExamsReadStudentSubmissionTemplateRegionsResponse, ExamsReadStudentSubmissionRegionCropData, ExamsReadStudentSubmissionRegionCropResponse, ExamsReadSubmissionAnnotationCropData, ExamsReadSubmissionAnnotationCropResponse, ExamsReadSubmissionAnnotationsData, ExamsReadSubmissionAnnotationsResponse, ExamsCreateSubmissionAnnotationData, ExamsCreateSubmissionAnnotationResponse, ExamsUpdateSubmissionAnnotationData, ExamsUpdateSubmissionAnnotationResponse, ExamsDeleteSubmissionAnnotationData, ExamsDeleteSubmissionAnnotationResponse, ExamsReadStandardAnswersData, ExamsReadStandardAnswersResponse, ExamsCreateStandardAnswerData, ExamsCreateStandardAnswerResponse, ExamsReadStandardAnswerData, ExamsReadStandardAnswerResponse, ExamsUpdateStandardAnswerData, ExamsUpdateStandardAnswerResponse, ExamsDeleteStandardAnswerData, ExamsDeleteStandardAnswerResponse, ExamsReadExamRegionsData, ExamsReadExamRegionsResponse, ExamsCreateExamRegionData, ExamsCreateExamRegionResponse, ExamsUpdateExamRegionData, ExamsUpdateExamRegionResponse, ExamsDeleteExamRegionData, ExamsDeleteExamRegionResponse, FilesUploadFileData, FilesUploadFileResponse, GradingCreateRecognitionRunData, GradingCreateRecognitionRunResponse, GradingReadRecognitionItemsData, GradingReadRecognitionItemsResponse, GradingUpdateRecognitionItemData, GradingUpdateRecognitionItemResponse, GradingConfirmRecognitionData, GradingConfirmRecognitionResponse, GradingCreateRunData, GradingCreateRunResponse, GradingListRunsData, GradingListRunsResponse, GradingGetRunData, GradingGetRunResponse, GradingStartRunData, GradingStartRunResponse, GradingRetryRunData, GradingRetryRunResponse, GradingGenerateRubricsData, GradingGenerateRubricsResponse, GradingPublishAnswersData, GradingPublishAnswersResponse, GradingReviewQueueData, GradingReviewQueueResponse, GradingAuditLogData, GradingAuditLogResponse, GradingPublishExamScoresData, GradingPublishExamScoresResponse, GradingGetCurrentScoreReleaseData, GradingGetCurrentScoreReleaseResponse, LoginLoginAccessTokenData, LoginLoginAccessTokenResponse, LoginTestTokenResponse, LoginRecoverPasswordData, LoginRecoverPasswordResponse, LoginResetPasswordData, LoginResetPasswordResponse, LoginRecoverPasswordHtmlContentData, LoginRecoverPasswordHtmlContentResponse, ModelOfferingsListModelOfferingsResponse, ModelOfferingsCreateModelOfferingData, ModelOfferingsCreateModelOfferingResponse, ModelOfferingsUpdateModelOfferingData, ModelOfferingsUpdateModelOfferingResponse, ModelOfferingsListOfferingRatesData, ModelOfferingsListOfferingRatesResponse, ModelOfferingsCreateOfferingRateData, ModelOfferingsCreateOfferingRateResponse, OrgReadOrgSettingsResponse, OrgUpdateOrgSettingsData, OrgUpdateOrgSettingsResponse, OrgReadOrgOnboardingResponse, OrgReadOrgModelSettingsResponse, OrgUpdateOrgModelSettingData, OrgUpdateOrgModelSettingResponse, OrgReadBillingEntitlementResponse, OrgReadBillingSummaryResponse, OrgReadBillingUsageData, OrgReadBillingUsageResponse, OrgReadBillingLedgerData, OrgReadBillingLedgerResponse, PlatformReadModelUsageOverviewData, PlatformReadModelUsageOverviewResponse, PlatformListModelUsageEventsData, PlatformListModelUsageEventsResponse, PlatformReadPlatformDirectoryData, PlatformReadPlatformDirectoryResponse, PlatformListOrgsResponse, PlatformCreateOrgData, PlatformCreateOrgResponse, PlatformReadOrgData, PlatformReadOrgResponse, PlatformUpdateOrgData, PlatformUpdateOrgResponse, PlatformAddOrgOwnerData, PlatformAddOrgOwnerResponse, PlatformReadSystemConfigResponse, PlatformUpdateSystemConfigData, PlatformUpdateSystemConfigResponse, PlatformListBillingRatesResponse, PlatformCreateBillingRateData, PlatformCreateBillingRateResponse, PlatformUpsertOrgSubscriptionData, PlatformUpsertOrgSubscriptionResponse, PlatformGrantOrgCreditsData, PlatformGrantOrgCreditsResponse, PlatformGrantOrgAnswerQuotaData, PlatformGrantOrgAnswerQuotaResponse, PlatformReadOrgBillingData, PlatformReadOrgBillingResponse, PlatformReadOrgBillingLedgerData, PlatformReadOrgBillingLedgerResponse, PlatformReadOrgUsagePolicyData, PlatformReadOrgUsagePolicyResponse, PlatformUpdateOrgUsagePolicyData, PlatformUpdateOrgUsagePolicyResponse, PrivateCreateUserData, PrivateCreateUserResponse, ProviderChannelsListChannelsResponse, ProviderChannelsCreateChannelData, ProviderChannelsCreateChannelResponse, ProviderChannelsImportEnvironmentChannelsResponse, ProviderChannelsUpdateChannelData, ProviderChannelsUpdateChannelResponse, ProviderChannelsRotateCredentialData, ProviderChannelsRotateCredentialResponse, ProviderChannelsRotateBillingCredentialData, ProviderChannelsRotateBillingCredentialResponse, ProviderChannelsListModelMappingsData, ProviderChannelsListModelMappingsResponse, ProviderChannelsCreateModelMappingData, ProviderChannelsCreateModelMappingResponse, ProviderChannelsDiscoverUpstreamModelsData, ProviderChannelsDiscoverUpstreamModelsResponse, ProviderChannelsUpdateModelMappingData, ProviderChannelsUpdateModelMappingResponse, ProviderChannelsListRoutePoliciesData, ProviderChannelsListRoutePoliciesResponse, ProviderChannelsListFunctionModelDefaultsResponse, ProviderChannelsUpdateFunctionModelDefaultData, ProviderChannelsUpdateFunctionModelDefaultResponse, ProviderChannelsAddRouteTargetData, ProviderChannelsAddRouteTargetResponse, ProviderChannelsReadRoutePolicyData, ProviderChannelsReadRoutePolicyResponse, ProviderChannelsUpsertRoutePolicyData, ProviderChannelsUpsertRoutePolicyResponse, ProviderChannelsListRouteVersionsData, ProviderChannelsListRouteVersionsResponse, ProviderChannelsPublishRouteVersionData, ProviderChannelsPublishRouteVersionResponse, ProviderChannelsListInternalRatesData, ProviderChannelsListInternalRatesResponse, ProviderChannelsCreateInternalRateData, ProviderChannelsCreateInternalRateResponse, ProviderChannelsTestChannelData, ProviderChannelsTestChannelResponse, ProviderChannelsResetChannelHealthData, ProviderChannelsResetChannelHealthResponse, ProviderChannelsListReconciliationsData, ProviderChannelsListReconciliationsResponse, ProviderChannelsImportReconciliationData, ProviderChannelsImportReconciliationResponse, ProviderChannelsSyncNewApiReconciliationData, ProviderChannelsSyncNewApiReconciliationResponse, QuestionAnswerWorkflowListExamQuestionsData, QuestionAnswerWorkflowListExamQuestionsResponse, QuestionAnswerWorkflowCreateQuestionRecognitionRunData, QuestionAnswerWorkflowCreateQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionRunsData, QuestionAnswerWorkflowListQuestionRecognitionRunsResponse, QuestionAnswerWorkflowImportMarkingRecognitionRunData, QuestionAnswerWorkflowImportMarkingRecognitionRunResponse, QuestionAnswerWorkflowGetQuestionRecognitionRunData, QuestionAnswerWorkflowGetQuestionRecognitionRunResponse, QuestionAnswerWorkflowListQuestionRecognitionItemsData, QuestionAnswerWorkflowListQuestionRecognitionItemsResponse, QuestionAnswerWorkflowUpdateQuestionRecognitionItemData, QuestionAnswerWorkflowUpdateQuestionRecognitionItemResponse, QuestionAnswerWorkflowConfirmQuestionRecognitionRunData, QuestionAnswerWorkflowConfirmQuestionRecognitionRunResponse, QuestionAnswerWorkflowCreateAnswerPreparationRunData, QuestionAnswerWorkflowCreateAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationRunsData, QuestionAnswerWorkflowListAnswerPreparationRunsResponse, QuestionAnswerWorkflowGetAnswerPreparationRunData, QuestionAnswerWorkflowGetAnswerPreparationRunResponse, QuestionAnswerWorkflowListAnswerPreparationItemsData, QuestionAnswerWorkflowListAnswerPreparationItemsResponse, QuestionAnswerWorkflowUpdateAnswerPreparationItemData, QuestionAnswerWorkflowUpdateAnswerPreparationItemResponse, QuestionAnswerWorkflowConfirmAnswerPreparationRunData, QuestionAnswerWorkflowConfirmAnswerPreparationRunResponse, QuestionAnswerWorkflowListStandardAnswerRevisionsData, QuestionAnswerWorkflowListStandardAnswerRevisionsResponse, QuestionAnswerWorkflowPublishStandardAnswerRevisionsData, QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse, StudentsReadMyExamsResponse, StudentsReadMyWrongbookData, StudentsReadMyWrongbookResponse, StudentsReadMyWrongbookEntryData, StudentsReadMyWrongbookEntryResponse, StudentsReadMyWrongbookEntryImageData, StudentsReadMyWrongbookEntryImageResponse, StudentsReadMyExamReportData, StudentsReadMyExamReportResponse, TasksCreateTestTaskData, TasksCreateTestTaskResponse, TasksReadTaskData, TasksReadTaskResponse, UsersReadUsersData, UsersReadUsersResponse, UsersCreateUserData, UsersCreateUserResponse, UsersCreateTeachersBatchData, UsersCreateTeachersBatchResponse, UsersReadUserMeResponse, UsersDeleteUserMeResponse, UsersUpdateUserMeData, UsersUpdateUserMeResponse, UsersUpdatePasswordMeData, UsersUpdatePasswordMeResponse, UsersRegisterOrganizationData, UsersRegisterOrganizationResponse, UsersResendOrganizationSignupData, UsersResendOrganizationSignupResponse, UsersVerifyOrganizationSignupData, UsersVerifyOrganizationSignupResponse, UsersReadUserByIdData, UsersReadUserByIdResponse, UsersUpdateUserData, UsersUpdateUserResponse, UsersDeleteUserData, UsersDeleteUserResponse, UsersReadTeachingProfileData, UsersReadTeachingProfileResponse, UsersUpdateTeachingProfileData, UsersUpdateTeachingProfileResponse, UtilsTestEmailData, UtilsTestEmailResponse, UtilsHealthCheckResponse, UtilsHealthResponse, UtilsLivenessResponse, UtilsReadinessResponse } from './types.gen';
 
 export class ClassesService {
     /**
@@ -17,7 +17,7 @@ export class ClassesService {
             url: '/api/v1/classes/'
         });
     }
-
+    
     /**
      * Create Class
      * @param data The data for the request.
@@ -36,7 +36,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Update Class
      * @param data The data for the request.
@@ -59,7 +59,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Delete Class
      * @param data The data for the request.
@@ -79,7 +79,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Read Students
      * @param data The data for the request.
@@ -99,7 +99,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Create Student
      * @param data The data for the request.
@@ -122,7 +122,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Create Students Batch
      * 花名册批量导入。dry_run=true 只校验不落库，逐行返回处理结果。
@@ -146,7 +146,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Update Student
      * @param data The data for the request.
@@ -169,7 +169,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Delete Student
      * @param data The data for the request.
@@ -189,7 +189,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Bind Student Account
      * @param data The data for the request.
@@ -212,7 +212,7 @@ export class ClassesService {
             }
         });
     }
-
+    
     /**
      * Unbind Student Account
      * @param data The data for the request.
@@ -246,7 +246,7 @@ export class CommerceService {
             url: '/api/v1/commerce/catalog'
         });
     }
-
+    
     /**
      * List Plans
      * @returns PlanVersion Successful Response
@@ -258,7 +258,7 @@ export class CommerceService {
             url: '/api/v1/commerce/admin/plans'
         });
     }
-
+    
     /**
      * Create Plan
      * @param data The data for the request.
@@ -277,7 +277,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * List Addons
      * @returns AddonSku Successful Response
@@ -289,7 +289,7 @@ export class CommerceService {
             url: '/api/v1/commerce/admin/addons'
         });
     }
-
+    
     /**
      * Create Addon
      * @param data The data for the request.
@@ -308,7 +308,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Update Plan Publication
      * @param data The data for the request.
@@ -331,7 +331,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Update Addon Publication
      * @param data The data for the request.
@@ -354,7 +354,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * List Orders
      * @returns AdminCommerceOrderPublic Successful Response
@@ -366,7 +366,7 @@ export class CommerceService {
             url: '/api/v1/commerce/admin/orders'
         });
     }
-
+    
     /**
      * Create Order
      * @param data The data for the request.
@@ -385,7 +385,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Read Order
      * @param data The data for the request.
@@ -405,7 +405,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Start Wechat Pay
      * @param data The data for the request.
@@ -425,7 +425,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Confirm Bank Transfer
      * @param data The data for the request.
@@ -448,7 +448,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Apply Invoice
      * @param data The data for the request.
@@ -467,7 +467,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * List Invoices
      * @returns InvoiceApplicationPublic Successful Response
@@ -479,7 +479,7 @@ export class CommerceService {
             url: '/api/v1/commerce/admin/invoices'
         });
     }
-
+    
     /**
      * Review Invoice
      * @param data The data for the request.
@@ -502,7 +502,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Request Refund
      * @param data The data for the request.
@@ -521,7 +521,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * List Refunds
      * @returns RefundRequestPublic Successful Response
@@ -533,7 +533,7 @@ export class CommerceService {
             url: '/api/v1/commerce/admin/refunds'
         });
     }
-
+    
     /**
      * Review Refund
      * @param data The data for the request.
@@ -556,7 +556,7 @@ export class CommerceService {
             }
         });
     }
-
+    
     /**
      * Org Billing
      * @returns BillingSummaryPublic Successful Response
@@ -568,7 +568,7 @@ export class CommerceService {
             url: '/api/v1/commerce/org/billing'
         });
     }
-
+    
     /**
      * Wechat Webhook
      * @param data The data for the request.
@@ -615,7 +615,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exams
      * @param data The data for the request.
@@ -637,7 +637,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Exam
      * @param data The data for the request.
@@ -656,7 +656,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Question Bank
      * @param data The data for the request.
@@ -680,7 +680,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Compose Exam
      * @param data The data for the request.
@@ -699,7 +699,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam
      * @param data The data for the request.
@@ -719,7 +719,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Exam
      * @param data The data for the request.
@@ -742,7 +742,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Delete Exam
      * @param data The data for the request.
@@ -762,7 +762,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Grading Assignments
      * 共享批卷分配（只读）：本校非学生角色均可读；跨校 404。
@@ -783,7 +783,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Grading Assignments
      * 整体覆盖共享批卷分配：exam owner / school_owner / school_admin 可写。
@@ -809,7 +809,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Upload Exam File
      * @param data The data for the request.
@@ -832,7 +832,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam Files
      * @param data The data for the request.
@@ -852,7 +852,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Clear Exam Paper Files
      * @param data The data for the request.
@@ -872,7 +872,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Upload Exam Files
      * @param data The data for the request.
@@ -895,7 +895,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Reorder Exam Files
      * @param data The data for the request.
@@ -918,7 +918,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Delete Exam File
      * @param data The data for the request.
@@ -940,7 +940,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Recognize Exam Files With Reference Algorithm
      * @param data The data for the request.
@@ -963,7 +963,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam File Content
      * @param data The data for the request.
@@ -989,7 +989,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam File Source Image
      * @param data The data for the request.
@@ -1011,7 +1011,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam File Page Image
      * @param data The data for the request.
@@ -1039,7 +1039,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam File Preprocessing Preview
      * @param data The data for the request.
@@ -1067,7 +1067,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Preview Exam File With Quads
      * @param data The data for the request.
@@ -1092,7 +1092,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Preprocess Exam File With Quads
      * @param data The data for the request.
@@ -1117,7 +1117,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Auto Rectify Exam File
      * @param data The data for the request.
@@ -1139,7 +1139,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Auto Rectify Exam Files
      * @param data The data for the request.
@@ -1159,7 +1159,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam Region Candidates
      * @param data The data for the request.
@@ -1187,7 +1187,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Recognize Exam Document With Reference Algorithm
      * @param data The data for the request.
@@ -1209,7 +1209,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Recognize Exam Document Page With Reference Algorithm
      * @param data The data for the request.
@@ -1233,7 +1233,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Upload Student Submission
      * @param data The data for the request.
@@ -1256,7 +1256,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Student Submissions
      * @param data The data for the request.
@@ -1276,7 +1276,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam Scores Summary
      * @param data The data for the request.
@@ -1296,7 +1296,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Exam Analysis Report
      * 基于最新批阅成绩调用 LLM 生成四段式班级学情报告。
@@ -1320,7 +1320,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Preprocess Student Submission Photo
      * @param data The data for the request.
@@ -1343,7 +1343,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Append Student Submission Pages
      * @param data The data for the request.
@@ -1368,7 +1368,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Student Submission
      * @param data The data for the request.
@@ -1390,7 +1390,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Student Submission Registration
      * @param data The data for the request.
@@ -1415,7 +1415,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Student Submission Processing Task
      * @param data The data for the request.
@@ -1437,7 +1437,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Student Submission Page Image
      * @param data The data for the request.
@@ -1465,7 +1465,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Student Submission Template Regions
      * @param data The data for the request.
@@ -1491,7 +1491,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Student Submission Region Crop
      * @param data The data for the request.
@@ -1519,7 +1519,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Submission Annotation Crop
      * @param data The data for the request.
@@ -1547,7 +1547,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Submission Annotations
      * @param data The data for the request.
@@ -1569,7 +1569,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Submission Annotation
      * @param data The data for the request.
@@ -1594,7 +1594,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Submission Annotation
      * @param data The data for the request.
@@ -1621,7 +1621,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Delete Submission Annotation
      * @param data The data for the request.
@@ -1645,7 +1645,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Standard Answers
      * @param data The data for the request.
@@ -1665,7 +1665,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Standard Answer
      * @param data The data for the request.
@@ -1688,7 +1688,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Standard Answer
      * @param data The data for the request.
@@ -1710,7 +1710,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Standard Answer
      * @param data The data for the request.
@@ -1735,7 +1735,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Delete Standard Answer
      * @param data The data for the request.
@@ -1757,7 +1757,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Read Exam Regions
      * @param data The data for the request.
@@ -1777,7 +1777,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Create Exam Region
      * @param data The data for the request.
@@ -1800,7 +1800,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Update Exam Region
      * @param data The data for the request.
@@ -1825,7 +1825,7 @@ export class ExamsService {
             }
         });
     }
-
+    
     /**
      * Delete Exam Region
      * @param data The data for the request.
@@ -1889,7 +1889,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Read Recognition Items
      * @param data The data for the request.
@@ -1909,7 +1909,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Update Recognition Item
      * @param data The data for the request.
@@ -1932,7 +1932,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Confirm Recognition
      * @param data The data for the request.
@@ -1952,7 +1952,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Create Run
      * @param data The data for the request.
@@ -1971,7 +1971,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * List Runs
      * @param data The data for the request.
@@ -1991,7 +1991,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Get Run
      * @param data The data for the request.
@@ -2011,7 +2011,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Start Run
      * @param data The data for the request.
@@ -2031,7 +2031,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Retry Run
      * @param data The data for the request.
@@ -2051,7 +2051,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Generate Rubrics
      * @param data The data for the request.
@@ -2071,7 +2071,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Publish Answers
      * @param data The data for the request.
@@ -2091,7 +2091,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Review Queue
      * @param data The data for the request.
@@ -2111,7 +2111,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Audit Log
      * @param data The data for the request.
@@ -2131,7 +2131,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Publish Exam Scores
      * Freeze the current reviewed score draft as the student-visible version.
@@ -2155,7 +2155,7 @@ export class GradingService {
             }
         });
     }
-
+    
     /**
      * Get Current Score Release
      * Return the version currently visible to students, if one exists.
@@ -2198,7 +2198,7 @@ export class LoginService {
             }
         });
     }
-
+    
     /**
      * Test Token
      * Test access token
@@ -2211,7 +2211,7 @@ export class LoginService {
             url: '/api/v1/login/test-token'
         });
     }
-
+    
     /**
      * Recover Password
      * Password Recovery
@@ -2232,7 +2232,7 @@ export class LoginService {
             }
         });
     }
-
+    
     /**
      * Reset Password
      * Reset password
@@ -2252,7 +2252,7 @@ export class LoginService {
             }
         });
     }
-
+    
     /**
      * Recover Password Html Content
      * HTML Content for Password Recovery
@@ -2287,7 +2287,7 @@ export class ModelOfferingsService {
             url: '/api/v1/platform/model-offerings'
         });
     }
-
+    
     /**
      * Create Model Offering
      * @param data The data for the request.
@@ -2306,7 +2306,7 @@ export class ModelOfferingsService {
             }
         });
     }
-
+    
     /**
      * Update Model Offering
      * @param data The data for the request.
@@ -2329,7 +2329,7 @@ export class ModelOfferingsService {
             }
         });
     }
-
+    
     /**
      * List Offering Rates
      * @param data The data for the request.
@@ -2349,7 +2349,7 @@ export class ModelOfferingsService {
             }
         });
     }
-
+    
     /**
      * Create Offering Rate
      * @param data The data for the request.
@@ -2387,7 +2387,7 @@ export class OrgService {
             url: '/api/v1/org/settings'
         });
     }
-
+    
     /**
      * Update Org Settings
      * 修改本校设置（仅 school_owner）。
@@ -2407,7 +2407,7 @@ export class OrgService {
             }
         });
     }
-
+    
     /**
      * Read Org Onboarding
      * 首次开通引导使用的学校真实进度。
@@ -2420,7 +2420,7 @@ export class OrgService {
             url: '/api/v1/org/onboarding'
         });
     }
-
+    
     /**
      * Read Org Model Settings
      * @returns SchoolModelSettingsPublic Successful Response
@@ -2432,7 +2432,7 @@ export class OrgService {
             url: '/api/v1/org/model-settings'
         });
     }
-
+    
     /**
      * Update Org Model Setting
      * @param data The data for the request.
@@ -2455,7 +2455,7 @@ export class OrgService {
             }
         });
     }
-
+    
     /**
      * Read Billing Entitlement
      * @returns BillingEntitlementPublic Successful Response
@@ -2467,7 +2467,7 @@ export class OrgService {
             url: '/api/v1/org/billing/entitlement'
         });
     }
-
+    
     /**
      * Read Billing Summary
      * @returns BillingSummaryPublic Successful Response
@@ -2479,7 +2479,7 @@ export class OrgService {
             url: '/api/v1/org/billing'
         });
     }
-
+    
     /**
      * Read Billing Usage
      * @param data The data for the request.
@@ -2501,7 +2501,7 @@ export class OrgService {
             }
         });
     }
-
+    
     /**
      * Read Billing Ledger
      * @param data The data for the request.
@@ -2548,7 +2548,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * List Model Usage Events
      * 跨学校调用明细，供运营排障和成本核对。
@@ -2579,7 +2579,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read Platform Directory
      * 跨学校人员目录，统一返回教职工账号、学生名册和绑定状态。
@@ -2610,7 +2610,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * List Orgs
      * 学校列表（含考试 / 学生 / 老师数）。运营角色只读可用。
@@ -2623,7 +2623,7 @@ export class PlatformService {
             url: '/api/v1/platform/orgs'
         });
     }
-
+    
     /**
      * Create Org
      * 新建学校，可同时创建首个 school_owner 账号（同一事务）。
@@ -2643,7 +2643,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read Org
      * 学校详情 + 账号列表 + 使用统计。
@@ -2664,7 +2664,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Update Org
      * 修改学校信息和服务状态。
@@ -2688,7 +2688,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Add Org Owner
      * 给学校追加一个 school_owner 账号。
@@ -2712,7 +2712,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read System Config
      * 读取模型与批改默认值（DB 无值回落 env）+ 各 provider 配置状态。
@@ -2725,7 +2725,7 @@ export class PlatformService {
             url: '/api/v1/platform/system-config'
         });
     }
-
+    
     /**
      * Update System Config
      * 部分更新默认值；校验 provider/model 组合合法后生效于之后的新批次。
@@ -2745,7 +2745,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * List Billing Rates
      * @returns BillingRateVersion Successful Response
@@ -2757,7 +2757,7 @@ export class PlatformService {
             url: '/api/v1/platform/billing/rates'
         });
     }
-
+    
     /**
      * Create Billing Rate
      * @param data The data for the request.
@@ -2776,7 +2776,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Upsert Org Subscription
      * @param data The data for the request.
@@ -2799,7 +2799,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Grant Org Credits
      * @param data The data for the request.
@@ -2822,7 +2822,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Grant Org Answer Quota
      * @param data The data for the request.
@@ -2845,7 +2845,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read Org Billing
      * @param data The data for the request.
@@ -2865,7 +2865,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read Org Billing Ledger
      * @param data The data for the request.
@@ -2891,7 +2891,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Read Org Usage Policy
      * @param data The data for the request.
@@ -2911,7 +2911,7 @@ export class PlatformService {
             }
         });
     }
-
+    
     /**
      * Update Org Usage Policy
      * @param data The data for the request.
@@ -2970,7 +2970,7 @@ export class ProviderChannelsService {
             url: '/api/v1/platform/provider-channels'
         });
     }
-
+    
     /**
      * Create Channel
      * @param data The data for the request.
@@ -2989,7 +2989,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Import Environment Channels
      * 把旧环境变量中的 URL、Key 和模型清单纳入数据库通道管理。
@@ -3002,7 +3002,7 @@ export class ProviderChannelsService {
             url: '/api/v1/platform/provider-channels/import-environment'
         });
     }
-
+    
     /**
      * Update Channel
      * @param data The data for the request.
@@ -3025,7 +3025,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Rotate Credential
      * @param data The data for the request.
@@ -3048,7 +3048,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Rotate Billing Credential
      * @param data The data for the request.
@@ -3071,7 +3071,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Model Mappings
      * @param data The data for the request.
@@ -3091,7 +3091,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Create Model Mapping
      * @param data The data for the request.
@@ -3114,7 +3114,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Discover Upstream Models
      * 使用服务端保存的凭据读取 OpenAI 兼容中转的模型目录。
@@ -3135,7 +3135,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Update Model Mapping
      * @param data The data for the request.
@@ -3160,7 +3160,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Route Policies
      * @param data The data for the request.
@@ -3180,7 +3180,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Function Model Defaults
      * @returns FunctionModelAssignmentPublic Successful Response
@@ -3192,7 +3192,7 @@ export class ProviderChannelsService {
             url: '/api/v1/platform/provider-channels/routes/defaults'
         });
     }
-
+    
     /**
      * Update Function Model Default
      * @param data The data for the request.
@@ -3215,7 +3215,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Add Route Target
      * @param data The data for the request.
@@ -3242,7 +3242,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Read Route Policy
      * @param data The data for the request.
@@ -3266,7 +3266,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Upsert Route Policy
      * @param data The data for the request.
@@ -3289,7 +3289,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Route Versions
      * @param data The data for the request.
@@ -3313,7 +3313,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Publish Route Version
      * @param data The data for the request.
@@ -3335,7 +3335,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Internal Rates
      * @param data The data for the request.
@@ -3355,7 +3355,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Create Internal Rate
      * @param data The data for the request.
@@ -3378,7 +3378,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Test Channel
      * @param data The data for the request.
@@ -3401,7 +3401,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Reset Channel Health
      * @param data The data for the request.
@@ -3421,7 +3421,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * List Reconciliations
      * @param data The data for the request.
@@ -3441,7 +3441,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Import Reconciliation
      * @param data The data for the request.
@@ -3464,7 +3464,7 @@ export class ProviderChannelsService {
             }
         });
     }
-
+    
     /**
      * Sync New Api Reconciliation
      * @param data The data for the request.
@@ -3506,7 +3506,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Create Question Recognition Run
      * @param data The data for the request.
@@ -3529,7 +3529,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * List Question Recognition Runs
      * @param data The data for the request.
@@ -3549,7 +3549,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Import Marking Recognition Run
      * @param data The data for the request.
@@ -3572,7 +3572,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Get Question Recognition Run
      * @param data The data for the request.
@@ -3594,7 +3594,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * List Question Recognition Items
      * @param data The data for the request.
@@ -3616,7 +3616,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Update Question Recognition Item
      * @param data The data for the request.
@@ -3641,7 +3641,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Confirm Question Recognition Run
      * @param data The data for the request.
@@ -3663,7 +3663,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Create Answer Preparation Run
      * @param data The data for the request.
@@ -3686,7 +3686,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * List Answer Preparation Runs
      * @param data The data for the request.
@@ -3706,7 +3706,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Get Answer Preparation Run
      * @param data The data for the request.
@@ -3728,7 +3728,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * List Answer Preparation Items
      * @param data The data for the request.
@@ -3750,7 +3750,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Update Answer Preparation Item
      * @param data The data for the request.
@@ -3775,7 +3775,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Confirm Answer Preparation Run
      * @param data The data for the request.
@@ -3797,7 +3797,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * List Standard Answer Revisions
      * @param data The data for the request.
@@ -3817,7 +3817,7 @@ export class QuestionAnswerWorkflowService {
             }
         });
     }
-
+    
     /**
      * Publish Standard Answer Revisions
      * @param data The data for the request.
@@ -3854,7 +3854,86 @@ export class StudentsService {
             url: '/api/v1/students/me/exams'
         });
     }
-
+    
+    /**
+     * Read My Wrongbook
+     * 我的错题本。只读发布时写入的快照，与考试和答卷的存续无关。
+     * @param data The data for the request.
+     * @param data.subject
+     * @param data.knowledgePoint
+     * @param data.examId
+     * @param data.wrongOnly
+     * @param data.skip
+     * @param data.limit
+     * @returns WrongbookEntriesPublic Successful Response
+     * @throws ApiError
+     */
+    public static readMyWrongbook(data: StudentsReadMyWrongbookData = {}): CancelablePromise<StudentsReadMyWrongbookResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students/me/wrongbook/entries',
+            query: {
+                subject: data.subject,
+                knowledge_point: data.knowledgePoint,
+                exam_id: data.examId,
+                wrong_only: data.wrongOnly,
+                skip: data.skip,
+                limit: data.limit
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read My Wrongbook Entry
+     * @param data The data for the request.
+     * @param data.entryId
+     * @returns WrongbookEntryDetail Successful Response
+     * @throws ApiError
+     */
+    public static readMyWrongbookEntry(data: StudentsReadMyWrongbookEntryData): CancelablePromise<StudentsReadMyWrongbookEntryResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students/me/wrongbook/entries/{entry_id}',
+            path: {
+                entry_id: data.entryId
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
+    /**
+     * Read My Wrongbook Entry Image
+     * 错题的答题裁切图。
+     *
+     * 走 Authorization 头而不是依赖注入，`<img>` 取图时前端用 fetch 带上 token。
+     * 图片存在学习者命名空间，因此这里只需校验条目归属，不涉及考试权限。
+     * @param data The data for the request.
+     * @param data.entryId
+     * @param data.authorization
+     * @returns unknown Successful Response
+     * @throws ApiError
+     */
+    public static readMyWrongbookEntryImage(data: StudentsReadMyWrongbookEntryImageData): CancelablePromise<StudentsReadMyWrongbookEntryImageResponse> {
+        return __request(OpenAPI, {
+            method: 'GET',
+            url: '/api/v1/students/me/wrongbook/entries/{entry_id}/image',
+            path: {
+                entry_id: data.entryId
+            },
+            headers: {
+                authorization: data.authorization
+            },
+            errors: {
+                422: 'Validation Error'
+            }
+        });
+    }
+    
     /**
      * Read My Exam Report
      * @param data The data for the request.
@@ -3895,7 +3974,7 @@ export class TasksService {
             }
         });
     }
-
+    
     /**
      * Read Task
      * @param data The data for the request.
@@ -3940,7 +4019,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Create User
      * Create new user. 学校角色只能创建本校账号，且受角色上限约束。
@@ -3960,7 +4039,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Create Teachers Batch
      * 老师花名册批量导入。dry_run=true 只校验不落库，逐行返回处理结果。
@@ -3980,7 +4059,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Read User Me
      * Get current user.
@@ -3993,7 +4072,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-
+    
     /**
      * Delete User Me
      * Delete own user.
@@ -4009,7 +4088,7 @@ export class UsersService {
             url: '/api/v1/users/me'
         });
     }
-
+    
     /**
      * Update User Me
      * Update own user.
@@ -4029,7 +4108,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Update Password Me
      * Update own password.
@@ -4049,7 +4128,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Register Organization
      * 提交学校注册；邮箱验证前不创建正式租户。
@@ -4069,7 +4148,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Resend Organization Signup
      * @param data The data for the request.
@@ -4088,7 +4167,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Verify Organization Signup
      * 验证邮箱并原子开通学校、负责人账号和试用额度。
@@ -4108,7 +4187,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Read User By Id
      * Get a specific user by id.
@@ -4129,7 +4208,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Update User
      * Update a user. 学校角色只能修改本校用户，且受角色上限约束。
@@ -4153,7 +4232,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Delete User
      * Deactivate a user. Historical school data must never follow an account deletion.
@@ -4174,7 +4253,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Read Teaching Profile
      * 任教档案（任教班级 + 学科标签）：本人或学校管理角色（owner/admin）可读。
@@ -4195,7 +4274,7 @@ export class UsersService {
             }
         });
     }
-
+    
     /**
      * Update Teaching Profile
      * 整体覆盖任教档案：school_owner/school_admin（限本校）；
@@ -4243,7 +4322,7 @@ export class UtilsService {
             }
         });
     }
-
+    
     /**
      * Health Check
      * @returns unknown Successful Response
@@ -4255,7 +4334,7 @@ export class UtilsService {
             url: '/api/v1/utils/health-check/'
         });
     }
-
+    
     /**
      * Health
      * @returns string Successful Response
@@ -4267,7 +4346,7 @@ export class UtilsService {
             url: '/api/v1/utils/health'
         });
     }
-
+    
     /**
      * Liveness
      * @returns string Successful Response
@@ -4279,7 +4358,7 @@ export class UtilsService {
             url: '/api/v1/utils/health/live'
         });
     }
-
+    
     /**
      * Readiness
      * @returns unknown Successful Response

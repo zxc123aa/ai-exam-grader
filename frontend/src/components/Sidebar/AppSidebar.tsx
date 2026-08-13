@@ -2,6 +2,7 @@ import { Link as RouterLink, useRouterState } from "@tanstack/react-router"
 import {
   Activity,
   BarChart3,
+  BookMarked,
   Building2,
   FileText,
   GraduationCap,
@@ -165,16 +166,32 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="我的成绩"
-                  isActive={pathname.startsWith("/my")}
+                  isActive={pathname.startsWith("/my/exams")}
                   asChild
                   className={cn(
                     "transition-all",
-                    pathname.startsWith("/my") && ACTIVE_ITEM_CLASS,
+                    pathname.startsWith("/my/exams") && ACTIVE_ITEM_CLASS,
                   )}
                 >
                   <RouterLink to="/my/exams" onClick={handleMenuClick}>
                     <GraduationCap />
                     <span>我的成绩</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="我的错题本"
+                  isActive={pathname.startsWith("/my/wrongbook")}
+                  asChild
+                  className={cn(
+                    "transition-all",
+                    pathname.startsWith("/my/wrongbook") && ACTIVE_ITEM_CLASS,
+                  )}
+                >
+                  <RouterLink to="/my/wrongbook" onClick={handleMenuClick}>
+                    <BookMarked />
+                    <span>我的错题本</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

@@ -7,12 +7,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import cv2
-import jwt
 import numpy as np
 from fastapi import APIRouter, Depends, Form, Header, HTTPException, UploadFile, status
 from fastapi.responses import FileResponse, Response
-from jwt.exceptions import InvalidTokenError
-from pydantic import ValidationError
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
 
@@ -20,9 +17,9 @@ from app.api.deps import (
     CurrentUser,
     SessionDep,
     get_current_teacher_user,
+    get_user_from_authorization_header,
     is_platform_user,
 )
-from app.core import security
 from app.core.config import settings
 from app.models import (
     AnnotationGradingStatus,
@@ -99,7 +96,6 @@ from app.models import (
     SubmissionAnnotationUpdate,
     SubmissionRegistrationStatus,
     TeacherClassLink,
-    TokenPayload,
     User,
     UserRole,
     get_datetime_utc,
@@ -1241,36 +1237,6 @@ def crop_region_from_stored_file(
         )
     except SubmissionCropError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
-
-
-def get_user_from_authorization_header(
-    *, session: SessionDep, authorization: str | None = None
-) -> User:
-    token = None
-    if authorization:
-        scheme, _, value = authorization.partition(" ")
-        if scheme.lower() == "bearer" and value:
-            token = value
-    if not token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-        )
-    try:
-        payload = jwt.decode(
-            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
-        )
-        token_data = TokenPayload(**payload)
-    except (InvalidTokenError, ValidationError):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Could not validate credentials",
-        )
-    user = session.get(User, token_data.sub)
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    if not user.is_active:
-        raise HTTPException(status_code=400, detail="Inactive user")
-    return user
 
 
 @router.get("/", response_model=ExamsPublic)

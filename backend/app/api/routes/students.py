@@ -1,10 +1,17 @@
 import uuid
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi.responses import FileResponse
+from sqlalchemy import or_
 from sqlmodel import Session, col, select
 
-from app.api.deps import CurrentUser, SessionDep, require_roles
+from app.api.deps import (
+    CurrentUser,
+    SessionDep,
+    get_user_from_authorization_header,
+    require_roles,
+)
 from app.models import (
     ClassGroup,
     Exam,
@@ -21,7 +28,14 @@ from app.models import (
     StudentSubmission,
     User,
     UserRole,
+    WrongbookEntriesPublic,
+    WrongbookEntryDetail,
+    WrongbookEntryListItem,
+    WrongQuestionEntry,
+    WrongQuestionEntryStatus,
+    WrongQuestionSource,
 )
+from app.services.object_storage import materialize_storage_key
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -274,6 +288,193 @@ def read_my_exams(session: SessionDep, current_user: CurrentStudentUser) -> Any:
     return StudentExamListPublic(data=items, count=len(items))
 
 
+def _my_entry_filter(student: Student, user_id: uuid.UUID) -> Any:
+    """错题本归属：学校侧档案或登录账号任一命中即属于我。
+
+    学校侧 `Student` 会因升班或删除而失效（`ON DELETE SET NULL`），登录账号是当前
+    唯一稳定的锚点；终身身份见 AEG-068。
+    """
+    return or_(
+        WrongQuestionEntry.student_id == student.id,
+        WrongQuestionEntry.student_user_id == user_id,
+    )
+
+
+def _my_entries_by_label(
+    session: Session, *, release_id: uuid.UUID, submission_ids: set[uuid.UUID]
+) -> dict[str, tuple[WrongQuestionEntry, WrongQuestionSource]]:
+    if not submission_ids:
+        return {}
+    rows = session.exec(
+        select(WrongQuestionEntry, WrongQuestionSource)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .where(
+            WrongQuestionEntry.release_id == release_id,
+            col(WrongQuestionEntry.submission_id).in_(submission_ids),
+            WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
+        )
+    ).all()
+    return {entry.question_label: (entry, source) for entry, source in rows}
+
+
+@router.get("/me/wrongbook/entries", response_model=WrongbookEntriesPublic)
+def read_my_wrongbook(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    subject: str | None = None,
+    knowledge_point: str | None = None,
+    exam_id: uuid.UUID | None = None,
+    wrong_only: bool = True,
+    skip: int = 0,
+    limit: int = 50,
+) -> Any:
+    """我的错题本。只读发布时写入的快照，与考试和答卷的存续无关。"""
+    student = get_current_student_profile(session=session, current_user=current_user)
+    base = (
+        select(WrongQuestionEntry, WrongQuestionSource)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .where(
+            _my_entry_filter(student, current_user.id),
+            WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
+        )
+    )
+    rows = list(session.exec(base).all())
+    # 筛选项从我自己的条目里取，学生看不到与自己无关的学科和知识点。
+    subjects = sorted(
+        {source.subject for _entry, source in rows if source.subject}, reverse=False
+    )
+    knowledge_points = sorted(
+        {
+            name
+            for _entry, source in rows
+            for name in source.knowledge_point_names or []
+            if name
+        }
+    )
+    selected = [
+        (entry, source)
+        for entry, source in rows
+        if (not wrong_only or entry.is_wrong)
+        and (not subject or source.subject == subject)
+        and (not exam_id or source.exam_id == exam_id)
+        and (
+            not knowledge_point
+            or knowledge_point in (source.knowledge_point_names or [])
+        )
+    ]
+    selected.sort(
+        key=lambda row: (row[0].released_at, row[0].question_label), reverse=True
+    )
+    page = selected[skip : skip + limit] if limit > 0 else selected
+    return WrongbookEntriesPublic(
+        data=[
+            WrongbookEntryListItem(
+                entry_id=entry.id,
+                exam_id=source.exam_id,
+                exam_title=source.exam_title,
+                subject=source.subject,
+                exam_date=source.exam_date,
+                question_label=entry.question_label,
+                score=entry.score,
+                max_score=entry.max_score,
+                is_wrong=entry.is_wrong,
+                knowledge_point_names=source.knowledge_point_names or [],
+                has_image=bool(entry.image_storage_key),
+                released_at=entry.released_at,
+            )
+            for entry, source in page
+        ],
+        count=len(selected),
+        subjects=subjects,
+        knowledge_points=knowledge_points,
+    )
+
+
+def _owned_entry(
+    session: Session, *, current_user: User, entry_id: uuid.UUID
+) -> tuple[WrongQuestionEntry, WrongQuestionSource]:
+    student = get_current_student_profile(session=session, current_user=current_user)
+    row = session.exec(
+        select(WrongQuestionEntry, WrongQuestionSource)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .where(
+            WrongQuestionEntry.id == entry_id,
+            _my_entry_filter(student, current_user.id),
+        )
+    ).first()
+    if row is None:
+        # 别人的错题与不存在的错题返回同一个结果，不泄露存在性
+        raise HTTPException(status_code=404, detail="错题不存在")
+    return row
+
+
+@router.get("/me/wrongbook/entries/{entry_id}", response_model=WrongbookEntryDetail)
+def read_my_wrongbook_entry(
+    session: SessionDep, current_user: CurrentStudentUser, entry_id: uuid.UUID
+) -> Any:
+    entry, source = _owned_entry(session, current_user=current_user, entry_id=entry_id)
+    return WrongbookEntryDetail(
+        entry_id=entry.id,
+        exam_id=source.exam_id,
+        exam_title=source.exam_title,
+        subject=source.subject,
+        grade_level=source.grade_level,
+        exam_date=source.exam_date,
+        class_name_at_time=entry.class_name_at_time,
+        question_label=entry.question_label,
+        question_text=source.question_text,
+        question_type=source.question_type,
+        score=entry.score,
+        max_score=entry.max_score,
+        is_wrong=entry.is_wrong,
+        standard_answer_text=source.standard_answer_text,
+        scoring_points=source.scoring_points or [],
+        student_answer_text=entry.student_answer_text,
+        missed_points=entry.missed_points or [],
+        teacher_comment=entry.teacher_comment,
+        knowledge_point_names=source.knowledge_point_names or [],
+        has_image=bool(entry.image_storage_key),
+        released_at=entry.released_at,
+    )
+
+
+@router.get("/me/wrongbook/entries/{entry_id}/image")
+def read_my_wrongbook_entry_image(
+    session: SessionDep,
+    entry_id: uuid.UUID,
+    authorization: str | None = Header(default=None),
+) -> FileResponse:
+    """错题的答题裁切图。
+
+    走 Authorization 头而不是依赖注入，`<img>` 取图时前端用 fetch 带上 token。
+    图片存在学习者命名空间，因此这里只需校验条目归属，不涉及考试权限。
+    """
+    user = get_user_from_authorization_header(
+        session=session, authorization=authorization
+    )
+    if user.role != UserRole.STUDENT:
+        raise HTTPException(status_code=403, detail="仅学生可访问错题本")
+    entry, _source = _owned_entry(session, current_user=user, entry_id=entry_id)
+    if not entry.image_storage_key:
+        raise HTTPException(status_code=404, detail="该题没有留存答题图")
+    try:
+        path = materialize_storage_key(entry.image_storage_key)
+    except Exception:
+        raise HTTPException(status_code=404, detail="答题图暂不可用")
+    if not path.exists():
+        raise HTTPException(status_code=404, detail="答题图暂不可用")
+    return FileResponse(path=path, media_type="image/webp", filename=path.name)
+
+
 @router.get("/me/exams/{exam_id}/report", response_model=StudentExamReportPublic)
 def read_my_exam_report(
     session: SessionDep, current_user: CurrentStudentUser, exam_id: uuid.UUID
@@ -304,6 +505,9 @@ def read_my_exam_report(
     class_rank, class_size, class_name = _release_class_position(
         session, release, my_submission_ids
     )
+    entries = _my_entries_by_label(
+        session, release_id=release.id, submission_ids=my_submission_ids
+    )
     questions = [
         StudentExamReportQuestion(
             label=item.label,
@@ -312,6 +516,17 @@ def read_my_exam_report(
             score_source="final",
             comment=item.comment,
             suggested_comment=None,
+            entry_id=entries[item.label][0].id if item.label in entries else None,
+            knowledge_point_names=(
+                entries[item.label][1].knowledge_point_names
+                if item.label in entries
+                else []
+            ),
+            has_image=(
+                bool(entries[item.label][0].image_storage_key)
+                if item.label in entries
+                else False
+            ),
         )
         for item in sorted(release_items, key=lambda value: value.label)
     ]
