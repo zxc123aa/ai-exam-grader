@@ -920,7 +920,7 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 9 阶段 A
 - 背景：`ExamQuestion.knowledge_point` 是自由文本且上限 100 字符，AI 识别阶段完全不写该字段（`question_answer_workflow.py` 创建识别项时不填），只能靠教师手打，实际基本为空。没有知识点就没有失分归因聚合、掌握度和复习推荐。
 - 目标：建立知识点树，并让识别阶段自动打标、教师确认时校正。
@@ -934,22 +934,33 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 9 阶段 A
-- 背景：学生端只有两个接口，报告只返回 `{label, score, max_score, comment}`，`suggested_comment` 被写死为 `None`、`score_source` 写死为 `"final"`；裁切图端点的 `can_see_exam` 不包含学生角色。而 `SubmissionAnnotation.grading_reasons` 已经是评分点级别的结构化失分原因，只是没有暴露。
+- 背景：学生端只有两个接口，报告只返回 `{label, score, max_score, comment}`，`suggested_comment` 被写死为 `None`、`score_source` 写死为 `"final"`；裁切图端点的 `can_see_exam` 不包含学生角色。而判分模型的评分点级证据 `{"point","matched","points","reason"}` 已经写进 `SubmissionAnnotation.grading_evidence`，只是没有暴露。注意 `grading_reasons` 装的是复核门禁信号（`low_confidence`/`unreadable`/`answer_count_mismatch`/`model_failure`/`unconfirmed_answer_evidence`），不是失分原因，**不得展示给学生**。
 - 目标：让学生看到「题干、标准答案、我的作答、为什么扣分、我的手写原件」。
 - 验收标准：
   - 新增学生逐题详情端点，只在成绩已发布后可见。
-  - 失分原因由已有 `grading_reasons` 翻译成学生可读文案，**不引入额外模型调用**。
+  - 失分原因取 `grading_evidence` 中 `matched=false` 的评分点，**不引入额外模型调用**。
   - 裁切图提供 learner 作用域的受保护访问，不复用教师端 `can_see_exam` 判定。
   - 教师自由文本评语在给学生前有脱敏或长度约束策略。
   - 前端 `my.exams_.$examId` 接通图像与失分原因（`WrongQuestionsSection` 已具备渲染能力）。
+
+### AEG-072 发布过成绩的考试无法删除
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Done
+- 所属周期：周期 9 阶段 A 附带
+- 症状：一场考试只要发布过成绩，`DELETE /exams/{exam_id}` 就返回 500。
+- 根因：`ScoreReleaseItem.submission_id` 是 `ondelete="RESTRICT"`，而 `Exam` 只对 documents/regions/submissions 建了 ORM 级联，删考试时 SQLAlchemy 先删答卷，被数据库的 RESTRICT 拒绝。DB 层面 `ScoreRelease.exam_id` 本来就是 CASCADE，属于 ORM 删除顺序问题。
+- 修复：给 `Exam` 补 `score_releases` 级联关系、给 `ScoreRelease` 补 `items` 级联关系，删考试时先清成绩发布快照。单份答卷仍受 RESTRICT 保护，不会把已发布成绩删出空洞。
+- 回归：`test_wrongbook_survives_exam_deletion` 同时覆盖删除成功与错题本留存。
 
 ### AEG-067 发布即快照：错题条目独立留存
 
 - 类型：Architecture
 - 优先级：P0
-- 状态：Ready
+- 状态：Done
 - 所属周期：周期 9 阶段 A
 - 背景：`Exam` 删除会级联清空 documents / regions / submissions / questions / annotations / score releases；裁切图依赖 `ProcessingTask.output_ref` 或按 `ExamRegion` 实时重裁。错题本若做成教师端数据的视图，老师删一场考试，学生的「终身」错题会静默消失。
 - 目标：错题本成为独立留存实体，来源可消失而错题本完整。

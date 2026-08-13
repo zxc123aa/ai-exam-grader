@@ -56,14 +56,16 @@
 |---|---|---|
 | 逐题得分与满分 | 已有 | `SubmissionAnnotation.score/max_score` |
 | 教师最终评语 | 已有 | `ScoreReleaseItem.comment` |
-| **结构化失分原因** | **已有但学生看不到** | `SubmissionAnnotation.grading_reasons`、`grading_evidence` |
+| **评分点级失分证据** | **已有但学生看不到** | `SubmissionAnnotation.grading_evidence` 中 `matched=false` 的评分点项 |
 | 学生作答转录 | 已有但学生看不到 | `SubmissionAnnotation.ocr_text` |
 | 题干 | 已有 | `ExamQuestion.question_text` |
 | 标准答案与评分点 | 已有 | `StandardAnswerRevision`（不可变） |
 | 学生手写原件 | 已有 | 整页 `StoredFile` + 题区裁切 |
 | 跨考试题库检索 | 已有（教师侧） | `GET /exams/question-bank`，范围是本校全部已确认题目 |
 
-**最重要的一条**：`grading_reasons` 已经是评分点级别的结构化失分原因。阶段一把它翻译成学生能看懂的话，**不需要额外 LLM 成本**就能回答「为什么扣分」。
+**最重要的一条**：判分模型按评分点返回 `{"point","matched","points","reason"}`，这些证据项会写进 `SubmissionAnnotation.grading_evidence`（`grading_workflow.py` 里 `*grading.get("evidence", [])` 展开），客观题规则引擎同样产出 `matched` 条目。阶段一把其中 `matched=false` 的评分点展示给学生，**不需要额外 LLM 成本**就能回答「为什么扣分」。
+
+**不要用 `grading_reasons`**：它装的是复核门禁信号（`low_confidence`、`unreadable`、`answer_count_mismatch`、`model_failure`、`unconfirmed_answer_evidence`），描述的是系统对自己识别质量的判断，不是学生的失分原因，也不适合展示给学生。`grading_evidence` 是混合数组，既有 `{"stage": ...}` 记录也有评分点记录，读取时按是否含 `point`/`matched` 键过滤。
 
 **最弱的一环**：知识点。`ExamQuestion.knowledge_point` 是自由文本、上限 100 字符，AI 识别阶段**完全不填**（`question_answer_workflow.py` 创建识别项时不写该字段），只能靠老师手打。没有知识点就没有归因聚合、没有掌握度、没有复习推荐——**这是错题本真正的地基，必须先补**。
 
@@ -153,7 +155,7 @@ WrongQuestionReview            复习记录（间隔重复）
 
 ### 5.5 归因摘要
 
-- 单题归因：翻译已有的 `grading_reasons`，零额外模型成本。
+- 单题归因：展示 `grading_evidence` 里未命中的评分点，零额外模型成本。
 - 整场考试归因：一次 LLM 调用总结「这次主要丢在哪」，写入快照，不每次打开都重算（现有教师端班级学情分析每次重算且不缓存，学生端不能照抄这个做法，人数会放大成本）。
 - 长期归因：按 `LearnerMastery` 聚合，纯统计，不用模型。
 

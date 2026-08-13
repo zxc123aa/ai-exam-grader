@@ -2,6 +2,21 @@
 
 更新时间：2026-08-13
 
+### 2026-08-13 学生端终身错题本 · 阶段 A
+
+方案文档 `docs/student-wrongbook-plan.md`，任务 AEG-065 至 AEG-067。学生现在能看到「这道题丢了哪几个评分点」，并有一个跨考试的错题本。
+
+- **发布即快照**：`POST /grading/exams/{id}/score-releases` 提交后异步生成 `WrongQuestionSource`（每次发布每题一行的题面快照）与 `WrongQuestionEntry`（每学生每题一行）。对 exam/question/submission/annotation/release 只保留 `ON DELETE SET NULL` 弱引用，裁切图转 WebP 复制到 `wrongbook/entries/{id}.webp`。老师删掉考试后错题本仍然完整，已用测试固化（迁移 `e7a9c1d3f5b8`）。
+- **满分题也建行**（`is_wrong=false`，不复制图）：掌握度需要分母，而 `ScoreRelease` 会随考试删除一起消失。
+- **失分原因零模型成本**：取 `SubmissionAnnotation.grading_evidence` 里 `matched=false` 的评分点。注意 `grading_reasons` 是复核门禁信号（`low_confidence`/`unreadable` 等），不是失分原因，不得展示给学生——此前文档写错，已更正。
+- **教师改分与模型判断冲突时不展示评分点清单**：仅当教师最终分与 `model_score` 不一致时隐藏，避免学生看到两套互相矛盾的说法；教师认可模型分时照常展示。
+- **学生端只读快照，永不触碰教师端考试路由**：`can_see_exam` 不含学生角色且保持不动。新增 `GET /students/me/wrongbook/entries`、`/entries/{id}`、`/entries/{id}/image`，归属校验同时认 `student_id` 与 `student_user_id`；越权与不存在返回同一个 404。成绩报告逐题补 `entry_id`、`knowledge_point_names`、`has_image`。
+- **知识点体系**：新增 `KnowledgePoint` 树与 `ExamQuestionKnowledgeLink`（迁移 `d6f8a0c2e4b7`），初中物理与数学共 54 个节点由 `app/initial_data.py` 幂等同步。新增 `knowledge_point_tagging` 用途在题目确认后用**纯文本推理**打标（不动 Node 的 OCR prompt，避免拖累转写质量并触发 D-021 的重新评测），教师已填的知识点优先，AI 只补空缺；存量题库用 `backend/scripts/backfill_knowledge_points.py` 回填。`ExamQuestion.knowledge_point` 自由文本列保持不动，题库筛选与组卷复制不受影响。
+- **顺手修掉一个已存在的 500**：发布过成绩的考试无法删除。`ScoreReleaseItem.submission_id` 是 RESTRICT，而 ORM 会先删答卷，数据库直接拒绝。给 `Exam` 补 `score_releases` 级联关系后先删发布快照，删考试恢复正常。
+- 前端：新增 `/my/wrongbook`（学科与知识点筛选、逐题展开看丢分点、参考答案与教师评语）、学生侧边栏入口，`WrongQuestionsSection` 的答题图支持学生来源。
+- 验证：后端 `345 passed, 1 skipped`、覆盖率 67%；空库 `alembic upgrade head` 到 `e7a9c1d3f5b8`；OpenAPI 冒烟 25 paths；前端 `tsc`/`biome ci`/`vite build` 通过；新增 Playwright `student-wrongbook.spec.ts` 通过。
+- 阶段 A 的归属仍是学校侧 `Student`，**还不是终身**：跨班跨学年聚合需要 `LearnerProfile`（AEG-068），等客户端形态与合规路径拍板后再动身份模型。
+
 ### 2026-08-13 CI 流水线与文档补齐
 
 - 补上仓库此前缺失的 GitHub Actions（`.github/workflows/`）：
