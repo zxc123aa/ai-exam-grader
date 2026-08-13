@@ -709,6 +709,11 @@ class Exam(ExamBase, table=True):
     submissions: list["StudentSubmission"] = Relationship(
         back_populates="exam", cascade_delete=True
     )
+    # 必须由 ORM 先删成绩发布快照：`ScoreReleaseItem.submission_id` 是 RESTRICT，
+    # 否则删考试时会先删答卷而被数据库拒绝，接口直接 500。
+    score_releases: list["ScoreRelease"] = Relationship(
+        back_populates="exam", cascade_delete=True
+    )
 
 
 class ExamPublic(ExamBase):
@@ -2650,6 +2655,10 @@ class ScoreRelease(SQLModel, table=True):
     published_at: datetime = Field(
         default_factory=get_datetime_utc, sa_type=DateTime(timezone=True), index=True
     )  # type: ignore
+    exam: Exam | None = Relationship(back_populates="score_releases")
+    items: list["ScoreReleaseItem"] = Relationship(
+        back_populates="release", cascade_delete=True
+    )
 
 
 class ScoreReleaseItem(SQLModel, table=True):
@@ -2677,6 +2686,7 @@ class ScoreReleaseItem(SQLModel, table=True):
     max_score: float | None = Field(default=None, ge=0)
     comment: str | None = Field(default=None, max_length=2000)
     source: str = Field(default="suggested", max_length=30)
+    release: ScoreRelease | None = Relationship(back_populates="items")
 
 
 class ScoreReleasePublic(SQLModel):
