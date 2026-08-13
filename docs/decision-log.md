@@ -147,3 +147,31 @@
 - 口径：有人工确认金标时，默认报告字符级准确率 `1 - edit_distance / gold_chars`，并分开列出题干文字准确率、学生答案文字准确率和综合文字准确率；同时报告 ≥95% 通过题数。
 - 无金标时：必须明确写“文字准确率无法计算”，并说明缺少人工确认金标或缺少可对齐预测结果，不能只展示截图、置信度或通过率。
 - 原因：历史调试中多次出现“平均置信度 90%”但文字内容错误、模型脑补或框选不完整的问题。验收必须以可对照文本准确率为核心指标。
+
+## D-022 计费分成答卷额度与 Token 积分双轨
+
+- 日期：2026-08-07
+- 状态：Accepted
+- 决策：面向学校售卖和结算的唯一单位是「答卷份数」（`AnswerQuotaGrant` 等表 + `BillableAnswerSheet` 按 `(org_id, exam_id, billing_identity)` 唯一保证同一份答卷只计一次费）。Token 积分（microcredits）只作为平台内部的上游成本护栏与用量计量，不是第二个客户钱包：学校买足答卷额度后，不得因内部积分为 0 而被拒绝服务。两条轨道分别由 `BILLING_ENFORCEMENT_ENABLED` 和 `TOKEN_BUDGET_ENFORCEMENT_ENABLED` 控制。
+- 原因：老师能理解「还剩多少份答卷」，无法理解 token；但平台必须能按模型真实用量核算成本、发现负毛利订单并对账上游渠道。把两者混成一个余额会同时破坏商业可解释性和成本可控性。
+
+## D-023 模型供应链对学校不可见
+
+- 日期：2026-08-07
+- 状态：Accepted
+- 决策：学校只能从 `PlatformModelOffering` 公开目录中按用途（vision / reference_answer / grading）选择方案，接口只返回展示名、用途和说明。真实渠道、上游模型名、上游成本和路由权重只存在于平台控制面（`ProviderChannel`、`ProviderModelMapping`、`ModelRouteVersion`）。offering 发布前必须校验渠道映射、结构化输出能力和对应用途的路由版本已发布。
+- 原因：与 `AGENTS.md` 的产品原则一致——模型名、服务商、并发数不得出现在普通老师界面。同时保留平台随时切换渠道、灰度和熔断的自由度，且不让客户界面成为供应链信息泄露面。
+
+## D-024 成绩以不可变快照发布
+
+- 日期：2026-08-07
+- 状态：Accepted
+- 决策：学生看到的成绩来自 `ScoreRelease`/`ScoreReleaseItem` 版本化快照，不是实时批注。发布要求无待复核题、每份答卷已评题数不少于已确认题数，且在考试行加锁下串行执行；重新发布生成新版本并把旧版本置 `superseded`。
+- 原因：批注在复核过程中会持续变化，学生端若直读实时数据会看到中间态和反复变动的分数。快照同时提供了「成绩以哪一版为准」的审计依据。
+
+## D-025 CI 门禁范围先覆盖可稳定通过的检查
+
+- 日期：2026-08-13
+- 状态：Accepted
+- 决策：CI 门禁 = 后端 `ruff check` + `ruff format --check`（范围 `backend/app` 与 `backend/tests`）、后端 pytest（真实 PostgreSQL + Redis service 容器，先 `alembic upgrade head`）、OpenAPI 路径冒烟、前端 `biome ci` + `tsc` + `vite build`、以及用 zizmor 审计 workflow 自身。mypy 与 ty 暂不纳入；`backend/scripts` 与根 `scripts/` 不纳入 lint 门禁。
+- 原因：mypy strict 与 ty 在当前代码上分别有 588 和 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式误报，纳入门禁只会让 CI 长期红灯而失去意义（清理见 AEG-060）。运维与评测脚本按设计使用 `print`，与 T201 规则冲突。E2E 中的 live 用例依赖真实模型 Key 和本机 Chromium，同样不适合作为阻断门禁（分层方案见 AEG-061）。宁可先有一条一定会红/绿的窄门禁，也不要一条永远红的宽门禁。
