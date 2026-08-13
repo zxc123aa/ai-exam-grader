@@ -1047,6 +1047,99 @@ class ExamQuestionRegion(SQLModel, table=True):
     )
 
 
+class KnowledgePointSource(StrEnum):
+    CURRICULUM = "curriculum"
+    CUSTOM = "custom"
+
+
+class QuestionKnowledgeSource(StrEnum):
+    AI = "ai"
+    TEACHER = "teacher"
+
+
+class KnowledgePoint(SQLModel, table=True):
+    """学科知识点树。平台级受控词表，不按学校隔离。
+
+    `ExamQuestion.knowledge_point` 自由文本列保留不动：题库筛选、组卷复制和
+    教师报告的题号映射都依赖它，这里只增加规范化引用。
+    """
+
+    __table_args__ = (
+        UniqueConstraint("subject", "code", name="uq_knowledgepoint_subject_code"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    subject: str = Field(min_length=1, max_length=50, index=True)
+    grade_band: str = Field(default="junior", max_length=50)
+    code: str = Field(min_length=1, max_length=100)
+    name: str = Field(min_length=1, max_length=100)
+    parent_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="knowledgepoint.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    aliases: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    source: KnowledgePointSource = Field(
+        default=KnowledgePointSource.CURRICULUM,
+        sa_column=Column(
+            SAEnum(
+                KnowledgePointSource,
+                name="knowledgepointsource",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    sort_order: int = Field(default=0)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class ExamQuestionKnowledgeLink(SQLModel, table=True):
+    """题目与知识点的规范化关联。教师标注优先于 AI 标注。"""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "question_id",
+            "knowledge_point_id",
+            name="uq_examquestionknowledgelink_pair",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    question_id: uuid.UUID = Field(
+        foreign_key="examquestion.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    knowledge_point_id: uuid.UUID = Field(
+        foreign_key="knowledgepoint.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    confidence: Decimal | None = Field(
+        default=None,
+        sa_column=Column(Numeric(5, 4), nullable=True),
+    )
+    source: QuestionKnowledgeSource = Field(
+        default=QuestionKnowledgeSource.AI,
+        sa_column=Column(
+            SAEnum(
+                QuestionKnowledgeSource,
+                name="questionknowledgesource",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    is_primary: bool = Field(default=False)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
 class QuestionRecognitionRun(SQLModel, table=True):
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
     exam_id: uuid.UUID = Field(
@@ -2608,6 +2701,10 @@ class StudentExamReportQuestion(SQLModel):
     score_source: str | None = None
     comment: str | None = None
     suggested_comment: str | None = None
+    # 指向错题本条目，学生可从成绩报告直接进到「为什么错」
+    entry_id: uuid.UUID | None = None
+    knowledge_point_names: list[str] = Field(default_factory=list)
+    has_image: bool = False
 
 
 class StudentExamReportPublic(SQLModel):
@@ -2702,6 +2799,193 @@ class ScoreReleasePublic(SQLModel):
 
 class ScoreReleaseCreate(SQLModel):
     reason: str = Field(default="教师确认整场成绩", min_length=1, max_length=500)
+
+
+class WrongQuestionEntryStatus(StrEnum):
+    ACTIVE = "active"
+    SUPERSEDED = "superseded"
+
+
+class WrongQuestionSource(SQLModel, table=True):
+    """错题本的题面快照，每次成绩发布的每道题一行。
+
+    删除考试会级联清空题目、批注和成绩发布记录，因此这里必须自带题干、标准答案和
+    评分点，对来源只保留 `ON DELETE SET NULL` 弱引用（见 D-027）。
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "release_id", "question_label", name="uq_wrongquestionsource_release_label"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    exam_id: uuid.UUID | None = Field(
+        default=None, foreign_key="exam.id", nullable=True, ondelete="SET NULL"
+    )
+    question_id: uuid.UUID | None = Field(
+        default=None, foreign_key="examquestion.id", nullable=True, ondelete="SET NULL"
+    )
+    release_id: uuid.UUID | None = Field(
+        default=None, foreign_key="scorerelease.id", nullable=True, ondelete="SET NULL"
+    )
+    release_version: int = Field(default=1, ge=1)
+    exam_title: str = Field(max_length=255)
+    subject: str | None = Field(default=None, max_length=100, index=True)
+    grade_level: str | None = Field(default=None, max_length=100)
+    exam_date: date | None = Field(default=None)
+    question_label: str = Field(max_length=100)
+    question_text: str | None = Field(default=None, max_length=20000)
+    question_type: str | None = Field(default=None, max_length=50)
+    max_score: float | None = Field(default=None, ge=0)
+    standard_answer_text: str | None = Field(default=None, max_length=20000)
+    scoring_points: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    knowledge_point_names: list[str] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    released_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        index=True,
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class WrongQuestionEntry(SQLModel, table=True):
+    """学生个人的逐题结果快照。
+
+    满分题也建行（`is_wrong=false`）：掌握度需要分母，而 `ScoreRelease` 会随考试
+    删除一起消失，分母必须自带。裁切图只对错题复制。
+    """
+
+    __table_args__ = (
+        UniqueConstraint(
+            "release_id",
+            "submission_id",
+            "question_label",
+            name="uq_wrongquestionentry_release_submission_label",
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    source_id: uuid.UUID = Field(
+        foreign_key="wrongquestionsource.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    # 归属保留两个弱引用：学校侧档案会因升班或删除而失效，
+    # 登录账号是当前唯一稳定的锚点（终身身份见 AEG-068）。
+    student_id: uuid.UUID | None = Field(
+        default=None, foreign_key="student.id", nullable=True, ondelete="SET NULL"
+    )
+    student_user_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="user.id",
+        nullable=True,
+        index=True,
+        ondelete="SET NULL",
+    )
+    student_name: str | None = Field(default=None, max_length=255)
+    class_name_at_time: str | None = Field(default=None, max_length=100)
+    submission_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="studentsubmission.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    annotation_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="submissionannotation.id",
+        nullable=True,
+        ondelete="SET NULL",
+    )
+    release_id: uuid.UUID | None = Field(
+        default=None, foreign_key="scorerelease.id", nullable=True, ondelete="SET NULL"
+    )
+    release_version: int = Field(default=1, ge=1)
+    question_label: str = Field(max_length=100)
+    score: float | None = Field(default=None, ge=0)
+    max_score: float | None = Field(default=None, ge=0)
+    is_wrong: bool = Field(default=True, index=True)
+    student_answer_text: str | None = Field(default=None, max_length=12000)
+    missed_points: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    teacher_comment: str | None = Field(default=None, max_length=2000)
+    score_source: str | None = Field(default=None, max_length=30)
+    image_storage_key: str | None = Field(default=None, max_length=1024)
+    status: WrongQuestionEntryStatus = Field(
+        default=WrongQuestionEntryStatus.ACTIVE,
+        sa_column=Column(
+            SAEnum(
+                WrongQuestionEntryStatus,
+                name="wrongquestionentrystatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    released_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        index=True,
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class WrongbookEntryListItem(SQLModel):
+    entry_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
+    exam_title: str
+    subject: str | None = None
+    exam_date: date | None = None
+    question_label: str
+    score: float | None = None
+    max_score: float | None = None
+    is_wrong: bool = True
+    knowledge_point_names: list[str] = Field(default_factory=list)
+    has_image: bool = False
+    released_at: datetime
+
+
+class WrongbookEntriesPublic(SQLModel):
+    data: list[WrongbookEntryListItem]
+    count: int
+    subjects: list[str] = Field(default_factory=list)
+    knowledge_points: list[str] = Field(default_factory=list)
+
+
+class WrongbookEntryDetail(SQLModel):
+    entry_id: uuid.UUID
+    exam_id: uuid.UUID | None = None
+    exam_title: str
+    subject: str | None = None
+    grade_level: str | None = None
+    exam_date: date | None = None
+    class_name_at_time: str | None = None
+    question_label: str
+    question_text: str | None = None
+    question_type: str | None = None
+    score: float | None = None
+    max_score: float | None = None
+    is_wrong: bool = True
+    standard_answer_text: str | None = None
+    scoring_points: list[dict] = Field(default_factory=list)
+    student_answer_text: str | None = None
+    missed_points: list[dict] = Field(default_factory=list)
+    teacher_comment: str | None = None
+    knowledge_point_names: list[str] = Field(default_factory=list)
+    has_image: bool = False
+    released_at: datetime
 
 
 # 平台级系统配置（仅 platform_superuser 可写）：模型与批改默认值，

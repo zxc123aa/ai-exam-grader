@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 import time
 import uuid
@@ -61,6 +62,7 @@ from app.models import (
 )
 from app.services import billing as billing_service
 from app.services.file_storage import get_stored_file_path
+from app.services.knowledge_points import tag_exam_questions
 from app.services.org_scope import can_see_exam, can_write_exam
 from app.services.pdf_rendering import get_pdf_page_count
 from app.services.question_answer_workflow import (
@@ -71,6 +73,8 @@ from app.worker import (
     process_answer_preparation_run,
     process_question_recognition_run,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/exams",
@@ -670,6 +674,14 @@ def confirm_question_recognition_run(
         raise HTTPException(
             status_code=409, detail="题目标识或区域关联发生冲突"
         ) from exc
+    exam = session.get(Exam, exam_id)
+    try:
+        if exam:
+            tag_exam_questions(session, exam=exam)
+    except Exception:
+        # 知识点是增强信息，标注失败不能让教师的题目确认失败。
+        session.rollback()
+        logger.warning("knowledge point tagging failed", exc_info=True)
     session.refresh(run)
     return _question_run_public(session, run)
 

@@ -20,6 +20,8 @@ REASONING_PURPOSES = {
     "rubric_generation",
     "rubric_validation",
     "subjective_grading",
+    # 知识点标注只看题干文本，不看图，因此归推理族而不是视觉族。
+    "knowledge_point_tagging",
 }
 
 MODEL_ROUTED_PURPOSES = PURE_VISION_PURPOSES | REASONING_PURPOSES
