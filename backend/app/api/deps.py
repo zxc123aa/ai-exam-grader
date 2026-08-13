@@ -73,6 +73,11 @@ def assert_organization_access(
     """Apply the school's service state to every authenticated request."""
     if user.org_id is None:
         return
+    if user.role == UserRole.STUDENT:
+        # 学生身份与学校租户解耦（D-029）：学校欠费冻结不该让学生打不开自己的
+        # 学习记录。学生本来就被角色门禁挡在所有学校业务接口之外，只能访问
+        # /students/me/*，因此豁免不会扩大暴露面。
+        return
     organization = session.get(Organization, user.org_id)
     if not organization or organization.status in {
         OrganizationServiceState.FROZEN,

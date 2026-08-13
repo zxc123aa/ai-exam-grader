@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import FileResponse
-from sqlalchemy import func, or_
+from sqlalchemy import case, func
 from sqlmodel import Session, col, select
 
 from app.api.deps import (
@@ -17,6 +17,9 @@ from app.models import (
     Exam,
     ExamScoreSummaryPublic,
     ExamScoreSummaryRow,
+    LearnerEnrollmentPublic,
+    LearnerProfile,
+    LearnerProfilePublic,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -40,7 +43,7 @@ from app.models import (
     WrongQuestionReview,
     WrongQuestionSource,
 )
-from app.services import wrongbook_review
+from app.services import learner_identity, wrongbook_review
 from app.services.object_storage import materialize_storage_key
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -294,16 +297,30 @@ def read_my_exams(session: SessionDep, current_user: CurrentStudentUser) -> Any:
     return StudentExamListPublic(data=items, count=len(items))
 
 
-def _my_entry_filter(student: Student, user_id: uuid.UUID) -> Any:
-    """错题本归属：学校侧档案或登录账号任一命中即属于我。
+def _my_entry_filter(learner: LearnerProfile) -> Any:
+    """错题本归属只认终身身份（D-029）。
 
-    学校侧 `Student` 会因升班或删除而失效（`ON DELETE SET NULL`），登录账号是当前
-    唯一稳定的锚点；终身身份见 AEG-068。
+    条目在成绩发布时可能还没有 learner（学生尚未绑定账号），那些孤立条目由
+    `resolve_learner` 在学生首次访问时认领，因此这里不需要再回落学校侧档案。
     """
-    return or_(
-        WrongQuestionEntry.student_id == student.id,
-        WrongQuestionEntry.student_user_id == user_id,
+    return WrongQuestionEntry.learner_id == learner.id
+
+
+def get_current_learner(
+    *, session: Session, current_user: User
+) -> tuple[LearnerProfile, Student | None]:
+    """学生端统一入口：终身身份 + 当前在校档案（可能没有）。
+
+    与 `get_current_student_profile` 的区别：没绑学校档案也能拿到身份，因此毕业、
+    转学或学校退订之后，学生仍然能访问自己的学习记录。
+    """
+    student = session.exec(
+        select(Student).where(Student.user_id == current_user.id)
+    ).first()
+    learner = learner_identity.resolve_learner(
+        session, user=current_user, student=student
     )
+    return learner, student
 
 
 def _my_entries_by_label(
@@ -326,10 +343,10 @@ def _my_entries_by_label(
     return {entry.question_label: (entry, source) for entry, source in rows}
 
 
-def _my_wrongbook_scope(student: Student, user_id: uuid.UUID) -> list[Any]:
+def _my_wrongbook_scope(learner: LearnerProfile) -> list[Any]:
     """我的、且当前有效的错题条目。所有错题本查询都从这里出发。"""
     return [
-        _my_entry_filter(student, user_id),
+        _my_entry_filter(learner),
         WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
     ]
 
@@ -386,8 +403,8 @@ def read_my_wrongbook(
 
     过滤、排序和分页都交给数据库：错题本按设计会累积多年，不能把全部条目取回内存。
     """
-    student = get_current_student_profile(session=session, current_user=current_user)
-    scope = _my_wrongbook_scope(student, current_user.id)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    scope = _my_wrongbook_scope(learner)
     filters = list(scope)
     if wrong_only:
         filters.append(WrongQuestionEntry.is_wrong.is_(True))  # type: ignore[union-attr]
@@ -469,18 +486,56 @@ def _entry_list_item(
     )
 
 
+@router.get("/me/profile", response_model=LearnerProfilePublic)
+def read_my_learner_profile(
+    session: SessionDep, current_user: CurrentStudentUser
+) -> Any:
+    """我的学习档案：终身身份 + 在校经历 + 错题累计。
+
+    没绑学校档案也能访问：毕业、转学或学校退订之后，学生仍然拥有自己的学习记录。
+    """
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    totals = session.exec(
+        select(
+            func.count(),
+            func.coalesce(
+                func.sum(
+                    case((col(WrongQuestionEntry.is_wrong).is_(True), 1), else_=0)
+                ),
+                0,
+            ),
+        )
+        .select_from(WrongQuestionEntry)
+        .where(*_my_wrongbook_scope(learner))
+    ).one()
+    entry_count, wrong_count = int(totals[0]), int(totals[1])
+    return LearnerProfilePublic(
+        learner_id=learner.id,
+        display_name=learner.display_name,
+        grade_band=learner.grade_band,
+        entry_count=entry_count,
+        wrong_count=wrong_count,
+        enrollments=[
+            LearnerEnrollmentPublic(
+                org_name=item.org_name_at_time,
+                class_name=item.class_name_at_time,
+                student_name=item.student_name_at_time,
+                started_at=item.started_at,
+                ended_at=item.ended_at,
+            )
+            for item in learner_identity.enrollments(session, learner)
+        ],
+    )
+
+
 @router.get("/me/wrongbook/due", response_model=WrongbookEntriesPublic)
 def read_my_due_reviews(
     session: SessionDep, current_user: CurrentStudentUser, limit: int = 20
 ) -> Any:
     """今天该复习的错题。没复习过的排最前，其余按到期时间。"""
-    student = get_current_student_profile(session=session, current_user=current_user)
-    rows = wrongbook_review.due_entries(
-        session, student=student, user_id=current_user.id, limit=limit
-    )
-    total = wrongbook_review.due_count(
-        session, student=student, user_id=current_user.id
-    )
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    rows = wrongbook_review.due_entries(session, learner=learner, limit=limit)
+    total = wrongbook_review.due_count(session, learner=learner)
     return WrongbookEntriesPublic(
         data=[_entry_list_item(entry, source) for entry, source in rows],
         count=total,
@@ -495,14 +550,10 @@ def read_my_cram_list(
     limit: int = 30,
 ) -> Any:
     """考前突击清单：按知识点错误率、是否长期未复习和卷面失分比例排序。"""
-    student = get_current_student_profile(session=session, current_user=current_user)
-    wrongbook_review.rebuild_mastery(session, student=student, user_id=current_user.id)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    wrongbook_review.rebuild_mastery(session, learner=learner)
     rows = wrongbook_review.cram_list(
-        session,
-        student=student,
-        user_id=current_user.id,
-        subject=subject,
-        limit=limit,
+        session, learner=learner, subject=subject, limit=limit
     )
     return WrongbookEntriesPublic(
         data=[_entry_list_item(entry, source) for entry, source, _score in rows],
@@ -513,10 +564,8 @@ def read_my_cram_list(
 @router.get("/me/wrongbook/mastery", response_model=WrongbookMasteryPublic)
 def read_my_mastery(session: SessionDep, current_user: CurrentStudentUser) -> Any:
     """按知识点的掌握度。派生数据，每次请求按当前错题本重算。"""
-    student = get_current_student_profile(session=session, current_user=current_user)
-    rows = wrongbook_review.rebuild_mastery(
-        session, student=student, user_id=current_user.id
-    )
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    rows = wrongbook_review.rebuild_mastery(session, learner=learner)
     return WrongbookMasteryPublic(
         data=[
             WrongbookMasteryItem(
@@ -548,13 +597,13 @@ def review_my_wrongbook_entry(
     review_in: WrongbookReviewCreate,
 ) -> Any:
     """提交一次复习结果，推进下次到期时间。"""
-    entry, source = _owned_entry(session, current_user=current_user, entry_id=entry_id)
-    student = get_current_student_profile(session=session, current_user=current_user)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
     review = wrongbook_review.record_review(
         session,
         entry=entry,
         source=source,
-        student=student,
+        learner=learner,
         user_id=current_user.id,
         result=review_in.result,
     )
@@ -564,16 +613,13 @@ def review_my_wrongbook_entry(
         review_count=review.review_count,
         interval_days=review.interval_days,
         next_due_at=review.next_due_at,
-        due_count=wrongbook_review.due_count(
-            session, student=student, user_id=current_user.id
-        ),
+        due_count=wrongbook_review.due_count(session, learner=learner),
     )
 
 
 def _owned_entry(
-    session: Session, *, current_user: User, entry_id: uuid.UUID
+    session: Session, *, learner: LearnerProfile, entry_id: uuid.UUID
 ) -> tuple[WrongQuestionEntry, WrongQuestionSource]:
-    student = get_current_student_profile(session=session, current_user=current_user)
     row = session.exec(
         select(WrongQuestionEntry, WrongQuestionSource)
         .join(
@@ -582,7 +628,7 @@ def _owned_entry(
         )
         .where(
             WrongQuestionEntry.id == entry_id,
-            _my_entry_filter(student, current_user.id),
+            _my_entry_filter(learner),
         )
     ).first()
     if row is None:
@@ -595,7 +641,8 @@ def _owned_entry(
 def read_my_wrongbook_entry(
     session: SessionDep, current_user: CurrentStudentUser, entry_id: uuid.UUID
 ) -> Any:
-    entry, source = _owned_entry(session, current_user=current_user, entry_id=entry_id)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
     return WrongbookEntryDetail(
         entry_id=entry.id,
         exam_id=source.exam_id,
@@ -637,7 +684,8 @@ def read_my_wrongbook_entry_image(
     )
     if user.role != UserRole.STUDENT:
         raise HTTPException(status_code=403, detail="仅学生可访问错题本")
-    entry, _source = _owned_entry(session, current_user=user, entry_id=entry_id)
+    learner, _student = get_current_learner(session=session, current_user=user)
+    entry, _source = _owned_entry(session, learner=learner, entry_id=entry_id)
     if not entry.image_storage_key:
         raise HTTPException(status_code=404, detail="该题没有留存答题图")
     try:

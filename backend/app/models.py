@@ -2879,8 +2879,15 @@ class WrongQuestionEntry(SQLModel, table=True):
         index=True,
         ondelete="CASCADE",
     )
-    # 归属保留两个弱引用：学校侧档案会因升班或删除而失效，
-    # 登录账号是当前唯一稳定的锚点（终身身份见 AEG-068）。
+    # 终身身份是主归属；学校侧档案与登录账号是回落，两者都会因升班、
+    # 删档或换绑而失效（D-029）。
+    learner_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="learnerprofile.id",
+        nullable=True,
+        index=True,
+        ondelete="SET NULL",
+    )
     student_id: uuid.UUID | None = Field(
         default=None,
         foreign_key="student.id",
@@ -2946,6 +2953,86 @@ class WrongQuestionEntry(SQLModel, table=True):
     )
 
 
+class LearnerProfile(SQLModel, table=True):
+    """终身学习者身份（D-029）。
+
+    刻意不带 `org_id`：学校侧的 `Student` 是「在校经历」，会因升班、转学或学校退订
+    而失效，而学习记录要跟人走。学校冻结、毕业、换校都不影响这个身份。
+    """
+
+    __table_args__ = (UniqueConstraint("user_id", name="uq_learnerprofile_user"),)
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    # 登录账号可以换绑（例如从学校创建的账号换到微信），因此是弱引用
+    user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    display_name: str | None = Field(default=None, max_length=255)
+    grade_band: str | None = Field(default=None, max_length=50)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    updated_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class LearnerEnrollment(SQLModel, table=True):
+    """在校经历。一个学习者可以有多条：升班、转学、跨学年各一条。
+
+    学校名与班级名在这里留快照：学校或班级被删之后，学生仍然要能看懂
+    「这题是哪一年在哪个班考的」。
+    """
+
+    __table_args__ = (
+        UniqueConstraint("learner_id", "student_id", name="uq_learnerenrollment_pair"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    learner_id: uuid.UUID = Field(
+        foreign_key="learnerprofile.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    org_id: uuid.UUID | None = Field(
+        default=None, foreign_key="organization.id", nullable=True, ondelete="SET NULL"
+    )
+    student_id: uuid.UUID | None = Field(
+        default=None, foreign_key="student.id", nullable=True, ondelete="SET NULL"
+    )
+    org_name_at_time: str | None = Field(default=None, max_length=255)
+    class_name_at_time: str | None = Field(default=None, max_length=100)
+    student_name_at_time: str | None = Field(default=None, max_length=255)
+    started_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+    ended_at: datetime | None = Field(
+        default=None,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class LearnerEnrollmentPublic(SQLModel):
+    org_name: str | None = None
+    class_name: str | None = None
+    student_name: str | None = None
+    started_at: datetime
+    ended_at: datetime | None = None
+
+
+class LearnerProfilePublic(SQLModel):
+    learner_id: uuid.UUID
+    display_name: str | None = None
+    grade_band: str | None = None
+    entry_count: int = 0
+    wrong_count: int = 0
+    enrollments: list[LearnerEnrollmentPublic] = Field(default_factory=list)
+
+
 class WrongQuestionReviewResult(StrEnum):
     AGAIN = "again"
     HARD = "hard"
@@ -2970,6 +3057,13 @@ class WrongQuestionReview(SQLModel, table=True):
         nullable=False,
         index=True,
         ondelete="CASCADE",
+    )
+    learner_id: uuid.UUID | None = Field(
+        default=None,
+        foreign_key="learnerprofile.id",
+        nullable=True,
+        index=True,
+        ondelete="SET NULL",
     )
     owner_user_id: uuid.UUID | None = Field(
         default=None,
@@ -3020,7 +3114,7 @@ class LearnerMastery(SQLModel, table=True):
     )
 
     id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
-    # 归属键：优先 user:{登录账号}，无账号时回落 student:{学校侧档案}
+    # 归属键：有终身身份时为 learner:{id}，回落 student:{学校侧档案}
     owner_key: str = Field(max_length=100, index=True)
     subject: str = Field(default="", max_length=100)
     knowledge_point_name: str = Field(max_length=100)

@@ -21,6 +21,7 @@ from app.models import (
     ExamQuestionRegion,
     ExamRegion,
     GradingItem,
+    LearnerProfile,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -348,8 +349,17 @@ def snapshot_release(session: Session, release_id: uuid.UUID) -> int:
                 and item.max_score is not None
                 and float(item.score) < float(item.max_score)
             )
+            # 学生已经有终身身份时直接挂上去；还没绑账号的等首次访问再认领（D-029）
+            learner_id = None
+            if student and student.user_id:
+                learner_id = session.exec(
+                    select(LearnerProfile.id).where(
+                        LearnerProfile.user_id == student.user_id
+                    )
+                ).first()
             entry = WrongQuestionEntry(
                 source_id=source.id,
+                learner_id=learner_id,
                 student_id=submission.student_id,
                 student_user_id=student.user_id if student else None,
                 student_name=submission.student_name

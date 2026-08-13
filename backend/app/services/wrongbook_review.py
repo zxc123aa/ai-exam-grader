@@ -14,7 +14,7 @@ from sqlmodel import Session, col, func, or_, select
 
 from app.models import (
     LearnerMastery,
-    Student,
+    LearnerProfile,
     WrongQuestionEntry,
     WrongQuestionEntryStatus,
     WrongQuestionReview,
@@ -27,19 +27,14 @@ from app.models import (
 INTERVAL_DAYS: tuple[int, ...] = (1, 3, 7, 15, 30)
 
 
-def owner_key(student: Student, user_id: uuid.UUID | None) -> str:
-    """掌握度的归属键。登录账号比学校侧档案稳定（升班会换档案）。"""
-    if user_id is not None:
-        return f"user:{user_id}"
-    return f"student:{student.id}"
+def owner_key(learner: LearnerProfile) -> str:
+    """掌握度的归属键。跟着终身身份走，升班换校都不变（D-029）。"""
+    return f"learner:{learner.id}"
 
 
-def entry_scope(student: Student, user_id: uuid.UUID) -> list:
+def entry_scope(learner: LearnerProfile) -> list:
     return [
-        or_(
-            WrongQuestionEntry.student_id == student.id,
-            WrongQuestionEntry.student_user_id == user_id,
-        ),
+        WrongQuestionEntry.learner_id == learner.id,
         WrongQuestionEntry.status == WrongQuestionEntryStatus.ACTIVE,
     ]
 
@@ -66,7 +61,7 @@ def record_review(
     *,
     entry: WrongQuestionEntry,
     source: WrongQuestionSource,
-    student: Student,
+    learner: LearnerProfile,
     user_id: uuid.UUID,
     result: WrongQuestionReviewResult,
 ) -> WrongQuestionReview:
@@ -81,6 +76,7 @@ def record_review(
     if review is None:
         review = WrongQuestionReview(
             entry_id=entry.id,
+            learner_id=learner.id,
             owner_user_id=user_id,
             reviewed_at=now,
             result=result,
@@ -90,6 +86,7 @@ def record_review(
             updated_at=now,
         )
     else:
+        review.learner_id = learner.id
         review.owner_user_id = user_id
         review.reviewed_at = now
         review.result = result
@@ -99,7 +96,7 @@ def record_review(
         review.updated_at = now
     session.add(review)
 
-    key = owner_key(student, user_id)
+    key = owner_key(learner)
     for name in source.knowledge_point_names or []:
         mastery = _get_or_create_mastery(
             session, key=key, subject=source.subject or "", name=name
@@ -132,14 +129,14 @@ def _get_or_create_mastery(
 
 
 def rebuild_mastery(
-    session: Session, *, student: Student, user_id: uuid.UUID
+    session: Session, *, learner: LearnerProfile
 ) -> list[LearnerMastery]:
     """按当前错题本重算掌握度。
 
     掌握度是派生数据：满分题也建了条目，所以 attempts 是「做过几道」，
     wrong_count 是「错过几道」，分母不依赖已经可能被删掉的考试记录。
     """
-    key = owner_key(student, user_id)
+    key = owner_key(learner)
     rows = session.exec(
         select(WrongQuestionEntry, WrongQuestionSource)
         .select_from(WrongQuestionEntry)
@@ -147,7 +144,7 @@ def rebuild_mastery(
             WrongQuestionSource,
             WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
         )
-        .where(*entry_scope(student, user_id))
+        .where(*entry_scope(learner))
     ).all()
     counters: dict[tuple[str, str], dict] = {}
     for entry, source in rows:
@@ -195,8 +192,7 @@ def rebuild_mastery(
 def due_entries(
     session: Session,
     *,
-    student: Student,
-    user_id: uuid.UUID,
+    learner: LearnerProfile,
     now: datetime | None = None,
     limit: int = 20,
 ) -> list[tuple[WrongQuestionEntry, WrongQuestionSource]]:
@@ -214,7 +210,7 @@ def due_entries(
             WrongQuestionReview.entry_id == WrongQuestionEntry.id,  # type: ignore[arg-type]
         )
         .where(
-            *entry_scope(student, user_id),
+            *entry_scope(learner),
             WrongQuestionEntry.is_wrong.is_(True),  # type: ignore[union-attr]
             or_(
                 col(WrongQuestionReview.id).is_(None),
@@ -231,11 +227,7 @@ def due_entries(
 
 
 def due_count(
-    session: Session,
-    *,
-    student: Student,
-    user_id: uuid.UUID,
-    now: datetime | None = None,
+    session: Session, *, learner: LearnerProfile, now: datetime | None = None
 ) -> int:
     moment = now or datetime.now(UTC)
     return session.exec(
@@ -246,7 +238,7 @@ def due_count(
             WrongQuestionReview.entry_id == WrongQuestionEntry.id,  # type: ignore[arg-type]
         )
         .where(
-            *entry_scope(student, user_id),
+            *entry_scope(learner),
             WrongQuestionEntry.is_wrong.is_(True),  # type: ignore[union-attr]
             or_(
                 col(WrongQuestionReview.id).is_(None),
@@ -259,8 +251,7 @@ def due_count(
 def cram_list(
     session: Session,
     *,
-    student: Student,
-    user_id: uuid.UUID,
+    learner: LearnerProfile,
     subject: str | None = None,
     limit: int = 30,
 ) -> list[tuple[WrongQuestionEntry, WrongQuestionSource, float]]:
@@ -270,9 +261,7 @@ def cram_list(
     不做花哨的权重调参，先给一个可解释的顺序。
     """
     mastery_rows = session.exec(
-        select(LearnerMastery).where(
-            LearnerMastery.owner_key == owner_key(student, user_id)
-        )
+        select(LearnerMastery).where(LearnerMastery.owner_key == owner_key(learner))
     ).all()
     wrong_rate = {
         (item.subject, item.knowledge_point_name): (
@@ -285,7 +274,7 @@ def cram_list(
         for item in mastery_rows
     }
 
-    filters = list(entry_scope(student, user_id))
+    filters = list(entry_scope(learner))
     filters.append(WrongQuestionEntry.is_wrong.is_(True))  # type: ignore[union-attr]
     if subject:
         filters.append(WrongQuestionSource.subject == subject)
