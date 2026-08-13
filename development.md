@@ -221,6 +221,17 @@ npx tsc -p tsconfig.build.json
 npx vite build
 ```
 
+### 让 CI 成为阻断门禁
+
+CI 目前只是提示：私有仓库的分支保护需要 GitHub Pro/Team/Enterprise 计划，免费计划下 GitHub 会返回 `403 Upgrade to GitHub Pro or make this repository public`。升级后由仓库管理员执行一次即可，不需要改动代码：
+
+```bash
+GH_TOKEN=<管理员 PAT，需 Administration: write> ./scripts/setup-branch-protection.sh
+./scripts/setup-branch-protection.sh --show   # 查看当前状态与实际的检查名
+```
+
+注意本仓库历史提交中的 `.env` 带真实密钥，**不要**为了免费获得该能力而把仓库改成 public。背景与出路见 `docs/issue-backlog.md` AEG-064。
+
 ### 门禁之外的检查
 
 - **mypy / ty**：`backend/scripts/lint.sh` 和 pre-commit 里都有，但当前 strict 模式下分别有 588 / 489 条告警，绝大多数是 SQLModel/SQLAlchemy 表达式误报，因此没有纳入 CI。清理计划见 `docs/issue-backlog.md` AEG-060。注意 `prek run --all-files` 目前会在 `mypy check` 和 `ty check` 上报红，这是已知状态，不是你的改动引入的。

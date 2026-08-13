@@ -296,7 +296,8 @@
 - 微信支付退款目前只推进数据库状态机，未见调用微信退款接口；上线收款前必须确认真实退款链路与对账口径。
 - mypy 588 条、ty 489 条告警，绝大多数是 SQLModel 表达式误报，但也因此掩盖了真实类型问题；类型门禁暂不可用。
 - Playwright 的 live 用例依赖真实模型 Key 与本机 Chromium（`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`），无法进 CI；CI 目前只覆盖后端 pytest 与前端构建。
-- `.env` 已从仓库移除并改为 `.env.example`（commit `0884bfd`），但历史提交中仍存在过旧的 `.env`；轮换密钥前不要假设历史凭据已失效。
+- `.env` 已从仓库移除并改为 `.env.example`（commit `0884bfd`），但历史提交中仍存在旧的 `.env`：`SECRET_KEY`、`FIRST_SUPERUSER_PASSWORD`、`POSTGRES_PASSWORD` 带真实值，自 2026-06-30 起存在于 4 个提交中（provider API key 当时为空）。这三项应视为已泄露并轮换；在轮换并重写历史之前，仓库绝对不能改为 public。
+- CI 已全绿但**不是阻断门禁**：私有仓库的分支保护需要 GitHub Pro/Team/Enterprise，当前免费计划下 API 返回 `403 Upgrade to GitHub Pro`。过渡期靠人工确认 PR 检查为绿；升级后执行 `scripts/setup-branch-protection.sh` 即可开启，见 AEG-064。
 - WSL 内 `docker` 命令未进 PATH，但 Windows Docker CLI 可通过 `/mnt/c/Program Files/Docker/Docker/resources/bin/docker.exe` 使用。
 - 后端容器 build 拉取 `python:3.13` 时遇到 Docker Hub 网络超时；数据库和 Redis 容器已可用。
 - 当前 Ubuntu 26.04 环境不被 Playwright 官方浏览器下载支持，测试使用系统 Chromium：`PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/snap/bin/chromium`。

@@ -849,7 +849,26 @@
   - `test-frontend`：`npm ci` + `biome ci` + `tsc` + `vite build`。已完成。
   - `lint-workflows`：`zizmor` 审计。已完成。
   - Actions 全部按 commit SHA 固定，`persist-credentials: false`，workflow 级最小权限。已完成。
-  - 分支保护把上述检查设为必需。**待完成**，需要仓库管理员在 GitHub 设置中开启。
+  - 分支保护把上述检查设为必需。**受计划限制阻塞**，见下方 AEG-064。
+
+### AEG-064 让 CI 成为阻断门禁（分支保护）
+
+- 类型：Ops
+- 优先级：P1
+- 状态：Blocked
+- 所属周期：周期 8
+- 背景：CI 已全绿，但目前只是提示，不能阻止红灯代码合入 `main`。
+- 阻塞原因：GitHub 只在 Pro/Team/Enterprise 计划上为**私有**仓库提供分支保护与 rulesets。本仓库是个人账号下的私有仓库且为免费计划，API 直接返回 `403 Upgrade to GitHub Pro or make this repository public`。这不是权限配置问题，任何 token 都绕不过。
+- 三条出路：
+  1. **升级 GitHub Pro**（个人账号，约 $4/月）。升级后执行 `GH_TOKEN=<admin-token> ./scripts/setup-branch-protection.sh` 即可，无需改代码。
+  2. **把仓库转到组织账号**并使用 Team 计划，适合后续多人协作时一并处理。
+  3. **把仓库改为 public** 可免费获得该能力，但**不可接受**：历史提交中的 `.env` 带有真实的 `SECRET_KEY`、`FIRST_SUPERUSER_PASSWORD` 和 `POSTGRES_PASSWORD`（自 2026-06-30 起存在于 4 个提交中），公开后无法撤回。若无论如何要公开，必须先轮换这三项并重写历史。
+- 过渡期做法：合并前人工确认 PR 上四个检查为绿；`scripts/setup-branch-protection.sh --show` 可随时查看当前状态。
+- 验收标准：
+  - `main` 的分支保护要求 `lint-backend`、`test-backend`、`test-frontend`、`zizmor` 四个检查通过，且要求分支与 `main` 保持最新。
+  - 检查名以 `--show` 输出的实际 check-run 名为准（首次在 `main` 上跑过 CI 后再核对）。
+  - 禁止 force push 与删除分支。
+  - 多人协作后打开 `REQUIRE_REVIEWS=1` 与 `ENFORCE_ADMINS=1`。
 
 ### AEG-060 mypy / ty 类型债清理
 
