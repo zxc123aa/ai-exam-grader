@@ -768,6 +768,23 @@ export type status3 = 'approved' | 'issued' | 'rejected';
 
 export type InvoiceStatus = 'submitted' | 'approved' | 'issued' | 'rejected';
 
+export type LearnerEnrollmentPublic = {
+    org_name?: (string | null);
+    class_name?: (string | null);
+    student_name?: (string | null);
+    started_at: string;
+    ended_at?: (string | null);
+};
+
+export type LearnerProfilePublic = {
+    learner_id: string;
+    display_name?: (string | null);
+    grade_band?: (string | null);
+    entry_count?: number;
+    wrong_count?: number;
+    enrollments?: Array<LearnerEnrollmentPublic>;
+};
+
 export type MarkingRecognitionImport = {
     document_ids: Array<(string)>;
     covered_page_ids: Array<(string)>;
@@ -3372,6 +3389,8 @@ export type StudentsReadMyWrongbookData = {
 };
 
 export type StudentsReadMyWrongbookResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyLearnerProfileResponse = (LearnerProfilePublic);
 
 export type StudentsReadMyDueReviewsData = {
     limit?: number;

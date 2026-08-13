@@ -65,6 +65,26 @@ async function mockWrongbook(
       },
     }),
   )
+  await page.route("**/api/v1/students/me/profile", async (route) =>
+    route.fulfill({
+      json: {
+        learner_id: "33333333-3333-4333-8333-333333333333",
+        display_name: "刘雨欣",
+        grade_band: null,
+        entry_count: 20,
+        wrong_count: 1,
+        enrollments: [
+          {
+            org_name: "示范一中",
+            class_name: "001班",
+            student_name: "刘雨欣",
+            started_at: "2026-02-01T00:00:00Z",
+            ended_at: null,
+          },
+        ],
+      },
+    }),
+  )
   await page.route("**/api/v1/students/me/wrongbook/due**", async (route) =>
     route.fulfill({
       json: {
@@ -129,6 +149,10 @@ test("学生可以在错题本里看到丢分的评分点", async ({ page }) => 
   await mockWrongbook(page)
   await page.goto("/my/wrongbook")
   await expect(page.getByRole("heading", { name: "我的错题本" })).toBeVisible()
+  // 学习档案：在校经历 + 累计题数，学校档案被删也还在
+  await expect(
+    page.getByText("示范一中 001班 · 累计 20 题，其中错题 1 题"),
+  ).toBeVisible()
   await expect(page.getByText("共 1 道错题")).toBeVisible()
   await expect(page.getByText("期中物理 · 物理 ·")).toBeVisible()
   await expect(page.getByText("功和功率").first()).toBeVisible()

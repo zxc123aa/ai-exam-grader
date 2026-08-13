@@ -4019,6 +4019,116 @@ export const InvoiceStatusSchema = {
     title: 'InvoiceStatus'
 } as const;
 
+export const LearnerEnrollmentPublicSchema = {
+    properties: {
+        org_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Name'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        started_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Started At'
+        },
+        ended_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ended At'
+        }
+    },
+    type: 'object',
+    required: ['started_at'],
+    title: 'LearnerEnrollmentPublic'
+} as const;
+
+export const LearnerProfilePublicSchema = {
+    properties: {
+        learner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Learner Id'
+        },
+        display_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Display Name'
+        },
+        grade_band: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Band'
+        },
+        entry_count: {
+            type: 'integer',
+            title: 'Entry Count',
+            default: 0
+        },
+        wrong_count: {
+            type: 'integer',
+            title: 'Wrong Count',
+            default: 0
+        },
+        enrollments: {
+            items: {
+                '$ref': '#/components/schemas/LearnerEnrollmentPublic'
+            },
+            type: 'array',
+            title: 'Enrollments'
+        }
+    },
+    type: 'object',
+    required: ['learner_id'],
+    title: 'LearnerProfilePublic'
+} as const;
+
 export const MarkingRecognitionImportSchema = {
     properties: {
         document_ids: {

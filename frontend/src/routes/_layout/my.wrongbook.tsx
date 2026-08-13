@@ -450,6 +450,12 @@ function MyWrongbookPage() {
     retry: false,
   })
 
+  const profileQuery = useQuery({
+    queryKey: ["my-learner-profile"],
+    queryFn: () => StudentsService.readMyLearnerProfile(),
+    retry: false,
+  })
+
   const isUnbound =
     query.error instanceof ApiError && query.error.status === 404
   const entries = query.data?.data ?? []
@@ -463,6 +469,21 @@ function MyWrongbookPage() {
         title="我的错题本"
         subtitle="每次考试出分后自动收进来，不用自己录"
       />
+
+      {profileQuery.data &&
+        (profileQuery.data.enrollments ?? []).length > 0 && (
+          <p className="text-muted-foreground text-xs">
+            {(profileQuery.data.enrollments ?? [])
+              .map((item) =>
+                [item.org_name, item.class_name].filter(Boolean).join(" "),
+              )
+              .filter(Boolean)
+              .join(" → ")}
+            {" · 累计 "}
+            {profileQuery.data.entry_count ?? 0} 题，其中错题{" "}
+            {profileQuery.data.wrong_count ?? 0} 题
+          </p>
+        )}
 
       {!isUnbound && !query.isPending && (
         <>
