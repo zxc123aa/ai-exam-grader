@@ -28,6 +28,7 @@ from app.models import (
     ExamClassLink,
     ExamDocument,
     ExamQuestion,
+    ExamQuestionKnowledgeLink,
     ExamQuestionRegion,
     ExamRegion,
     FunctionModelAssignment,
@@ -36,6 +37,7 @@ from app.models import (
     GradingItem,
     GradingRun,
     InvoiceApplication,
+    KnowledgePoint,
     ModelRoutePolicy,
     ModelRouteTarget,
     ModelRouteVersion,
@@ -80,6 +82,8 @@ from app.models import (
     User,
     UserCreate,
     UserRole,
+    WrongQuestionEntry,
+    WrongQuestionSource,
 )
 from tests.utils.user import (
     authentication_token_from_email,
@@ -111,6 +115,10 @@ def db() -> Generator[Session]:
             session.commit()
         yield session
         for model in (
+            WrongQuestionEntry,
+            WrongQuestionSource,
+            ExamQuestionKnowledgeLink,
+            KnowledgePoint,
             PendingOrganizationSignup,
             OutboxEvent,
             RefundRequest,
