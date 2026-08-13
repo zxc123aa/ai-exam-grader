@@ -1,6 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
-import { BookMarked, Printer, RotateCcw, UserRound } from "lucide-react"
+import {
+  BookMarked,
+  Printer,
+  RotateCcw,
+  SlidersHorizontal,
+  UserRound,
+} from "lucide-react"
 import type React from "react"
 import { useEffect, useState } from "react"
 import type { WrongbookEntryListItem } from "@/client"
@@ -241,7 +247,13 @@ const REVIEW_CHOICES: Array<{
 ]
 
 /** 复习面板：一次只看一题，点完自动进入下一题。只问「还会不会」，不让学生重做。 */
-function ReviewPanel({ onExit }: { onExit: () => void }) {
+function ReviewPanel({
+  onExit,
+  onDone,
+}: {
+  onExit: () => void
+  onDone: () => void
+}) {
   const queryClient = useQueryClient()
   const [index, setIndex] = useState(0)
   const query = useQuery({
@@ -267,9 +279,16 @@ function ReviewPanel({ onExit }: { onExit: () => void }) {
     },
   })
 
-  if (query.isPending) return <Skeleton className="h-64 w-full rounded-2xl" />
   const entries = query.data?.data ?? []
   const current = entries[index]
+  const finished = !query.isPending && !current
+
+  // 队列做完就退出专注模式，把页签还给学生，否则做完了只能困在复习页里
+  useEffect(() => {
+    if (finished) onDone()
+  }, [finished, onDone])
+
+  if (query.isPending) return <Skeleton className="h-64 w-full rounded-2xl" />
 
   if (!current) {
     return (
@@ -297,31 +316,29 @@ function ReviewPanel({ onExit }: { onExit: () => void }) {
           稍后再练
         </Button>
       </div>
-      <EntryCard
-        key={current.entry_id}
-        entry={current}
-        defaultOpen
-        footer={
-          <div className="mt-4 flex flex-wrap gap-2 border-t pt-4">
-            {REVIEW_CHOICES.map((choice) => (
-              <Button
-                key={choice.result}
-                variant={choice.result === "good" ? "default" : "outline"}
-                size="sm"
-                disabled={mutation.isPending}
-                onClick={() =>
-                  mutation.mutate({
-                    entryId: current.entry_id,
-                    result: choice.result,
-                  })
-                }
-              >
-                {choice.label}
-              </Button>
-            ))}
-          </div>
-        }
-      />
+      <EntryCard key={current.entry_id} entry={current} defaultOpen />
+      {/* 评分按钮常驻屏幕底部：手机上题目很长，否则每题都要滑到底才能点 */}
+      <div className="-mx-5 sticky bottom-16 border-t bg-background/95 px-5 py-3 backdrop-blur md:-mx-6 md:bottom-0 md:px-6">
+        <div className="flex gap-2">
+          {REVIEW_CHOICES.map((choice) => (
+            <Button
+              key={choice.result}
+              variant={choice.result === "good" ? "default" : "outline"}
+              size="sm"
+              className="flex-1 px-1"
+              disabled={mutation.isPending}
+              onClick={() =>
+                mutation.mutate({
+                  entryId: current.entry_id,
+                  result: choice.result,
+                })
+              }
+            >
+              {choice.label}
+            </Button>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }
@@ -434,6 +451,8 @@ function MyWrongbookPage() {
   const [subject, setSubject] = useState<string | null>(null)
   const [knowledgePoint, setKnowledgePoint] = useState<string | null>(null)
   const [tab, setTab] = useState<WrongbookTab>("entries")
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [reviewDone, setReviewDone] = useState(false)
   const query = useQuery({
     queryKey: ["my-wrongbook", subject, knowledgePoint],
     queryFn: () =>
@@ -463,14 +482,21 @@ function MyWrongbookPage() {
   const knowledgePoints = query.data?.knowledge_points ?? []
   const dueCount = dueQuery.data?.count ?? 0
 
+  // 复习是专注模式：手机屏幕小，标题、身份行和页签在做题时都是噪声。
+  // 队列做完后退出专注，让学生能直接去看薄弱知识点或考前清单。
+  const focused = tab === "review" && !reviewDone
+
   return (
     <div className="flex flex-col gap-6">
-      <PageHead
-        title="我的错题本"
-        subtitle="每次考试出分后自动收进来，不用自己录"
-      />
+      {!focused && (
+        <PageHead
+          title="我的错题本"
+          subtitle="每次考试出分后自动收进来，不用自己录"
+        />
+      )}
 
-      {profileQuery.data &&
+      {!focused &&
+        profileQuery.data &&
         (profileQuery.data.enrollments ?? []).length > 0 && (
           <p className="text-muted-foreground text-xs">
             {(profileQuery.data.enrollments ?? [])
@@ -490,43 +516,55 @@ function MyWrongbookPage() {
           {dueCount > 0 && tab !== "review" && (
             <button
               type="button"
-              onClick={() => setTab("review")}
-              className="flex items-center justify-between rounded-2xl bg-card p-5 text-left shadow-card transition-shadow hover:shadow-card-lg print:hidden"
+              onClick={() => {
+                setReviewDone(false)
+                setTab("review")
+              }}
+              className="flex items-center gap-4 rounded-2xl bg-card p-5 text-left shadow-card transition-shadow hover:shadow-card-lg print:hidden"
             >
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="font-semibold">今天要复习 {dueCount} 题</p>
                 <p className="mt-0.5 text-muted-foreground text-sm">
                   每题只用回答「还会不会」，几分钟就能过一遍
                 </p>
               </div>
-              <RotateCcw className="size-5 text-muted-foreground" />
+              <RotateCcw className="size-5 shrink-0 text-muted-foreground" />
             </button>
           )}
-          <div className="flex flex-wrap gap-2 print:hidden">
-            {(
-              [
-                ["entries", "全部错题"],
-                ["review", "今天复习"],
-                ["mastery", "薄弱知识点"],
-                ["cram", "考前清单"],
-              ] as Array<[WrongbookTab, string]>
-            ).map(([value, label]) => (
-              <Button
-                key={value}
-                variant={tab === value ? "secondary" : "ghost"}
-                size="sm"
-                onClick={() => setTab(value)}
-              >
-                {label}
-                {value === "review" && dueCount > 0 ? ` (${dueCount})` : ""}
-              </Button>
-            ))}
-          </div>
+          {!focused && (
+            <div className="-mx-1 flex gap-1 overflow-x-auto px-1 print:hidden">
+              {(
+                [
+                  ["entries", "全部错题"],
+                  ["review", "今天复习"],
+                  ["mastery", "薄弱知识点"],
+                  ["cram", "考前清单"],
+                ] as Array<[WrongbookTab, string]>
+              ).map(([value, label]) => (
+                <Button
+                  key={value}
+                  variant={tab === value ? "secondary" : "ghost"}
+                  size="sm"
+                  className="shrink-0"
+                  onClick={() => {
+                    if (value === "review") setReviewDone(false)
+                    setTab(value)
+                  }}
+                >
+                  {label}
+                  {value === "review" && dueCount > 0 ? ` (${dueCount})` : ""}
+                </Button>
+              ))}
+            </div>
+          )}
         </>
       )}
 
       {tab === "review" && !isUnbound && (
-        <ReviewPanel onExit={() => setTab("entries")} />
+        <ReviewPanel
+          onExit={() => setTab("entries")}
+          onDone={() => setReviewDone(true)}
+        />
       )}
       {tab === "mastery" && !isUnbound && <MasterySection />}
       {tab === "cram" && !isUnbound && <CramSection subject={subject} />}
@@ -551,48 +589,87 @@ function MyWrongbookPage() {
         <>
           {(subjects.length > 0 || knowledgePoints.length > 0) && (
             <div className="flex flex-col gap-3">
-              {subjects.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground text-xs">学科</span>
-                  <Button
-                    variant={subject ? "ghost" : "secondary"}
-                    size="sm"
-                    onClick={() => setSubject(null)}
-                  >
-                    全部
-                  </Button>
-                  {subjects.map((name) => (
+              {/* 手机屏幕小，筛选默认收起，别把第一道错题挤出首屏 */}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="px-0"
+                  onClick={() => setFiltersOpen((value) => !value)}
+                >
+                  <SlidersHorizontal className="mr-1.5 size-4" />
+                  {filtersOpen ? "收起筛选" : "筛选"}
+                </Button>
+                {(subject || knowledgePoint) && (
+                  <>
+                    <span className="text-muted-foreground text-xs">
+                      {[subject, knowledgePoint].filter(Boolean).join(" · ")}
+                    </span>
                     <Button
-                      key={name}
-                      variant={subject === name ? "secondary" : "ghost"}
+                      variant="ghost"
                       size="sm"
-                      onClick={() => setSubject(name)}
+                      onClick={() => {
+                        setSubject(null)
+                        setKnowledgePoint(null)
+                      }}
                     >
-                      {name}
+                      清除
                     </Button>
-                  ))}
-                </div>
-              )}
-              {knowledgePoints.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-muted-foreground text-xs">知识点</span>
-                  <Button
-                    variant={knowledgePoint ? "ghost" : "secondary"}
-                    size="sm"
-                    onClick={() => setKnowledgePoint(null)}
-                  >
-                    全部
-                  </Button>
-                  {knowledgePoints.map((name) => (
-                    <Button
-                      key={name}
-                      variant={knowledgePoint === name ? "secondary" : "ghost"}
-                      size="sm"
-                      onClick={() => setKnowledgePoint(name)}
-                    >
-                      {name}
-                    </Button>
-                  ))}
+                  </>
+                )}
+              </div>
+              {filtersOpen && (
+                <div className="flex flex-col gap-3">
+                  {subjects.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        学科
+                      </span>
+                      <Button
+                        variant={subject ? "ghost" : "secondary"}
+                        size="sm"
+                        onClick={() => setSubject(null)}
+                      >
+                        全部
+                      </Button>
+                      {subjects.map((name) => (
+                        <Button
+                          key={name}
+                          variant={subject === name ? "secondary" : "ghost"}
+                          size="sm"
+                          onClick={() => setSubject(name)}
+                        >
+                          {name}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                  {knowledgePoints.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="text-muted-foreground text-xs">
+                        知识点
+                      </span>
+                      <Button
+                        variant={knowledgePoint ? "ghost" : "secondary"}
+                        size="sm"
+                        onClick={() => setKnowledgePoint(null)}
+                      >
+                        全部
+                      </Button>
+                      {knowledgePoints.map((name) => (
+                        <Button
+                          key={name}
+                          variant={
+                            knowledgePoint === name ? "secondary" : "ghost"
+                          }
+                          size="sm"
+                          onClick={() => setKnowledgePoint(name)}
+                        >
+                          {name}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
