@@ -44,6 +44,7 @@ import {
   autoRectifyExamDocuments,
   type CornerEditor,
   type CornerPoints,
+  clientPreprocessWithQuads,
   cornersToNormalizedPageQuad,
   createDocumentCornerEditor,
   detectDocumentWithScanic,
@@ -52,6 +53,7 @@ import {
   pageQuadToCorners,
   preprocessExamDocumentWithQuads,
   previewExamDocumentWithQuads,
+  uploadClientPreprocessedPages,
 } from "@/lib/document-normalizer"
 import { workflowApi } from "@/lib/workflow-api"
 import { handleError } from "@/utils"
@@ -558,6 +560,7 @@ export function DocumentCornerReviewDialog({
   const editorRef = useRef<CornerEditor | null>(null)
   const imageRef = useRef<HTMLImageElement | null>(null)
   const objectUrlRef = useRef<string | null>(null)
+  const sourceBlobRef = useRef<Blob | null>(null)
   const pageModeRef = useRef<PageMode>("single")
   const [detector, setDetector] = useState<DetectorMode>("classical")
   const [pageMode, setPageMode] = useState<PageMode>("single")
@@ -621,11 +624,50 @@ export function DocumentCornerReviewDialog({
       nextPageMode === "spread"
         ? splitSpreadCornersToPages(corners, image)
         : [cornersToNormalizedPageQuad(corners, image, "single")]
+
+    const detectorTag = `scanic_${detector}_${nextPageMode}_manual`
+
+    // Attempt client-side preprocessing first (OpenCV.js WASM in Web Worker).
+    // On failure, fall back silently to the server-side endpoint.
+    if (sourceBlobRef.current) {
+      try {
+        const clientResult = await clientPreprocessWithQuads(
+          sourceBlobRef.current,
+          pages,
+          { marginMode: "minimal" },
+        )
+        if (clientResult.clientProcessed && clientResult.pages.length > 0) {
+          const updatedDocument = await uploadClientPreprocessedPages({
+            examId,
+            documentId: document.id,
+            detector: `${detectorTag}_client`,
+            marginMode: "minimal",
+            pages: clientResult.pages.map((p) => ({
+              name: p.name,
+              blob: p.blob,
+              width: p.width,
+              height: p.height,
+              sourceQuad: p.sourceQuad,
+            })),
+          })
+          onSaved(updatedDocument)
+          onOpenChange(false)
+          return
+        }
+      } catch (clientErr) {
+        console.warn(
+          "Client preprocessing failed, falling back to server:",
+          clientErr,
+        )
+      }
+    }
+
+    // Server-side fallback
     try {
       const updatedDocument = await preprocessExamDocumentWithQuads({
         examId,
         documentId: document.id,
-        detector: `scanic_${detector}_${nextPageMode}_manual`,
+        detector: detectorTag,
         marginMode: "minimal",
         pages,
       })
@@ -776,6 +818,7 @@ export function DocumentCornerReviewDialog({
     setMessage("正在读取原始图片…")
     try {
       const blob = await fetchExamDocumentSourceImage(examId, document.id)
+      sourceBlobRef.current = blob
       const objectUrl = URL.createObjectURL(blob)
       objectUrlRef.current = objectUrl
       const image = new Image()
@@ -809,6 +852,7 @@ export function DocumentCornerReviewDialog({
     setMessage("正在读取原图和后端稳定算法检测框…")
     try {
       const blob = await fetchExamDocumentSourceImage(examId, document.id)
+      sourceBlobRef.current = blob
       const objectUrl = URL.createObjectURL(blob)
       objectUrlRef.current = objectUrl
       const image = new Image()
@@ -850,6 +894,7 @@ export function DocumentCornerReviewDialog({
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
       imageRef.current = null
+      sourceBlobRef.current = null
       setStatus("idle")
       return
     }
@@ -861,6 +906,7 @@ export function DocumentCornerReviewDialog({
       if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current)
       objectUrlRef.current = null
       imageRef.current = null
+      sourceBlobRef.current = null
     }
   }, [open, document])
 

@@ -848,6 +848,25 @@ class ExamDocumentQuadPreprocessRequest(SQLModel):
     margin_mode: str = Field(default="conservative", regex="^(conservative|minimal)$")
 
 
+class PreprocessedPageUpload(SQLModel):
+    """A single client-preprocessed page (JPEG, base64-encoded)."""
+
+    name: str = Field(default="page.jpg", max_length=200)
+    image_base64: str = Field(min_length=1)
+    width: int = Field(ge=1)
+    height: int = Field(ge=1)
+    source_quad: list[list[float]] | None = Field(default=None)
+
+
+class ExamDocumentPreprocessedUploadRequest(SQLModel):
+    """Client-preprocessed pages — warp/enhance/deskew already done.
+    Server only applies orientation normalization (Gemini) and PDF packaging."""
+
+    pages: list[PreprocessedPageUpload] = Field(min_length=1, max_length=2)
+    detector: str = Field(default="client_opencvjs", max_length=100)
+    margin_mode: str = Field(default="conservative", regex="^(conservative|minimal|safe)$")
+
+
 class ExamRegionBase(SQLModel):
     label: str = Field(min_length=1, max_length=100)
     region_type: ExamRegionType = ExamRegionType.QUESTION
