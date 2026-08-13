@@ -1,6 +1,10 @@
 import uuid
+from io import BytesIO
+from typing import Literal
 
+import pytest
 from fastapi.testclient import TestClient
+from PIL import Image, ImageDraw
 from sqlmodel import Session, select
 
 from app import crud
@@ -52,6 +56,35 @@ def _headers(client: TestClient, user: User, password: str) -> dict[str, str]:
     )
 
 
+def build_page_png(width: int = 900, height: int = 1200) -> bytes:
+    """造一张有内容的页面图，用于真实裁切与 WebP 编码。"""
+    image = Image.new("RGB", (width, height), color=(255, 255, 255))
+    draw = ImageDraw.Draw(image)
+    draw.rectangle(
+        (
+            round(width * 0.05),
+            round(height * 0.05),
+            round(width * 0.95),
+            round(height * 0.45),
+        ),
+        outline=(20, 20, 20),
+        width=3,
+    )
+    draw.line(
+        (
+            round(width * 0.1),
+            round(height * 0.2),
+            round(width * 0.8),
+            round(height * 0.3),
+        ),
+        fill=(30, 60, 120),
+        width=5,
+    )
+    buffer = BytesIO()
+    image.save(buffer, format="PNG")
+    return buffer.getvalue()
+
+
 def _graded_exam(
     db: Session,
     org: Organization,
@@ -59,8 +92,14 @@ def _graded_exam(
     *,
     student_name: str = "刘雨欣",
     with_knowledge_point: bool = True,
+    page_png: bytes | None = None,
+    second_question: Literal["none", "wrong", "full"] = "none",
 ) -> tuple[Exam, Student, StudentSubmission]:
-    """建一场已批改的考试：题目、题区、班级学生和逐题批注都齐备。"""
+    """建一场已批改的考试：题目、题区、班级学生和逐题批注都齐备。
+
+    `page_png` 给定时把真实页面图写进存储，使裁图与 WebP 编码真正跑起来；
+    `second_question` 用于覆盖同页多题（渲染缓存）与满分题不产图。
+    """
     exam = Exam(title="期中物理", subject="物理", owner_id=owner.id, org_id=org.id)
     db.add(exam)
     db.commit()
@@ -70,10 +109,10 @@ def _graded_exam(
         exam_id=exam.id,
         label="第1题",
         page_number=1,
-        x=0.1,
-        y=0.1,
-        width=0.3,
-        height=0.2,
+        x=0.05,
+        y=0.05,
+        width=0.9,
+        height=0.4,
     )
     db.add(region)
     db.flush()
@@ -115,14 +154,26 @@ def _graded_exam(
     db.add(student)
     db.flush()
 
-    stored_file = StoredFile(
-        original_filename="answer.pdf",
-        content_type="application/pdf",
-        storage_key=f"test/{uuid.uuid4().hex}",
-        size_bytes=10,
-        sha256=uuid.uuid4().hex * 2,
-        uploaded_by_id=owner.id,
-    )
+    storage_key = f"test/{uuid.uuid4().hex}"
+    if page_png is None:
+        stored_file = StoredFile(
+            original_filename="answer.pdf",
+            content_type="application/pdf",
+            storage_key=storage_key,
+            size_bytes=10,
+            sha256=uuid.uuid4().hex * 2,
+            uploaded_by_id=owner.id,
+        )
+    else:
+        put_storage_bytes(storage_key, page_png)
+        stored_file = StoredFile(
+            original_filename="answer.png",
+            content_type="image/png",
+            storage_key=storage_key,
+            size_bytes=len(page_png),
+            sha256=uuid.uuid4().hex * 2,
+            uploaded_by_id=owner.id,
+        )
     db.add(stored_file)
     db.flush()
     submission = StudentSubmission(
@@ -139,10 +190,10 @@ def _graded_exam(
         exam_region_id=region.id,
         label="第1题",
         page_number=1,
-        x=0.1,
-        y=0.1,
-        width=0.3,
-        height=0.2,
+        x=0.05,
+        y=0.05,
+        width=0.9,
+        height=0.4,
         score=6,
         max_score=10,
         comment="过程不完整",
@@ -156,6 +207,52 @@ def _graded_exam(
         {"point": "代入数据", "matched": False, "points": 6, "reason": "缺少代入过程"},
     ]
     db.add(annotation)
+
+    if second_question != "none":
+        # 第二道题落在同一页，用于验证按页缓存渲染与满分题不产图
+        second_region = ExamRegion(
+            exam_id=exam.id,
+            label="第2题",
+            page_number=1,
+            x=0.05,
+            y=0.5,
+            width=0.5,
+            height=0.2,
+        )
+        db.add(second_region)
+        db.flush()
+        second_exam_question = ExamQuestion(
+            exam_id=exam.id,
+            question_key="2",
+            label="第2题",
+            question_text="求电阻两端电压。",
+            question_type="calculation",
+            status=ExamQuestionStatus.CONFIRMED,
+        )
+        db.add(second_exam_question)
+        db.flush()
+        db.add(
+            ExamQuestionRegion(
+                question_id=second_exam_question.id, exam_region_id=second_region.id
+            )
+        )
+        db.add(
+            SubmissionAnnotation(
+                submission_id=submission.id,
+                exam_region_id=second_region.id,
+                label="第2题",
+                page_number=1,
+                x=0.05,
+                y=0.5,
+                width=0.5,
+                height=0.2,
+                score=4 if second_question == "wrong" else 10,
+                max_score=10,
+                score_source="human",
+                grading_status=AnnotationGradingStatus.SUCCEEDED,
+            )
+        )
+
     db.commit()
     db.refresh(exam)
     db.refresh(student)
@@ -224,6 +321,27 @@ def test_student_reads_own_wrongbook_with_reason_and_image(
         {"point": "代入数据", "reason": "缺少代入过程", "points": 6.0}
     ]
     assert payload["knowledge_point_names"] == ["功和功率"]
+
+    # 知识点筛选走 JSONB 包含查询
+    filtered = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?knowledge_point=功和功率",
+        headers=student_headers,
+    )
+    assert filtered.json()["count"] == 1
+    missing = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?knowledge_point=浮力",
+        headers=student_headers,
+    )
+    assert missing.json()["count"] == 0
+    # 筛选项不受当前筛选影响，按钮不会自己消失
+    assert missing.json()["knowledge_points"] == ["功和功率"]
+    # 分页在数据库里做，count 仍是总数
+    paged = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?skip=1",
+        headers=student_headers,
+    )
+    assert paged.json()["count"] == 1
+    assert paged.json()["data"] == []
 
     # 成绩报告要能带着 entry_id 跳进错题本
     report = client.get(
@@ -326,6 +444,130 @@ def test_wrongbook_entry_image_is_scoped_to_owner(
     # 未认证与教师身份都不能取
     assert client.get(image_url).status_code == 401
     assert client.get(image_url, headers=owner_headers).status_code == 403
+
+
+def test_snapshot_writes_real_webp_and_renders_each_page_once(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """真实页面图下走通裁切 + WebP 编码，并确认同一页只渲染一次。"""
+    from app.services import wrongbook as wrongbook_service
+
+    org = Organization(name="真实图学校", code=f"realimg-{random_lower_string()}")
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    owner, owner_password = _user(db, UserRole.SCHOOL_OWNER, org)
+    owner_headers = _headers(client, owner, owner_password)
+
+    renders: list[int] = []
+    original_render = wrongbook_service.render_stored_file_page_image
+
+    def counting_render(**kwargs: object) -> Image.Image:
+        renders.append(1)
+        return original_render(**kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        wrongbook_service, "render_stored_file_page_image", counting_render
+    )
+
+    exam, student, _submission = _graded_exam(
+        db,
+        org,
+        owner,
+        student_name="孙悦",
+        page_png=build_page_png(),
+        second_question="wrong",
+    )
+    student_user, student_password = _bind_student_account(db, org, student)
+    _publish(client, exam, owner_headers)
+    student_headers = _headers(client, student_user, student_password)
+
+    entries = db.exec(
+        select(WrongQuestionEntry)
+        .where(WrongQuestionEntry.student_user_id == student_user.id)
+        .order_by(WrongQuestionEntry.question_label)
+    ).all()
+    assert len(entries) == 2
+    assert all(entry.is_wrong for entry in entries)
+    assert all(entry.image_storage_key for entry in entries)
+    # 两道错题在同一页：按页缓存后只渲染一次
+    assert len(renders) == 1
+
+    image = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entries[0].id}/image",
+        headers=student_headers,
+    )
+    assert image.status_code == 200, image.text
+    assert image.headers["content-type"] == "image/webp"
+    assert image.content[:4] == b"RIFF"
+    with Image.open(BytesIO(image.content)) as decoded:
+        assert decoded.format == "WEBP"
+        assert decoded.width > 0
+
+
+def test_snapshot_downscales_wide_crops_and_skips_full_marks(
+    client: TestClient, db: Session
+) -> None:
+    """超宽裁图缩到上限；满分题只留统计行，不复制图。"""
+    org = Organization(name="缩放学校", code=f"resize-{random_lower_string()}")
+    db.add(org)
+    db.commit()
+    db.refresh(org)
+    owner, owner_password = _user(db, UserRole.SCHOOL_OWNER, org)
+    owner_headers = _headers(client, owner, owner_password)
+
+    exam, student, _submission = _graded_exam(
+        db,
+        org,
+        owner,
+        student_name="周涛",
+        # 页面宽 3000，题区占 90% 宽，裁出来远超 IMAGE_MAX_WIDTH
+        page_png=build_page_png(width=3000, height=2000),
+        second_question="full",
+    )
+    student_user, student_password = _bind_student_account(db, org, student)
+    _publish(client, exam, owner_headers)
+    student_headers = _headers(client, student_user, student_password)
+
+    entries = {
+        entry.question_label: entry
+        for entry in db.exec(
+            select(WrongQuestionEntry).where(
+                WrongQuestionEntry.student_user_id == student_user.id
+            )
+        ).all()
+    }
+    wrong, full = entries["第1题"], entries["第2题"]
+    assert wrong.is_wrong is True
+    assert wrong.image_storage_key
+    # 满分题也建行（掌握度需要分母），但不留图
+    assert full.is_wrong is False
+    assert full.image_storage_key is None
+
+    image = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{wrong.id}/image",
+        headers=student_headers,
+    )
+    assert image.status_code == 200
+    with Image.open(BytesIO(image.content)) as decoded:
+        assert decoded.width == wrongbook_image_max_width()
+
+    # 默认只看错题，满分题不出现在列表里
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries", headers=student_headers
+    )
+    assert [item["question_label"] for item in listed.json()["data"]] == ["第1题"]
+    with_full = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?wrong_only=false",
+        headers=student_headers,
+    )
+    assert len(with_full.json()["data"]) == 2
+
+
+def wrongbook_image_max_width() -> int:
+    from app.services.wrongbook import IMAGE_MAX_WIDTH
+
+    return IMAGE_MAX_WIDTH
 
 
 def test_teacher_cannot_use_student_wrongbook_endpoints(

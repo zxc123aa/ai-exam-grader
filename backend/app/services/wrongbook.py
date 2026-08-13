@@ -37,7 +37,8 @@ from app.models import (
 from app.services.knowledge_points import question_knowledge_names
 from app.services.object_storage import put_storage_bytes
 from app.services.submission_crops import (
-    crop_region_png,
+    crop_region_from_image,
+    render_stored_file_page_image,
     resolve_exam_region_paper_page,
 )
 
@@ -146,12 +147,60 @@ def _resolve_answer(
     return None, []
 
 
+class PageImageCache:
+    """一次快照内按 (答卷文件, 页码) 缓存已渲染的页面图。
+
+    `render_pdf_page_png` 全程持有进程级 `PDFIUM_LOCK`，所有 PDF 渲染都是串行的。
+    一个班 40 人、每人 15 道错题如果逐题重渲，就是 600 次串行整页渲染；按页缓存后
+    只需「答卷数 × 页数」次。
+    """
+
+    def __init__(self) -> None:
+        self._images: dict[tuple[uuid.UUID, int], Image.Image] = {}
+        self.render_count = 0
+
+    def get(self, *, stored_file: StoredFile, page_number: int) -> Image.Image:
+        key = (stored_file.id, page_number)
+        image = self._images.get(key)
+        if image is None:
+            image = render_stored_file_page_image(
+                stored_file=stored_file, page_number=page_number
+            )
+            self.render_count += 1
+            self._images[key] = image
+        return image
+
+    def close(self) -> None:
+        for image in self._images.values():
+            image.close()
+        self._images.clear()
+
+
+def encode_entry_image(image: Image.Image) -> bytes:
+    converted = image.convert("RGB")
+    try:
+        if converted.width > IMAGE_MAX_WIDTH:
+            ratio = IMAGE_MAX_WIDTH / converted.width
+            resized = converted.resize(
+                (IMAGE_MAX_WIDTH, max(1, round(converted.height * ratio)))
+            )
+            if resized is not converted:
+                converted.close()
+            converted = resized
+        buffer = BytesIO()
+        converted.save(buffer, format="WEBP", quality=IMAGE_QUALITY, method=4)
+        return buffer.getvalue()
+    finally:
+        converted.close()
+
+
 def _copy_crop_image(
     session: Session,
     *,
     entry_id: uuid.UUID,
     submission: StudentSubmission,
     region: ExamRegion | None,
+    pages: PageImageCache,
 ) -> str | None:
     """把题区裁切图复制成 WebP 存进学习者命名空间，失败返回 None。"""
     if region is None:
@@ -160,11 +209,11 @@ def _copy_crop_image(
     if stored_file is None:
         return None
     try:
-        png = crop_region_png(
+        page_image = pages.get(
             stored_file=stored_file,
-            region=region,
             page_number=resolve_exam_region_paper_page(session, region),
         )
+        cropped = crop_region_from_image(image=page_image, region=region)
     except Exception:
         logger.warning(
             "wrongbook crop failed",
@@ -173,19 +222,12 @@ def _copy_crop_image(
         )
         return None
     try:
-        with Image.open(BytesIO(png)) as image:
-            converted = image.convert("RGB")
-            if converted.width > IMAGE_MAX_WIDTH:
-                ratio = IMAGE_MAX_WIDTH / converted.width
-                converted = converted.resize(
-                    (IMAGE_MAX_WIDTH, max(1, round(converted.height * ratio)))
-                )
-            buffer = BytesIO()
-            converted.save(buffer, format="WEBP", quality=IMAGE_QUALITY, method=4)
-            payload = buffer.getvalue()
+        payload = encode_entry_image(cropped)
     except Exception:
         logger.warning("wrongbook image encode failed", exc_info=True)
         return None
+    finally:
+        cropped.close()
     key = build_entry_image_key(entry_id=entry_id)
     put_storage_bytes(key, payload)
     return key
@@ -237,97 +279,119 @@ def snapshot_release(session: Session, release_id: uuid.UUID) -> int:
 
     sources: dict[str, WrongQuestionSource] = {}
     created = 0
-    for item in items:
-        annotation = (
-            session.get(SubmissionAnnotation, item.annotation_id)
-            if item.annotation_id
-            else None
-        )
-        submission = session.get(StudentSubmission, item.submission_id)
-        if submission is None:
-            continue
-        question, region = (
-            _resolve_question(session, exam_id=exam.id, annotation=annotation)
-            if annotation
-            else (None, None)
-        )
-        source = sources.get(item.label)
-        if source is None:
-            answer_text, scoring_points = (
-                _resolve_answer(session, annotation=annotation, question=question)
+    pages = PageImageCache()
+    current_submission_id: uuid.UUID | None = None
+    # 按答卷分组处理：同一份答卷的同一页只渲染一次，换答卷时释放页面图，
+    # 避免把整场考试所有页面都留在内存里。
+    items.sort(key=lambda row: (str(row.submission_id), row.label))
+    try:
+        for item in items:
+            if item.submission_id != current_submission_id:
+                pages.close()
+                current_submission_id = item.submission_id
+            annotation = (
+                session.get(SubmissionAnnotation, item.annotation_id)
+                if item.annotation_id
+                else None
+            )
+            submission = session.get(StudentSubmission, item.submission_id)
+            if submission is None:
+                continue
+            question, region = (
+                _resolve_question(session, exam_id=exam.id, annotation=annotation)
                 if annotation
-                else (None, [])
+                else (None, None)
             )
-            names = (
-                question_knowledge_names(session, [question.id]).get(question.id, [])
-                if question
-                else []
+            source = sources.get(item.label)
+            if source is None:
+                answer_text, scoring_points = (
+                    _resolve_answer(session, annotation=annotation, question=question)
+                    if annotation
+                    else (None, [])
+                )
+                names = (
+                    question_knowledge_names(session, [question.id]).get(
+                        question.id, []
+                    )
+                    if question
+                    else []
+                )
+                source = WrongQuestionSource(
+                    exam_id=exam.id,
+                    question_id=question.id if question else None,
+                    release_id=release.id,
+                    release_version=release.version,
+                    exam_title=exam.title[:255],
+                    subject=exam.subject,
+                    grade_level=exam.grade_level,
+                    exam_date=exam.exam_date,
+                    question_label=item.label,
+                    question_text=question.question_text if question else None,
+                    question_type=question.question_type if question else None,
+                    max_score=item.max_score,
+                    standard_answer_text=answer_text,
+                    scoring_points=scoring_points,
+                    knowledge_point_names=names,
+                    released_at=release.published_at,
+                )
+                session.add(source)
+                session.flush()
+                sources[item.label] = source
+
+            student = (
+                session.get(Student, submission.student_id)
+                if submission.student_id
+                else None
             )
-            source = WrongQuestionSource(
-                exam_id=exam.id,
-                question_id=question.id if question else None,
+            is_wrong = (
+                item.score is not None
+                and item.max_score is not None
+                and float(item.score) < float(item.max_score)
+            )
+            entry = WrongQuestionEntry(
+                source_id=source.id,
+                student_id=submission.student_id,
+                student_user_id=student.user_id if student else None,
+                student_name=submission.student_name
+                or (student.name if student else None),
+                class_name_at_time=submission.class_name,
+                submission_id=submission.id,
+                annotation_id=item.annotation_id,
                 release_id=release.id,
                 release_version=release.version,
-                exam_title=exam.title[:255],
-                subject=exam.subject,
-                grade_level=exam.grade_level,
-                exam_date=exam.exam_date,
                 question_label=item.label,
-                question_text=question.question_text if question else None,
-                question_type=question.question_type if question else None,
+                score=item.score,
                 max_score=item.max_score,
-                standard_answer_text=answer_text,
-                scoring_points=scoring_points,
-                knowledge_point_names=names,
+                is_wrong=is_wrong,
+                student_answer_text=(annotation.ocr_text if annotation else None),
+                missed_points=_student_visible_missed_points(annotation, item),
+                teacher_comment=item.comment,
+                score_source=item.source,
                 released_at=release.published_at,
             )
-            session.add(source)
-            session.flush()
-            sources[item.label] = source
-
-        student = (
-            session.get(Student, submission.student_id)
-            if submission.student_id
-            else None
-        )
-        is_wrong = (
-            item.score is not None
-            and item.max_score is not None
-            and float(item.score) < float(item.max_score)
-        )
-        entry = WrongQuestionEntry(
-            source_id=source.id,
-            student_id=submission.student_id,
-            student_user_id=student.user_id if student else None,
-            student_name=submission.student_name or (student.name if student else None),
-            class_name_at_time=submission.class_name,
-            submission_id=submission.id,
-            annotation_id=item.annotation_id,
-            release_id=release.id,
-            release_version=release.version,
-            question_label=item.label,
-            score=item.score,
-            max_score=item.max_score,
-            is_wrong=is_wrong,
-            student_answer_text=(annotation.ocr_text if annotation else None),
-            missed_points=_student_visible_missed_points(annotation, item),
-            teacher_comment=item.comment,
-            score_source=item.source,
-            released_at=release.published_at,
-        )
-        session.add(entry)
-        session.flush()
-        if is_wrong:
-            entry.image_storage_key = _copy_crop_image(
-                session, entry_id=entry.id, submission=submission, region=region
-            )
             session.add(entry)
-        created += 1
+            session.flush()
+            if is_wrong:
+                entry.image_storage_key = _copy_crop_image(
+                    session,
+                    entry_id=entry.id,
+                    submission=submission,
+                    region=region,
+                    pages=pages,
+                )
+                session.add(entry)
+            created += 1
+    finally:
+        pages.close()
 
     session.commit()
     logger.info(
         "wrongbook snapshot written",
-        extra={"release_id": str(release.id), "entries": created},
+        extra={
+            "release_id": str(release.id),
+            "entries": created,
+            "page_renders": pages.render_count,
+        },
     )
     return created
 

@@ -133,7 +133,17 @@ WrongQuestionReview            复习记录（间隔重复）
 
 现在的裁切图读取是「查 `ProcessingTask.output_ref.region_crops` 的 storage_key，失败就按 `ExamRegion` 坐标实时重裁」（`exams.py` 的 crop 端点）。两条路都依赖考试和答卷还在。
 
-错题本必须在快照时把图**复制**到学习者命名空间，例如 `learners/{learner_id}/entries/{entry_id}.webp`，并转 WebP 压缩。存储量级估算：一个学生一年约 100 道错题 × 约 50KB ≈ 5MB，1000 名学生的学校约 5GB/年——需要实测校准，但完全可承受。
+错题本必须在快照时把图**复制**到学习者命名空间（实现为 `wrongbook/entries/{entry_id}.webp`），并转 WebP 压缩。
+
+**实测数据**（`backend/scripts/benchmark_wrongbook_snapshot.py`，真实卷面照 `materials/physics/1.jpg` 转 PDF 作答卷，40 名考生 × 20 题、约六成判错）：
+
+- 错题本条目 800 条，留存答题图 480 张，图片总计 4.2 MiB
+- **每生每场约 106 KiB**，按一年 10 场算 **约 1 MiB/生/年**；1000 人的学校约 1 GiB/年
+- 快照耗时 **44 秒**（按页缓存渲染）对比 **435 秒**（逐题重渲），页渲染次数 40 对 480
+
+按页缓存不是微优化：`render_pdf_page_png` 全程持有进程级 `PDFIUM_LOCK`，逐题重渲会让一次班级发布把 PDF 渲染锁占用七分钟以上，期间教师端的页面预览也会被拖住。
+
+合成页面的压缩率没有参考价值（同样配置下只有 20 KiB/生/场），估算容量必须用真实卷面照跑。
 
 同时这是**数据最小化**：错题本只存题区裁切，整卷影像留在学校侧，不进学生个人库。
 
