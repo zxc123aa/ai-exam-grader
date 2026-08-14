@@ -1,11 +1,12 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.3.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.1/schema.json",
   "assist": { "actions": { "source": { "organizeImports": "on" } } },
   "files": {
     "includes": [
       "**",
       "!**/dist/**/*",
       "!**/node_modules/**/*",
+      "!**/public/opencv/**/*",
       "!**/src/routeTree.gen.ts",
       "!**/src/client/**/*",
       "!**/src/components/ui/**/*",
@@ -18,7 +19,7 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "suspicious": {
         "noExplicitAny": "off",
         "noArrayIndexKey": "off"

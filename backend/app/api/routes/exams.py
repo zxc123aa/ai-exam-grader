@@ -32,6 +32,7 @@ from app.models import (
     ExamCreate,
     ExamDocument,
     ExamDocumentOrderUpdate,
+    ExamDocumentPreprocessedUploadRequest,
     ExamDocumentPublic,
     ExamDocumentQuadPreprocessRequest,
     ExamDocumentRecognitionRequest,
@@ -103,6 +104,7 @@ from app.models import (
 from app.services.class_students import resolve_student_for_submission
 from app.services.exam_photo_preprocessing import (
     PhotoPreprocessingError,
+    estimate_sharpness,
     preprocess_exam_photo_with_page_quads,
 )
 from app.services.file_storage import (
@@ -2441,6 +2443,175 @@ def preprocess_exam_file_with_quads(
         exam_document=exam_document,
         stored_file=processed_file,
     )
+
+
+@router.post(
+    "/{exam_id}/files/{document_id}/upload-preprocessed",
+    response_model=ExamDocumentPublic,
+)
+def upload_client_preprocessed_pages(
+    *,
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    document_id: uuid.UUID,
+    upload_in: ExamDocumentPreprocessedUploadRequest,
+) -> ExamDocumentPublic:
+    """Accept client-preprocessed pages (warped, enhanced, deskewed locally).
+
+    The server only applies orientation normalization (Gemini) and PDF packaging.
+    This offloads the heaviest CPU work (perspective warp, CLAHE, Hough deskew)
+    to the browser while keeping API-key-protected Gemini calls server-side.
+    """
+    from app.services.exam_photo_preprocessing import (
+        PreprocessedPage,
+        encode_pdf,
+        fine_deskew_page,
+        normalize_reading_orientation,
+    )
+
+    exam_document, stored_file = get_exam_document_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        document_id=document_id,
+        require_write=True,
+    )
+    source_file = get_exam_document_source_image(
+        session=session,
+        exam_document=exam_document,
+        stored_file=stored_file,
+    )
+
+    pages: list[PreprocessedPage] = []
+    current_x = 0
+    orientation_attempts: list[dict[str, Any]] = []
+    processed_file = None
+
+    try:
+        for page_data in upload_in.pages:
+            # Decode base64 JPEG
+            try:
+                raw = base64.b64decode(page_data.image_base64, validate=True)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid base64 for page '{page_data.name}': {exc}",
+                ) from exc
+
+            image_buffer = np.frombuffer(raw, dtype=np.uint8)
+            image = cv2.imdecode(image_buffer, cv2.IMREAD_COLOR)
+            if image is None:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Could not decode JPEG for page '{page_data.name}'",
+                )
+
+            # Lightweight deskew pass to correct any browser/WASM precision drift.
+            deskewed, deskew_meta = fine_deskew_page(image)
+            # Orientation normalization (Gemini) — the only server-side ML step
+            # in the client-preprocessed path.
+            oriented, orientation_meta = normalize_reading_orientation(deskewed)
+            orientation_attempts.append(
+                {"name": page_data.name, **orientation_meta, "deskew": deskew_meta}
+            )
+
+            width = oriented.shape[1]
+            height = oriented.shape[0]
+            pages.append(
+                PreprocessedPage(
+                    name=page_data.name,
+                    image=oriented,
+                    x_start=current_x,
+                    x_end=current_x + width,
+                    source_quad=(
+                        page_data.source_quad
+                        if page_data.source_quad
+                        else [[0, 0], [width, 0], [width, height], [0, height]]
+                    ),
+                    quality={
+                        "client_preprocessed": True,
+                        "detector": upload_in.detector,
+                        "orientation": orientation_meta,
+                        "deskew": deskew_meta,
+                    },
+                )
+            )
+            current_x += width
+
+        # Package as PDF
+        pdf_bytes = encode_pdf(pages)
+
+        # Build metadata
+        # Laplacian variance for a sharp exam page is typically 50–200;
+        # normalise to [0, 1] so the UI percentage is meaningful.
+        _raw_sharpness = round(
+            statistics.mean([estimate_sharpness(page.image) for page in pages]),
+            2,
+        )
+        quality_score = round(min(1.0, _raw_sharpness / 50.0), 4)
+        status_value = "pass" if quality_score >= 0.5 else "review"
+        metadata: dict[str, Any] = {
+            "source": "client_preprocessed_upload_v1",
+            "detector": upload_in.detector,
+            "margin_mode": upload_in.margin_mode,
+            "page_count": len(pages),
+            "spread_size": [
+                current_x,
+                max((p.image.shape[0] for p in pages), default=0),
+            ],
+            "split": {
+                "strategy": "client_provided",
+                "gutter_ratio": 0.5 if len(pages) > 1 else None,
+                "gutter_confidence": 1.0,
+                "overlap_pixels": 0,
+            },
+            "quality": {"status": status_value, "score": quality_score, "warnings": []},
+            "orientation_attempts": orientation_attempts,
+            "timings": {},
+            "debug": {
+                "engine": "client_opencvjs_upload_v1",
+                "page_detector": upload_in.detector,
+            },
+        }
+
+        source_name = Path(source_file.original_filename).stem
+        processed_file = store_generated_file(
+            session=session,
+            owner_id=source_file.uploaded_by_id,
+            original_filename=f"{source_name}-client-scanned.pdf",
+            content_type="application/pdf",
+            contents=pdf_bytes,
+            commit=False,
+        )
+
+        exam_document.stored_file_id = processed_file.id
+        exam_document.original_stored_file_id = source_file.id
+        exam_document.preprocessing_status = status_value
+        exam_document.preprocessing_quality = quality_score
+        exam_document.preprocessing_metadata = metadata
+        session.add(exam_document)
+        session.commit()
+        session.refresh(exam_document)
+        session.refresh(processed_file)
+
+        return build_exam_document_public(
+            exam_document=exam_document,
+            stored_file=processed_file,
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        session.rollback()
+        if processed_file is not None:
+            try:
+                cleanup_stored_file_path(get_stored_file_path(processed_file))
+            except Exception:
+                pass
+        raise HTTPException(
+            status_code=422,
+            detail=f"Failed to process client-preprocessed upload: {exc}",
+        ) from exc
 
 
 @router.post(
