@@ -11,6 +11,7 @@ import { Bell, LogOut, Search, Settings } from "lucide-react"
 
 import { ROLE_LABELS, resolveRole } from "@/components/Admin/roleMeta"
 import { AvatarGradient } from "@/components/Common/AvatarGradient"
+import { StudentTabBar } from "@/components/Common/StudentTabBar"
 import AppSidebar from "@/components/Sidebar/AppSidebar"
 import {
   DropdownMenu,
@@ -35,6 +36,7 @@ import {
 import useAuth, { isLoggedIn } from "@/hooks/useAuth"
 import { useCurrentExam } from "@/hooks/useCurrentExam"
 import useCustomToast from "@/hooks/useCustomToast"
+import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/_layout")({
   component: Layout,
@@ -232,11 +234,18 @@ function Layout() {
             <TopbarUser />
           </div>
         </header>
-        <main className="flex-1 p-5 md:p-6">
+        <main
+          className={cn(
+            "flex-1 p-5 md:p-6",
+            // 给移动底部导航留出空间，否则最后一条内容会被遮住
+            isStudent && "pb-20 md:pb-6",
+          )}
+        >
           <div className="mx-auto max-w-7xl">
             <Outlet />
           </div>
         </main>
+        {isStudent && <StudentTabBar pathname={pathname} />}
       </SidebarInset>
     </SidebarProvider>
   )

@@ -382,9 +382,24 @@ def test_harvest_collects_quoted_section_rule_and_rejects_fallback() -> None:
 
 def test_harvested_rule_propagates_by_range_as_batch_source() -> None:
     questions = [
-        {"id": None, "question_key": "9", "question_text": "9. ……", "question_type": "选择题"},
-        {"id": None, "question_key": "10", "question_text": "10. ……", "question_type": "选择题"},
-        {"id": None, "question_key": "13", "question_text": "13. ……", "question_type": "选择题"},
+        {
+            "id": None,
+            "question_key": "9",
+            "question_text": "9. ……",
+            "question_type": "选择题",
+        },
+        {
+            "id": None,
+            "question_key": "10",
+            "question_text": "10. ……",
+            "question_type": "选择题",
+        },
+        {
+            "id": None,
+            "question_key": "13",
+            "question_text": "13. ……",
+            "question_type": "选择题",
+        },
     ]
     allocations = {}
     harvested = workflow._harvest_section_rules_from_results(
@@ -481,7 +496,14 @@ def test_harvest_trims_answer_specific_content_from_evidence() -> None:
     )
 
     rules = workflow._harvest_section_rules_from_results(
-        [{"question_key": "9", "rubric_text": rubric, "answer_text": "BC", "raw_result": {}}]
+        [
+            {
+                "question_key": "9",
+                "rubric_text": rubric,
+                "answer_text": "BC",
+                "raw_result": {},
+            }
+        ]
     )
 
     assert len(rules) == 1

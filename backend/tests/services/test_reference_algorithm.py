@@ -148,7 +148,9 @@ def test_process_pages_combines_layout_and_ocr_token_usage(monkeypatch) -> None:
             return next(responses)
 
     monkeypatch.setattr(reference_algorithm.httpx, "Client", _Client)
-    monkeypatch.setattr(reference_algorithm, "_decode_image", lambda _contents: object())
+    monkeypatch.setattr(
+        reference_algorithm, "_decode_image", lambda _contents: object()
+    )
     monkeypatch.setattr(
         reference_algorithm,
         "_crop_region_image",
@@ -197,7 +199,9 @@ def test_process_pages_records_layout_usage_when_no_blocks(monkeypatch) -> None:
             )
 
     monkeypatch.setattr(reference_algorithm.httpx, "Client", _Client)
-    monkeypatch.setattr(reference_algorithm, "_decode_image", lambda _contents: object())
+    monkeypatch.setattr(
+        reference_algorithm, "_decode_image", lambda _contents: object()
+    )
 
     payload = reference_algorithm._process_pages(
         pages=[

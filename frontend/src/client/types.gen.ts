@@ -768,6 +768,23 @@ export type status3 = 'approved' | 'issued' | 'rejected';
 
 export type InvoiceStatus = 'submitted' | 'approved' | 'issued' | 'rejected';
 
+export type LearnerEnrollmentPublic = {
+    org_name?: (string | null);
+    class_name?: (string | null);
+    student_name?: (string | null);
+    started_at: string;
+    ended_at?: (string | null);
+};
+
+export type LearnerProfilePublic = {
+    learner_id: string;
+    display_name?: (string | null);
+    grade_band?: (string | null);
+    entry_count?: number;
+    wrong_count?: number;
+    enrollments?: Array<LearnerEnrollmentPublic>;
+};
+
 export type MarkingRecognitionImport = {
     document_ids: Array<(string)>;
     covered_page_ids: Array<(string)>;
@@ -1834,6 +1851,9 @@ export type StudentExamReportQuestion = {
     score_source?: (string | null);
     comment?: (string | null);
     suggested_comment?: (string | null);
+    entry_id?: (string | null);
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
 };
 
 export type StudentPublic = {
@@ -2126,6 +2146,88 @@ export type ValidationError = {
 };
 
 export type WorkflowRunStatus = 'queued' | 'running' | 'completed' | 'completed_with_errors' | 'failed';
+
+export type WrongbookEntriesPublic = {
+    data: Array<WrongbookEntryListItem>;
+    count: number;
+    subjects?: Array<(string)>;
+    knowledge_points?: Array<(string)>;
+};
+
+export type WrongbookEntryDetail = {
+    entry_id: string;
+    exam_id?: (string | null);
+    exam_title: string;
+    subject?: (string | null);
+    grade_level?: (string | null);
+    exam_date?: (string | null);
+    class_name_at_time?: (string | null);
+    question_label: string;
+    question_text?: (string | null);
+    question_type?: (string | null);
+    score?: (number | null);
+    max_score?: (number | null);
+    is_wrong?: boolean;
+    standard_answer_text?: (string | null);
+    scoring_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    student_answer_text?: (string | null);
+    missed_points?: Array<{
+        [key: string]: unknown;
+    }>;
+    teacher_comment?: (string | null);
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
+    released_at: string;
+};
+
+export type WrongbookEntryListItem = {
+    entry_id: string;
+    exam_id?: (string | null);
+    exam_title: string;
+    subject?: (string | null);
+    exam_date?: (string | null);
+    question_label: string;
+    score?: (number | null);
+    max_score?: (number | null);
+    is_wrong?: boolean;
+    knowledge_point_names?: Array<(string)>;
+    has_image?: boolean;
+    released_at: string;
+    review_count?: number;
+    next_due_at?: (string | null);
+};
+
+export type WrongbookMasteryItem = {
+    subject?: (string | null);
+    knowledge_point_name: string;
+    attempts?: number;
+    wrong_count?: number;
+    wrong_rate?: number;
+    last_wrong_at?: (string | null);
+    last_reviewed_at?: (string | null);
+};
+
+export type WrongbookMasteryPublic = {
+    data: Array<WrongbookMasteryItem>;
+    count: number;
+};
+
+export type WrongbookReviewCreate = {
+    result: WrongQuestionReviewResult;
+};
+
+export type WrongbookReviewPublic = {
+    entry_id: string;
+    result: WrongQuestionReviewResult;
+    review_count: number;
+    interval_days: number;
+    next_due_at: string;
+    due_count?: number;
+};
+
+export type WrongQuestionReviewResult = 'again' | 'hard' | 'good' | 'easy';
 
 export type ClassesReadClassesResponse = (ClassGroupsPublic);
 
@@ -3276,6 +3378,54 @@ export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsData = {
 export type QuestionAnswerWorkflowPublishStandardAnswerRevisionsResponse = (StandardAnswerRevisionsPublic);
 
 export type StudentsReadMyExamsResponse = (StudentExamListPublic);
+
+export type StudentsReadMyWrongbookData = {
+    examId?: (string | null);
+    knowledgePoint?: (string | null);
+    limit?: number;
+    skip?: number;
+    subject?: (string | null);
+    wrongOnly?: boolean;
+};
+
+export type StudentsReadMyWrongbookResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyLearnerProfileResponse = (LearnerProfilePublic);
+
+export type StudentsReadMyDueReviewsData = {
+    limit?: number;
+};
+
+export type StudentsReadMyDueReviewsResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyCramListData = {
+    limit?: number;
+    subject?: (string | null);
+};
+
+export type StudentsReadMyCramListResponse = (WrongbookEntriesPublic);
+
+export type StudentsReadMyMasteryResponse = (WrongbookMasteryPublic);
+
+export type StudentsReviewMyWrongbookEntryData = {
+    entryId: string;
+    requestBody: WrongbookReviewCreate;
+};
+
+export type StudentsReviewMyWrongbookEntryResponse = (WrongbookReviewPublic);
+
+export type StudentsReadMyWrongbookEntryData = {
+    entryId: string;
+};
+
+export type StudentsReadMyWrongbookEntryResponse = (WrongbookEntryDetail);
+
+export type StudentsReadMyWrongbookEntryImageData = {
+    authorization?: (string | null);
+    entryId: string;
+};
+
+export type StudentsReadMyWrongbookEntryImageResponse = (unknown);
 
 export type StudentsReadMyExamReportData = {
     examId: string;

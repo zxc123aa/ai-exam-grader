@@ -12,6 +12,24 @@ _STANDALONE_FIGURE_LABEL_RE = re.compile(
 )
 
 
+def question_key_sort_key(value: str | None) -> tuple[tuple[int, int | str], ...]:
+    """Sort question keys so "2" comes before "10" and mixed keys stay comparable.
+
+    Each token carries its own type tag because a real paper mixes plain numbers
+    with keys like "A1" or a page/region fallback key. Without the tag, sorting
+    ends up comparing an int against a str and raises TypeError.
+    """
+    parts: list[tuple[int, int | str]] = []
+    for part in re.split(r"(\d+)", value or ""):
+        if not part:
+            continue
+        if part.isdigit():
+            parts.append((0, int(part)))
+        else:
+            parts.append((1, part.casefold()))
+    return tuple(parts)
+
+
 def _canonical_question_key(question_key: str | None) -> str:
     key = str(question_key or "").strip()
     if key.isdigit():
@@ -85,11 +103,15 @@ def normalize_recognized_question_text_with_audit(
 
     before = value
     value = re.sub(r"([A-Za-z])_\{?(\d+)\}?", r"\1\2", value)
-    _record_change(changes, rule="normalize_simple_latex_subscript", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_simple_latex_subscript", before=before, after=value
+    )
 
     before = value
     value = re.sub(r"_{2,}", "____", value)
-    _record_change(changes, rule="normalize_blank_underscores", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_blank_underscores", before=before, after=value
+    )
 
     lines: list[str] = []
     removed_section_lines: list[str] = []
@@ -145,7 +167,9 @@ def normalize_recognized_question_text_with_audit(
         r"\1",
         value,
     )
-    _record_change(changes, rule="normalize_formula_operator_spacing", before=before, after=value)
+    _record_change(
+        changes, rule="normalize_formula_operator_spacing", before=before, after=value
+    )
     before = value
     value = re.sub(r"\s+", " ", value)
     _record_change(changes, rule="collapse_whitespace", before=before, after=value)
@@ -194,9 +218,7 @@ def normalize_reference_result_question(result: dict) -> dict:
         "question": normalized,
         "questionNormalized": True,
         "questionNormalization": {
-            key: value
-            for key, value in audit.items()
-            if key not in {"text"}
+            key: value for key, value in audit.items() if key not in {"text"}
         },
     }
     if raw_question.strip():

@@ -46,9 +46,7 @@ def extract_zip_images(contents: bytes) -> list[tuple[str, bytes]]:
     try:
         archive = zipfile.ZipFile(BytesIO(contents))
     except zipfile.BadZipFile as exc:
-        raise HTTPException(
-            status_code=422, detail="ZIP 文件损坏，无法解包"
-        ) from exc
+        raise HTTPException(status_code=422, detail="ZIP 文件损坏，无法解包") from exc
     images: list[tuple[str, bytes]] = []
     with archive:
         for info in archive.infolist():
@@ -61,9 +59,7 @@ def extract_zip_images(contents: bytes) -> list[tuple[str, bytes]]:
                 continue
             images.append((name, archive.read(info)))
     if not images:
-        raise HTTPException(
-            status_code=422, detail="ZIP 包里没有可用的照片（JPG/PNG）"
-        )
+        raise HTTPException(status_code=422, detail="ZIP 包里没有可用的照片（JPG/PNG）")
     if len(images) > MAX_ZIP_IMAGES:
         raise HTTPException(
             status_code=422,

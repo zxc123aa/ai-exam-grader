@@ -651,9 +651,9 @@ def read_platform_directory(
             Organization.name.label("org_name"),
             ClassGroup.id.label("class_id"),
             ClassGroup.name.label("class_name"),
-            case(
-                (Student.user_id.is_(None), "no_account"), else_="bound"
-            ).label("link_status"),
+            case((Student.user_id.is_(None), "no_account"), else_="bound").label(
+                "link_status"
+            ),
             User.is_active.label("is_active"),
             cast(Student.created_at, datetime_type).label("created_at"),
         )

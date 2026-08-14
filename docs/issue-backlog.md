@@ -41,10 +41,9 @@
 
 - 类型：Feature
 - 优先级：P0
-- 状态：In Progress
+- 状态：Done
 - 所属周期：周期 0
-- 目标：建立数据库和后台任务基础设施。
-- 验证：已通过 Windows Docker CLI 启动 PostgreSQL 18 和 Redis 7；后端测试任务 API 在测试环境通过。Worker 容器端到端仍随全量 compose build 后续验证。
+- 验证：已通过 Windows Docker CLI 启动 PostgreSQL 18 和 Redis 7；后端测试任务 API 在测试环境通过。2026-08-07 起 staging（`服务器部署/compose.staging.yml`）以容器方式长期运行 PostgreSQL、Redis 与 dramatiq worker，识别与批改批次均由 worker 实际执行，Worker 端到端已验证。
 - 验收标准：
   - PostgreSQL 可以被后端访问。
   - Redis 可以作为任务队列依赖启动。
@@ -107,11 +106,11 @@
 
 - 类型：Verification
 - 优先级：P0
-- 状态：In Progress
+- 状态：Done
 - 所属周期：周期 0
 - 目标：在具备 Docker 的环境中验证完整技术底座。
-- 进展：Windows Docker CLI 可用，PostgreSQL 和 Redis 容器已启动并 healthy。
-- 阻塞：后端镜像 build 拉取 `python:3.13` 时 Docker Hub 网络超时；全量 `docker compose up --build` 尚未完成。
+- 验证：2026-08-07 staging 已用 `服务器部署/compose.staging.yml` 完成全栈容器构建与启动（db、redis、backend、worker、frontend、reference-algorithm），公网入口 `https://app.dianfandig.com` 可登录使用。
+- 备注：本地开发 override（Traefik、Adminer、Mailcatcher）仍未做过完整 `docker compose up --build` 验收，见 AEG-020 备注。
 - 验收标准：
   - `docker compose up --build` 可以启动前端、后端、PostgreSQL、Redis、Worker。
   - 前端登录页可以访问。
@@ -469,16 +468,16 @@
 
 - 类型：Verification
 - 优先级：P0
-- 状态：In Progress
+- 状态：Done
 - 所属周期：周期 0/1 验收补齐
 - 目标：验证 Docker Compose 全量构建、后端、前端、数据库、Redis 和 worker 在容器环境中完整运行。
-- 进展：Windows Docker CLI 可用，PostgreSQL、Redis、Mailcatcher 可启动；本地后端和 E2E 已可跑通。
-- 阻塞：后端镜像 build 曾在拉取 `python:3.13` 时遇到 Docker Hub 网络超时，需在网络稳定时重试。
+- 验证：以 staging 为准。`服务器部署/deploy-staging.sh <sha> build` 完成镜像构建，`app` 阶段启动全栈；`/api/v1/utils/health/ready` 校验数据库、Redis 和存储；worker 容器实际承载识别与批改批次。
+- 备注：验收对象是 `服务器部署/compose.staging.yml`，不是本地 `compose.yml` + `compose.override.yml`。后者会发布开发端口并启动本地 Traefik，仍未做过一次完整构建验收；生产与试运行部署必须显式指定 Compose 文件。
 - 验收标准：
-  - `docker compose up --build` 可以启动前端、后端、PostgreSQL、Redis、Worker。
-  - 后端 health check 和 OpenAPI 可访问。
-  - 前端登录页可访问并能登录管理员。
-  - Worker 可以将测试任务推进到 `succeeded`。
+  - Compose 可以启动前端、后端、PostgreSQL、Redis、Worker。已完成（staging）。
+  - 后端 health check 和 OpenAPI 可访问。已完成。
+  - 前端登录页可访问并能登录管理员。已完成。
+  - Worker 可以将任务推进到完成态。已完成。
 
 ### AEG-021 手机扫描成 PDF 能力后端入口
 
@@ -687,3 +686,366 @@
 - 周期 5：主观题和视觉大模型判分。
 - 周期 6：教师复核、批注回写与导出。
 - 周期 7：评测、试点和生产部署。
+
+## 周期 8：多租户商业化与工程基建
+
+本节补记 2026-07-25（`a61a5ff`）与 2026-08-07（`0884bfd`）两次提交带来的能力。这两次提交合计约 28k 行，此前没有对应 issue 记录，状态依据代码、迁移和测试实际内容回填。
+
+### AEG-050 多租户角色体系与数据隔离
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 8
+- 目标：把单用户工具升级为学校维度的多租户 SaaS。
+- 验收标准：
+  - 平台侧（`platform_superuser`/`platform_admin`/`platform_support`）与学校侧（`school_owner`/`school_admin`/`teacher`/`student`）共 7 档角色。已完成（`platform_admin` 由迁移 `8f31c0d4a7b2` 补入）。
+  - `Organization` 承载学校，`User`/`Exam`/`ClassGroup` 带 `org_id`，隔离逻辑集中在 `app/services/org_scope.py`，不可见统一 404。已完成。
+  - 学校服务状态 `active`/`read_only`/`frozen`/`deleting`：`read_only` 的非 GET 返回 423，`frozen`/`deleting` 返回 403。已完成（迁移 `a8c1e4f7b902`）。
+  - 教师间考试互见是学校级开关，默认关闭。已完成。
+  - 测试覆盖跨校读写边界。已完成（`test_org_isolation.py`）。
+
+### AEG-051 SaaS 计费：答卷额度与 Token 积分双轨
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 8
+- 目标：让批改消耗可计量、可预扣、可结算，并把「卖给学校的额度」与「平台上游成本」分开。
+- 决策：见 `docs/decision-log.md` D-022。
+- 验收标准：
+  - 答卷额度：`AnswerQuotaGrant`/`Reservation`/`Allocation` + `BillableAnswerSheet`，`(org_id, exam_id, billing_identity)` 唯一保证同一份答卷只计一次费，FIFO 消耗。已完成（迁移 `c0e4a7b9d215`）。
+  - Token 积分：`CreditGrant`/`Reservation`/`LedgerEntry` + `ModelUsageEvent` + `BillingRateVersion` 费率版本。已完成（迁移 `c2e4f6a8b0d1`）。
+  - 批改批次创建时预扣，额度不足返回 402，积分不足进入 `awaiting_credits`；worker 结束后结算。已完成。
+  - 失败批次可重试预留（迁移 `d1f5b8c2e904` 移除 `grading_run_id` 唯一约束）。已完成。
+  - `python -m app.maintenance reconcile-billing` 释放异常退出遗留的预占。已完成，需按运行手册每 5 分钟调度。
+  - 学校用量风控 `OrganizationUsagePolicy`（每分钟调用、并发任务、单任务与日/月上限、`risk_state`）。已完成。
+  - 测试覆盖预留/结算/释放与重复计费。已完成（`test_billing.py` 9 项）。
+
+### AEG-052 模型渠道控制面与动态路由
+
+- 类型：Feature / Architecture
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 8
+- 目标：把模型供应从环境变量升级为可运营的控制面，支持多渠道、灰度、熔断和对账。
+- 验收标准：
+  - `ProviderChannel` + AES-GCM 加密凭证（AAD 绑定 channel_id）；私网地址需 allowlist，公网强制 HTTPS。已完成。
+  - `ProviderModelMapping` canonical → upstream 映射与模型发现。已完成。
+  - `ModelRoutePolicy`/`ModelRouteVersion`/`ModelRouteVersionTarget`：发布即冻结渠道与费率快照，可回滚。已完成（迁移 `d5f7a9c1e3b6`）。
+  - 健康与熔断：连续失败置 `circuit_open_until`，成功即重置。已完成。
+  - 并发与限流：Redis ZSET 分全局/学校/渠道三级槽位并限制每分钟调用；计费门禁开启时 Redis 故障 fail-closed。已完成。
+  - 上游对账：`ProviderReconciliationBatch`/`Item`，支持 New API 同步比对 token 与成本。已完成（迁移 `a1c3e5f7b9d2`、`b2d4f6a8c0e1`）。
+  - 用途边界：纯视觉与推理模型不得混用（`model_purpose_policy.py`，迁移 `e9a1c3d5f7b8`）。已完成。
+  - 测试覆盖路由解析、凭证加密、并发槽与对账。已完成（`test_provider_channels.py` 12、`test_provider_gateway.py` 5、`test_provider_security.py` 5、`test_model_concurrency.py` 4、`test_new_api_billing.py` 2）。
+
+### AEG-053 公开模型目录与学校选型
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 8
+- 目标：学校能自选模型方案，但看不到真实供应链。
+- 决策：见 `docs/decision-log.md` D-023。
+- 验收标准：
+  - `PlatformModelOffering` 公开目录 + `OrganizationModelSelection` 按 vision / reference_answer / grading 三个 scope 选型。已完成（迁移 `d4f6a8b0c2e1`）。
+  - 学校侧响应只含 `display_name`、用途和说明，不含渠道、上游模型名与成本。已完成。
+  - offering 发布前校验渠道映射、结构化输出能力与对应用途路由版本已发布。已完成。
+  - 遗留跨用途配置已清理（迁移 `f0b2d4e6a8c1`）。已完成。
+  - 测试覆盖发布校验与学校可见字段。已完成（`test_model_offerings.py` 5 项）。
+
+### AEG-054 商业化订单与支付闭环
+
+- 类型：Feature
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 8
+- 目标：学校可购买年度套餐与答卷加量包，平台可完成收款、履约、开票和退款。
+- 进展：后端闭环与平台侧工作台已完成，学校端自助下单界面尚未实现。
+- 验收标准：
+  - 商品版本化：`PlanVersion`/`AddonSku` 先草稿后上架，历史订单保存购买时快照。已完成。
+  - 订单状态机 `pending_payment → paid → fulfilled`，可至 `refunded`。已完成（迁移 `a2c4e6f8b0d3`）。
+  - 幂等：订单 `idempotency_key` 唯一、支付 `provider_transaction_id` 唯一、微信回调按 `event_id` 去重、支付与履约在 advisory lock + `FOR UPDATE` 内串行。已完成（迁移 `c4e6f8a0b2d5`）。
+  - 履约：套餐建合同并顺延续费（`ends_at = max(paid_at, 上一份 ends_at) + validity_days`），套餐与加量包都发放答卷额度并关联订单。已完成（迁移 `b3d5f7a9c1e4`）。
+  - 一张订单最多一张发票申请与一笔退款申请；自动退款仅整单且额度未预留未消费，退款后恢复上一份仍有效合同。已完成。
+  - 平台侧「订单与财务」工作台：商品维护、订单、银行转账确认、发票与退款审核。已完成（`platform_.commerce` + `CommerceOperations.tsx`）。
+  - 学校端自助下单与微信扫码支付界面。**待完成**：`CommerceService.createOrder`、`payOrderWithWechat` 已生成但前端未调用。
+  - 微信退款真实接口调用与对账口径。**待完成**：当前退款只推进数据库状态机。
+  - 测试覆盖下单、支付、履约与退款。已完成（`test_commerce.py` 8 项）。
+
+### AEG-055 公开注册与试用开通
+
+- 类型：Feature
+- 优先级：P1
+- 状态：Done（默认关闭）
+- 所属周期：周期 8
+- 目标：学校可自助注册试用，不再完全依赖人工建租户。
+- 验收标准：
+  - `PendingOrganizationSignup` + 邮箱验证 + Cloudflare Turnstile + Redis 速率限制。已完成（迁移 `c3e5f7a9b1d2`）。
+  - 验证通过后原子创建学校、`school_owner`、30 天试用合同、200 份答卷额度与保守用量策略。已完成。
+  - 缺少匹配 `PUBLIC_SIGNUP_TRIAL_RATE_VERSION` 的费率版本时返回 503 且不创建租户。已完成。
+  - 生产默认 `PUBLIC_SIGNUP_ENABLED=false`，启用需配置 SMTP 与 Turnstile，且 `VITE_TURNSTILE_SITE_KEY` 是构建期参数。已完成并写入 `服务器部署/新服务器登录说明.md`。
+  - 测试覆盖注册、重发、验证与限流。已完成（`test_public_signup.py` 4 项 + Playwright `sign-up.spec.ts`）。
+
+### AEG-056 成绩发布与学生可见性
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 6 / 周期 8
+- 目标：教师确认后再向学生发布成绩，学生看到的是不可变快照而不是实时批注。
+- 决策：见 `docs/decision-log.md` D-024。
+- 验收标准：
+  - `ScoreRelease`/`ScoreReleaseItem` 版本化，`(exam_id, version)` 唯一，旧版本置 `superseded`。已完成（迁移 `b9d2f5a8c013`）。
+  - 发布门槛：无待复核题，且每份答卷已评题数不少于已确认题数；考试行 `FOR UPDATE` 串行化。已完成。
+  - 快照优先取教师人工结果，其次取建议结果。已完成。
+  - 学生端 `/students/me/*` 只能看到已发布考试与快照。已完成。
+  - 测试覆盖发布门槛与学生可见范围。已完成（`test_score_releases.py` 2 项）。
+
+### AEG-057 生产基础设施硬化
+
+- 类型：Hardening
+- 优先级：P0
+- 状态：In Progress
+- 所属周期：周期 7 / 周期 8
+- 目标：让服务具备可部署、可探活、可限流、可恢复的生产属性。
+- 进展：代码能力已具备，staging 尚未切换到高可用与对象存储。
+- 验收标准：
+  - 对象存储抽象 `STORAGE_BACKEND=local|oss` + 私有 OSS + 幂等迁移脚本。已完成代码，**尚未在 staging 执行迁移**。
+  - 存活与就绪探针 `/api/v1/utils/health/live|ready`（ready 校验 DB、Redis、存储）。已完成。
+  - 学校级任务租约 `OrganizationJobLease`（`(task_type, resource_id)` 唯一，TTL 5 分钟 + 60 秒心跳），防止跨 worker 重复执行与超并发。已完成（迁移 `f7b9d1e3a5c7`）。
+  - 事务 outbox：`OutboxEvent` 与 `dispatch-outbox` 命令。已完成写入，**dispatcher 仅记录日志并标记完成，未对接邮件或财务系统**。
+  - 生产配置校验（HTTPS、OSS 必填、密钥长度、微信配置完整性）。已完成（`test_config_production.py` 3 项）。
+  - Web/API 与 worker 多实例、RDS 与 Redis 高可用。**待完成**，见 `docs/production-operations.md` 生产基线。
+
+### AEG-058 Staging 试运行部署
+
+- 类型：Verification / Ops
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 7
+- 目标：在独立服务器上跑起可对外访问的试运行环境，且不影响服务器上既有服务。
+- 验收标准：
+  - 独立 `compose.staging.yml` + `dianfan-staging` project + 独立网络/卷，不复用既有 AISubAPI 的数据库与 Redis。已完成。
+  - 发布目录约定 `/opt/dianfan-grading/{shared,releases/<sha>,current}`，分 `config`/`infra`/`build`/`app` 阶段执行。已完成。
+  - 环境文件由 `generate-staging-env.sh` 随机生成密钥，不复制开发 `.env`。已完成。
+  - 公网入口 `https://app.dianfandig.com`，由服务器既有 Nginx 反代，不启动项目自带 Traefik。已完成。
+  - 渠道凭据可用 `sanitize-staging.sql` 清理。已完成。
+  - SSH 收敛到 `22022` + fail2ban，公网 `22` 关闭。已完成。
+  - 合作伙伴运维账号 `dianfan-ops` 最小权限（仅 SSH 登录，无 sudo/Docker/数据库）。已完成。
+
+### AEG-059 CI 流水线
+
+- 类型：Task
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 8
+- 目标：仓库过去没有任何 CI（`.github/` 只有 dependabot 与 labeler），补上可阻断回归的自动检查。
+- 决策：见 `docs/decision-log.md` D-025。
+- 验证：本地以 Python 3.13.15 + PostgreSQL 16 + Redis 7 实测：后端 `338 passed, 1 skipped`、覆盖率 67%；`alembic upgrade head` 到唯一 head `c3e5f7a9b1d2`；OpenAPI 冒烟 25 paths；前端 `tsc`/`biome ci`/`vite build` 通过；`actionlint` 与 `zizmor` 无告警。
+- 验收标准：
+  - `lint-backend`：`ruff check` + `ruff format --check`（`app` 与 `tests`）。已完成。
+  - `test-backend`：postgres + redis service 容器、迁移、pytest + coverage、OpenAPI 冒烟、覆盖率 artifact。已完成。
+  - `test-frontend`：`npm ci` + `biome ci` + `tsc` + `vite build`。已完成。
+  - `lint-workflows`：`zizmor` 审计。已完成。
+  - Actions 全部按 commit SHA 固定，`persist-credentials: false`，workflow 级最小权限。已完成。
+  - 分支保护把上述检查设为必需。**受计划限制阻塞**，见下方 AEG-064。
+
+### AEG-064 让 CI 成为阻断门禁（分支保护）
+
+- 类型：Ops
+- 优先级：P1
+- 状态：Blocked
+- 所属周期：周期 8
+- 背景：CI 已全绿，但目前只是提示，不能阻止红灯代码合入 `main`。
+- 阻塞原因：GitHub 只在 Pro/Team/Enterprise 计划上为**私有**仓库提供分支保护与 rulesets。本仓库是个人账号下的私有仓库且为免费计划，API 直接返回 `403 Upgrade to GitHub Pro or make this repository public`。这不是权限配置问题，任何 token 都绕不过。
+- 三条出路：
+  1. **升级 GitHub Pro**（个人账号，约 $4/月）。升级后执行 `GH_TOKEN=<admin-token> ./scripts/setup-branch-protection.sh` 即可，无需改代码。
+  2. **把仓库转到组织账号**并使用 Team 计划，适合后续多人协作时一并处理。
+  3. **把仓库改为 public** 可免费获得该能力，但**不可接受**：历史提交中的 `.env` 带有真实的 `SECRET_KEY`、`FIRST_SUPERUSER_PASSWORD` 和 `POSTGRES_PASSWORD`（自 2026-06-30 起存在于 4 个提交中），公开后无法撤回。若无论如何要公开，必须先轮换这三项并重写历史。
+- 过渡期做法：合并前人工确认 PR 上四个检查为绿；`scripts/setup-branch-protection.sh --show` 可随时查看当前状态。
+- 验收标准：
+  - `main` 的分支保护要求 `lint-backend`、`test-backend`、`test-frontend`、`zizmor` 四个检查通过，且要求分支与 `main` 保持最新。
+  - 检查名以 `--show` 输出的实际 check-run 名为准（首次在 `main` 上跑过 CI 后再核对）。
+  - 禁止 force push 与删除分支。
+  - 多人协作后打开 `REQUIRE_REVIEWS=1` 与 `ENFORCE_ADMINS=1`。
+
+### AEG-060 mypy / ty 类型债清理
+
+- 类型：Hardening
+- 优先级：P2
+- 状态：Backlog
+- 所属周期：周期 8 后续
+- 背景：`backend/scripts/lint.sh` 和 `.pre-commit-config.yaml` 都包含 mypy 与 ty，但实际 strict 模式下有 588 / 489 条告警，因此长期未被执行，也无法进 CI。
+- 目标：把类型检查恢复成可阻断门禁。
+- 设计方向：
+  - 绝大多数告警来自 SQLModel/SQLAlchemy 表达式（`col.in_`、`order_by`、`join` 条件、`datetime` 与 `None` 比较），应优先统一用 `col()`/`cast()` 包装或补类型标注，而不是逐条 `# type: ignore`。
+  - 可先对 `app/services/billing.py`、`app/api/routes/grading.py` 等高价值文件收敛，再逐步扩大。
+- 验收标准：
+  - 明确一份「必须干净」的文件清单并在 CI 上强制。
+  - 剩余误报有集中记录的抑制策略，不散落在业务代码里。
+
+### AEG-061 E2E 进入 CI
+
+- 类型：Verification
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 8 后续
+- 背景：24 个 Playwright spec 中，live 用例需要真实模型 Key、Node 参考服务和系统 Chromium，无法直接在 CI 运行；用 `page.route` 打桩的用例只需要前端。
+- 目标：把不依赖外部模型的 E2E 纳入 CI。
+- 设计方向：
+  - 先按依赖给 spec 分层（纯前端打桩 / 需后端 / 需模型 Key），live 用例用 `test.skip` 或 grep 标签排除。
+  - 需后端的用例可在 CI 用 compose 起 db + redis + backend，再跑 Playwright；模型调用仍需打桩。
+- 验收标准：
+  - CI 能稳定跑通打桩层 E2E，无 flaky。
+  - live 用例保留本地/手动触发入口，并在文档中写清所需环境变量。
+
+### AEG-062 商业化闭环收尾
+
+- 类型：Feature
+- 优先级：P1
+- 状态：Ready
+- 所属周期：周期 8 后续
+- 目标：补齐学校自助购买链路与履约副作用，让商业化不依赖平台人工代操作。
+- 验收标准：
+  - 学校端下单页面：选择套餐/加量包、生成订单、展示微信扫码、轮询支付结果、失败可重试。
+  - `OutboxEvent` dispatcher 真正投递（至少履约与退款成功通知邮件），失败可重试并保留 `last_error`。
+  - 微信退款真实接口调用与每日对账口径，按 `docs/production-operations.md` 的商业运营闭环执行。
+
+## 周期 9：学生端终身错题本
+
+方案文档：`docs/student-wrongbook-plan.md`。以下条目是该方案的执行拆解，阶段 A 之外的条目在形态与合规路径确认前不要开工。
+
+### AEG-065 知识点体系与 AI 自动打标
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：`ExamQuestion.knowledge_point` 是自由文本且上限 100 字符，AI 识别阶段完全不写该字段（`question_answer_workflow.py` 创建识别项时不填），只能靠教师手打，实际基本为空。没有知识点就没有失分归因聚合、掌握度和复习推荐。
+- 目标：建立知识点树，并让识别阶段自动打标、教师确认时校正。
+- 验收标准：
+  - 新增 `KnowledgePoint` 表（学科、学段、编码、名称、父节点、别名），第一版覆盖初中物理与数学。
+  - 题目识别产出「知识点 + 置信度」，低置信度不写入、留给教师。
+  - 教师在确认题目界面可校正知识点，校正结果可导出用于评估 AI 打标准确率。
+  - 知识点从自由文本迁移为受控引用，保留旧自由文本作为回填来源。
+
+### AEG-066 学生逐题详情与失分原因
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：学生端只有两个接口，报告只返回 `{label, score, max_score, comment}`，`suggested_comment` 被写死为 `None`、`score_source` 写死为 `"final"`；裁切图端点的 `can_see_exam` 不包含学生角色。而判分模型的评分点级证据 `{"point","matched","points","reason"}` 已经写进 `SubmissionAnnotation.grading_evidence`，只是没有暴露。注意 `grading_reasons` 装的是复核门禁信号（`low_confidence`/`unreadable`/`answer_count_mismatch`/`model_failure`/`unconfirmed_answer_evidence`），不是失分原因，**不得展示给学生**。
+- 目标：让学生看到「题干、标准答案、我的作答、为什么扣分、我的手写原件」。
+- 验收标准：
+  - 新增学生逐题详情端点，只在成绩已发布后可见。
+  - 失分原因取 `grading_evidence` 中 `matched=false` 的评分点，**不引入额外模型调用**。
+  - 裁切图提供 learner 作用域的受保护访问，不复用教师端 `can_see_exam` 判定。
+  - 教师自由文本评语在给学生前有脱敏或长度约束策略。
+  - 前端 `my.exams_.$examId` 接通图像与失分原因（`WrongQuestionsSection` 已具备渲染能力）。
+
+### AEG-072 发布过成绩的考试无法删除
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Done
+- 所属周期：周期 9 阶段 A 附带
+- 症状：一场考试只要发布过成绩，`DELETE /exams/{exam_id}` 就返回 500。
+- 根因：`ScoreReleaseItem.submission_id` 是 `ondelete="RESTRICT"`，而 `Exam` 只对 documents/regions/submissions 建了 ORM 级联，删考试时 SQLAlchemy 先删答卷，被数据库的 RESTRICT 拒绝。DB 层面 `ScoreRelease.exam_id` 本来就是 CASCADE，属于 ORM 删除顺序问题。
+- 修复：给 `Exam` 补 `score_releases` 级联关系、给 `ScoreRelease` 补 `items` 级联关系，删考试时先清成绩发布快照。单份答卷仍受 RESTRICT 保护，不会把已发布成绩删出空洞。
+- 回归：`test_wrongbook_survives_exam_deletion` 同时覆盖删除成功与错题本留存。
+
+### AEG-067 发布即快照：错题条目独立留存
+
+- 类型：Architecture
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：`Exam` 删除会级联清空 documents / regions / submissions / questions / annotations / score releases；裁切图依赖 `ProcessingTask.output_ref` 或按 `ExamRegion` 实时重裁。错题本若做成教师端数据的视图，老师删一场考试，学生的「终身」错题会静默消失。
+- 目标：错题本成为独立留存实体，来源可消失而错题本完整。
+- 验收标准：
+  - 新增 `WrongQuestionEntry`，快照题干、标准答案、评分点、学生作答、失分原因标签、教师评语、考试元数据。
+  - 对 `exam_id`/`submission_id`/`annotation_id`/`question_id` 只保留 `ON DELETE SET NULL` 弱引用。
+  - 裁切图在快照时复制到学习者命名空间并压缩（建议 WebP），不依赖考试与答卷生命周期。
+  - 挂在成绩发布动作上异步生成；重新发布生成新条目并把旧条目标记 superseded，不原地改写。
+  - 失分原因使用**有限标签集**，保证可跨考试聚合。
+  - 实测单个学生年度存储量并记录，用于成本估算。
+
+### AEG-068 终身学习者身份
+
+- 类型：Architecture
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 B
+- 决策依据：D-029 学生身份走 C 端账号，与学校租户解耦。
+- 背景：`Student` 是班级内实体（`UniqueConstraint(class_id, name)` 且不支持修改 `class_id`），升班等于新建档案，历史断裂；学生端兜底匹配用「当前班名 + 姓名」，旧班答卷可能查不到。同时 `get_current_user` 对每个请求执行 `assert_organization_access`，学校冻结后学生一律 403。
+- 目标：身份跨班、跨学年、跨学校稳定，且不随学校租户状态失效。
+- 验收标准：
+  - 新增 `LearnerProfile`（锚定学生自己的登录账号，不带 org_id）与 `LearnerEnrollment`（在校经历，可多条）。已完成。
+  - 转班、升学、转学通过新增 enrollment 表达，错题本连续。已完成（`test_learner_keeps_history_across_class_change`）。
+  - 错题本读取只依赖 learner 身份，学校 `frozen` 不影响学生查阅历史。已完成（学生角色豁免学校服务状态门禁）。
+  - 存量 `Student` 与 `{学号}@school.local` 账号有明确回填与升级路径。已完成（迁移内回填 + 首次访问自动认领孤立条目）。
+  - 在校经历快照学校名与班级名，学校被删也能说清「这题是哪一年在哪个班考的」。已完成。
+
+### AEG-069 复习闭环
+
+- 类型：Feature
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 9 阶段 C
+- 目标：错题从「躺着」变成「被复习」，这是留存的真实来源。
+- 验收标准：
+  - 间隔重复调度（简化 SM-2，1/3/7/15/30 天），交互只问「还会不会」。
+  - 考前突击清单：按学科 + 知识点错误密度 + 距上次复习时间排序，可打印 A4。
+  - 相似题优先检索本校题库（`question-bank` 已跨考试），检索不到再用 LLM 生成变式题并标注「AI 生成，未经教师审核」。
+  - 掌握度视图按知识点聚合，纯统计不调模型。
+
+### AEG-070 学生端客户端形态
+
+- 类型：Design
+- 优先级：P1
+- 状态：Ready
+- 所属周期：周期 9 阶段 C
+- 决策依据：D-028 学生端以微信小程序为主，Web 端保留。
+- 待办（需要产品侧提供资产后才能开工）：
+  - 微信小程序主体注册与服务类目，取得 AppID / AppSecret（工程侧无法自助完成）。
+  - 微信登录：`wx.login` 换 openid/unionid，与 `LearnerProfile` 换绑，学生从此可脱离学校创建的账号。
+  - 家长视角与学生视角的权限边界。
+  - 视觉与 `AGENTS.md` 的小程序色板一致。
+- 已就绪的前置：学生端 API 已与学校租户解耦，小程序与 Web 共用同一套 `/students/me/*` 接口。
+
+### AEG-071 未成年人合规与数据可携带
+
+- 类型：Compliance
+- 优先级：P0
+- 状态：Ready
+- 所属周期：周期 9 阶段 D（但需在学生端上线前完成）
+- 背景：仓库当前在未成年人同意、保留期、导出与删除方面基本空白。学生端长期留存成绩与手写影像，属于典型敏感场景。
+- 验收标准：
+  - 明确数据控制者与受托处理者关系，先走学校委托路径。
+  - 不满十四周岁的监护人同意链路与单独处理规则。
+  - 错题本导出（PDF + JSON）与删除；删除学生个人错题本不影响学校成绩档案。
+  - 核实是否需要教育移动互联网应用程序备案。
+  - 明确不提供「拍照搜题」，理由写入决策记录（双减意见第 15 条）。
+  - 需法务确认，工程侧只负责提供能力。
+
+### AEG-072 错题本失分点文案不说人话
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 9 阶段 B
+- 背景：2026-08-13 用真实物理答卷（海口八年级期末 B 卷）本地跑完「确认题目 → 判分 → 发布成绩」后，检查学生端 `/my/wrongbook` 实际渲染的 `missed_points`，发现三处直接违反「文案说人话」。裁切图、知识点打标、按页缓存均正常，只有文案有问题。
+- 具体问题：
+  - `app/services/grading_rules.py` 把 Python 列表字面量写进学生可见文案：客观题失分理由渲染成「学生选择 ['A']，本评分点要求 ['B']，且包含错误选项 ['A']」，应当是「你选了 A，正确答案是 B」。
+  - 评分点标题回落到内部编号：`extract_missed_points` 取 `point.id`，学生看到加粗的「p1」「p3」。评分点没有 description 时应回落到题号或「未答到的要点」，不能暴露编号。
+  - `frontend/src/routes/_layout/my.wrongbook.tsx` 把「该评分点得分」当扣分展示：未命中评分点的 `points` 恒为 0，界面渲染成「-0 分」。应改为展示该评分点的满分值作为扣分，或不展示。
+- 验收标准：
+  - 客观题失分理由不含列表、括号等数据结构字面量。
+  - 学生端不出现 `p1` 这类内部编号。
+  - 未命中评分点不出现「-0 分」。
+
+## 状态更正
+
+- AEG-003、AEG-008、AEG-020 的容器化验收在周期 0/1 长期停在 In Progress，实际已由 staging 部署（`compose.staging.yml` + `deploy-staging.sh`）覆盖：数据库、Redis、后端、worker、前端和 Node 参考服务均以容器运行。已在对应条目更新状态并注明验证以 staging compose 为准，本地开发 override（Traefik、Adminer、Mailcatcher）仍未做过一次完整 `docker compose up --build` 验收。

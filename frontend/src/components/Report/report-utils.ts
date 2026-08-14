@@ -11,9 +11,12 @@ export type ReportQuestionItem = {
   source?: string | null
   /** 评语 / 正确思路（comment || suggested_comment） */
   comment?: string | null
-  /** 有 submissionId + annotationId 时可拉取该题答题裁切图（仅教师侧有权限） */
+  /** 教师侧取图：有 submissionId + annotationId 时按题区实时裁切 */
   submissionId?: string | null
   annotationId?: string | null
+  /** 学生侧取图：错题本条目自带留存的答题图，不需要考试权限 */
+  entryId?: string | null
+  hasImage?: boolean
 }
 
 export function formatScore(value: number | null | undefined): string {

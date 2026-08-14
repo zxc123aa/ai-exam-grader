@@ -117,18 +117,19 @@ def test_public_signup_verifies_and_opens_trial_atomically(
     ).one()
     assert grant.total_answers == 200
     policy = db.exec(
-        select(OrganizationUsagePolicy).where(
-            OrganizationUsagePolicy.org_id == org.id
-        )
+        select(OrganizationUsagePolicy).where(OrganizationUsagePolicy.org_id == org.id)
     ).one()
     assert policy.calls_per_minute == 30
     assert policy.max_running_jobs == 2
     assert policy.max_model_concurrency == 4
-    assert db.exec(
-        select(PendingOrganizationSignup).where(
-            PendingOrganizationSignup.email == email
-        )
-    ).first() is None
+    assert (
+        db.exec(
+            select(PendingOrganizationSignup).where(
+                PendingOrganizationSignup.email == email
+            )
+        ).first()
+        is None
+    )
 
     reused = client.post(f"{URL}/verify", json={"token": tokens[-1]})
     assert reused.status_code == 400
@@ -201,9 +202,12 @@ def test_public_signup_missing_rate_does_not_create_tenant(
     assert verified.status_code == 503
     assert verified.json()["detail"] == "试用服务暂时无法开通，请稍后再试"
     assert crud.get_user_by_email(session=db, email=email) is None
-    assert db.exec(
-        select(Organization).where(Organization.name == organization_name)
-    ).first() is None
+    assert (
+        db.exec(
+            select(Organization).where(Organization.name == organization_name)
+        ).first()
+        is None
+    )
 
 
 def test_public_signup_rejects_invalid_turnstile(

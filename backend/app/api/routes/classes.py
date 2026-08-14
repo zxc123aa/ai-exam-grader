@@ -115,7 +115,11 @@ def ensure_class_name_available(
 
 
 def ensure_student_name_available(
-    *, session: Session, class_id: uuid.UUID, name: str, exclude_id: uuid.UUID | None = None
+    *,
+    session: Session,
+    class_id: uuid.UUID,
+    name: str,
+    exclude_id: uuid.UUID | None = None,
 ) -> None:
     statement = select(Student).where(
         Student.class_id == class_id, Student.name == name
@@ -242,7 +246,10 @@ def read_students(
     )
     students = session.exec(statement).all()
     return StudentsPublic(
-        data=[build_student_public(session=session, student=student) for student in students],
+        data=[
+            build_student_public(session=session, student=student)
+            for student in students
+        ],
         count=len(students),
     )
 
@@ -260,9 +267,7 @@ def create_student(
     if not name:
         raise HTTPException(status_code=422, detail="Student name must not be empty")
     ensure_student_name_available(session=session, class_id=class_id, name=name)
-    student = Student(
-        class_id=class_id, name=name, student_no=student_in.student_no
-    )
+    student = Student(class_id=class_id, name=name, student_no=student_in.student_no)
     session.add(student)
     try:
         session.commit()
@@ -298,10 +303,7 @@ def create_students_batch(
     class_group = get_class_for_user(
         session=session, current_user=current_user, class_id=class_id
     )
-    if (
-        batch_in.create_accounts
-        and current_user.role not in ACCOUNT_CREATOR_ROLES
-    ):
+    if batch_in.create_accounts and current_user.role not in ACCOUNT_CREATOR_ROLES:
         raise HTTPException(
             status_code=403,
             detail="批量创建学生账号需要学校管理员权限",
@@ -350,9 +352,10 @@ def create_students_batch(
                 )
                 continue
             email = f"{student_no}@{STUDENT_ACCOUNT_DOMAIN}"
-            if email in seen_emails or session.exec(
-                select(User).where(User.email == email)
-            ).first():
+            if (
+                email in seen_emails
+                or session.exec(select(User).where(User.email == email)).first()
+            ):
                 row_results.append(
                     StudentBatchRowResult(
                         name=name,

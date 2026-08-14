@@ -33,11 +33,50 @@ SessionDep = Annotated[Session, Depends(get_db)]
 TokenDep = Annotated[str, Depends(reusable_oauth2)]
 
 
+def get_user_from_authorization_header(
+    *, session: Session, authorization: str | None = None
+) -> User:
+    """从 Authorization 头解析用户，供图片等由 `<img>`/fetch 直接取的端点使用。
+
+    这些端点不能走标准依赖注入的 OAuth2 流程，但同样不接受 URL 里的 token。
+    """
+    token = None
+    if authorization:
+        scheme, _, value = authorization.partition(" ")
+        if scheme.lower() == "bearer" and value:
+            token = value
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+        )
+    try:
+        payload = jwt.decode(
+            token, settings.SECRET_KEY, algorithms=[security.ALGORITHM]
+        )
+        token_data = TokenPayload(**payload)
+    except (InvalidTokenError, ValidationError):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Could not validate credentials",
+        )
+    user = session.get(User, token_data.sub)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.is_active:
+        raise HTTPException(status_code=400, detail="Inactive user")
+    return user
+
+
 def assert_organization_access(
     session: SessionDep, user: User, *, method: str = "GET"
 ) -> None:
     """Apply the school's service state to every authenticated request."""
     if user.org_id is None:
+        return
+    if user.role == UserRole.STUDENT:
+        # 学生身份与学校租户解耦（D-029）：学校欠费冻结不该让学生打不开自己的
+        # 学习记录。学生本来就被角色门禁挡在所有学校业务接口之外，只能访问
+        # /students/me/*，因此豁免不会扩大暴露面。
         return
     organization = session.get(Organization, user.org_id)
     if not organization or organization.status in {
@@ -94,11 +133,15 @@ def is_platform_superuser(user: User) -> bool:
 
 def is_platform_user(user: User) -> bool:
     """平台侧角色（超管 + 管理员 + 运营），仅访问卖方控制面。"""
-    return user.role in (
-        UserRole.PLATFORM_SUPERUSER,
-        UserRole.PLATFORM_ADMIN,
-        UserRole.PLATFORM_SUPPORT,
-    ) or user.is_superuser
+    return (
+        user.role
+        in (
+            UserRole.PLATFORM_SUPERUSER,
+            UserRole.PLATFORM_ADMIN,
+            UserRole.PLATFORM_SUPPORT,
+        )
+        or user.is_superuser
+    )
 
 
 def is_school_manager(user: User) -> bool:

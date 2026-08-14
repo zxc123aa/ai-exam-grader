@@ -31,7 +31,9 @@ def main() -> None:
     migrated = 0
     missing = 0
     with Session(engine) as session:
-        stored_files = session.exec(select(StoredFile).order_by(StoredFile.created_at)).all()
+        stored_files = session.exec(
+            select(StoredFile).order_by(StoredFile.created_at)
+        ).all()
         if args.limit > 0:
             stored_files = stored_files[: args.limit]
         for stored_file in stored_files:

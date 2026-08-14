@@ -101,9 +101,7 @@ def test_admin_cannot_grant_superuser_role(client: TestClient, db: Session) -> N
     assert r.status_code == 400
 
 
-def test_admin_cannot_modify_superuser_account(
-    client: TestClient, db: Session
-) -> None:
+def test_admin_cannot_modify_superuser_account(client: TestClient, db: Session) -> None:
     admin, password = _create_user_with_role(db, UserRole.SCHOOL_OWNER)
     superuser = crud.get_user_by_email(session=db, email=settings.FIRST_SUPERUSER)
     assert superuser

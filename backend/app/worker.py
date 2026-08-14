@@ -93,6 +93,39 @@ def process_grading_run(run_id: str) -> None:
         process_grading_run.send_with_options(args=(run_id,), delay=5000)
 
 
+def run_wrongbook_snapshot(release_id: str) -> None:
+    from app.services.wrongbook import snapshot_release
+
+    with Session(engine) as session:
+        snapshot_release(session, uuid.UUID(release_id))
+
+
+@dramatiq.actor(max_retries=3, min_backoff=5_000)
+def process_wrongbook_snapshot(release_id: str) -> None:
+    """成绩发布后把学生逐题结果快照进错题本。
+
+    重裁题区要渲染 PDF，属于 CPU 密集操作，因此占用学校任务槽；抢不到槽就延迟重排。
+    """
+    from app.models import Exam, ScoreRelease
+
+    with Session(engine) as session:
+        release = session.get(ScoreRelease, uuid.UUID(release_id))
+        if not release:
+            return
+        exam = session.get(Exam, release.exam_id)
+        if not exam:
+            return
+
+    if not _run_org_job_once(
+        release_id,
+        exam.org_id,
+        "wrongbook_snapshot",
+        run_wrongbook_snapshot,
+        release_id,
+    ):
+        process_wrongbook_snapshot.send_with_options(args=(release_id,), delay=5000)
+
+
 @dramatiq.actor(max_retries=0)
 def process_recognition_run(run_id: str) -> None:
     from app.models import Exam, GradingRun, GradingRunStatus

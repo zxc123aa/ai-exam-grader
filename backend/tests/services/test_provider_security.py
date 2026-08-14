@@ -56,7 +56,9 @@ def test_local_environment_has_stable_credential_key_fallback(monkeypatch) -> No
     monkeypatch.setattr(settings, "ENVIRONMENT", "local")
     monkeypatch.setattr(settings, "PROVIDER_CREDENTIAL_MASTER_KEY", "")
     channel_id = uuid.uuid4()
-    encrypted = provider_security.encrypt_credential("local-secret", channel_id=channel_id)
+    encrypted = provider_security.encrypt_credential(
+        "local-secret", channel_id=channel_id
+    )
     assert (
         provider_security.decrypt_credential(
             encrypted.ciphertext,

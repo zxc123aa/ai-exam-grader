@@ -1,7 +1,10 @@
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 import { Skeleton } from "@/components/ui/skeleton"
-import { fetchSubmissionAnnotationCropBlob } from "@/lib/submission-media"
+import {
+  fetchSubmissionAnnotationCropBlob,
+  fetchWrongbookEntryImageBlob,
+} from "@/lib/submission-media"
 import { cn } from "@/lib/utils"
 import {
   formatScore,
@@ -11,28 +14,38 @@ import {
   sortQuestionsByLabel,
 } from "./report-utils"
 
-/** 单题答题裁切图；加载失败时静默隐藏（评语仍在）。 */
-function AnnotationCrop({
+/**
+ * 单题答题图；加载失败时静默隐藏（评语仍在）。
+ *
+ * 两个来源：教师侧按题区实时裁切，学生侧取错题本条目留存的图。学生没有考试接口
+ * 权限，只能走后者。
+ */
+function AnswerImage({
   examId,
   submissionId,
   annotationId,
+  entryId,
   label,
 }: {
   examId: string
-  submissionId: string
-  annotationId: string
+  submissionId?: string | null
+  annotationId?: string | null
+  entryId?: string | null
   label: string
 }) {
   const [contentUrl, setContentUrl] = useState<string | null>(null)
   const { data, isPending, isError } = useQuery({
-    queryKey: [
-      "submission-annotation-crop",
-      examId,
-      submissionId,
-      annotationId,
-    ],
+    queryKey: entryId
+      ? ["wrongbook-entry-image", entryId]
+      : ["submission-annotation-crop", examId, submissionId, annotationId],
     queryFn: () =>
-      fetchSubmissionAnnotationCropBlob(examId, submissionId, annotationId),
+      entryId
+        ? fetchWrongbookEntryImageBlob(entryId)
+        : fetchSubmissionAnnotationCropBlob(
+            examId,
+            submissionId as string,
+            annotationId as string,
+          ),
     staleTime: Number.POSITIVE_INFINITY,
   })
 
@@ -103,12 +116,14 @@ export function WrongQuestionsSection({
                   </span>
                 )}
               </div>
-              {question.submissionId && question.annotationId && (
+              {((question.entryId && question.hasImage) ||
+                (question.submissionId && question.annotationId)) && (
                 <div className="mt-3">
-                  <AnnotationCrop
+                  <AnswerImage
                     examId={examId}
                     submissionId={question.submissionId}
                     annotationId={question.annotationId}
+                    entryId={question.hasImage ? question.entryId : null}
                     label={question.label}
                   />
                 </div>

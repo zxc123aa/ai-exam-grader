@@ -534,9 +534,9 @@ def test_gemini_region_candidates_expose_projection_refinement(
         files={"file": ("layout.png", VALID_PNG_BYTES, "image/png")},
     )
     document_id = upload_response.json()["id"]
-    upright_image = "data:image/png;base64," + base64.b64encode(
-        VALID_PNG_BYTES
-    ).decode()
+    upright_image = (
+        "data:image/png;base64," + base64.b64encode(VALID_PNG_BYTES).decode()
+    )
 
     monkeypatch.setattr(
         exams_route,
@@ -1472,9 +1472,7 @@ def test_append_student_submission_pages_confirmed_registration_conflict(
             "registration_status": "manual_confirmed",
             "registration_quality": 1,
             "registration_notes": "Teacher confirmed",
-            "registration_homography": {
-                "matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-            },
+            "registration_homography": {"matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]},
         },
     )
 
@@ -1536,9 +1534,7 @@ def test_update_student_submission_registration_manual_confirmed(
             "registration_status": "manual_confirmed",
             "registration_quality": 1,
             "registration_notes": "Teacher confirmed same-layout scan",
-            "registration_homography": {
-                "matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
-            },
+            "registration_homography": {"matrix": [[1, 0, 0], [0, 1, 0], [0, 0, 1]]},
         },
     )
 
@@ -1980,7 +1976,9 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert len(task["output_ref"]["ocr_results"]) == 1
     assert task["output_ref"]["ocr_results"][0]["status"] == "not_configured"
     assert len(task["output_ref"]["grading_results"]) == 1
-    assert task["output_ref"]["grading_results"][0]["status"] == "skipped_missing_answer"
+    assert (
+        task["output_ref"]["grading_results"][0]["status"] == "skipped_missing_answer"
+    )
     assert task["output_ref"]["created_annotation_count"] == 1
 
     annotations_response = client.get(
@@ -1998,7 +1996,10 @@ def test_create_student_submission_processing_task_generates_annotation_placehol
     assert annotations["data"][0]["ocr_text"] is None
     assert annotations["data"][0]["grading_status"] == "skipped_missing_answer"
     assert annotations["data"][0]["suggested_score"] is None
-    assert annotations["data"][0]["grading_reasons"][0]["type"] == "missing_standard_answer"
+    assert (
+        annotations["data"][0]["grading_reasons"][0]["type"]
+        == "missing_standard_answer"
+    )
     annotation_id = annotations["data"][0]["id"]
 
     crop_response = client.get(

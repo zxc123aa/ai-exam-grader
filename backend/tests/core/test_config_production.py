@@ -41,4 +41,6 @@ def test_production_settings_reject_local_storage() -> None:
 
 def test_production_settings_reject_invalid_provider_master_key() -> None:
     with pytest.raises(ValidationError, match="exactly 32 bytes"):
-        production_settings(PROVIDER_CREDENTIAL_MASTER_KEY=base64.b64encode(b"short").decode())
+        production_settings(
+            PROVIDER_CREDENTIAL_MASTER_KEY=base64.b64encode(b"short").decode()
+        )

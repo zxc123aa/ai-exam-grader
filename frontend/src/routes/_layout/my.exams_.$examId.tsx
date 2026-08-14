@@ -85,7 +85,7 @@ function MyExamReportPage() {
   }
 
   const report = query.data
-  // 学生端无考试题目/标注接口权限：知识点与答题裁切图不可用，统一退化为题号
+  // 知识点与答题图来自错题本快照，不需要考试接口权限
   const questions = sortQuestionsByLabel(
     (report.questions ?? []).map(
       (question): ReportQuestionItem => ({
@@ -94,8 +94,18 @@ function MyExamReportPage() {
         maxScore: question.max_score ?? null,
         source: question.score_source ?? null,
         comment: question.comment || question.suggested_comment || null,
+        entryId: question.entry_id ?? null,
+        hasImage: question.has_image ?? false,
       }),
     ),
+  )
+  const knowledgeByLabel = new Map(
+    (report.questions ?? [])
+      .filter((question) => (question.knowledge_point_names ?? []).length > 0)
+      .map((question) => [
+        question.label,
+        (question.knowledge_point_names ?? []).join("、"),
+      ]),
   )
   const scored = questions.filter((question) => scoreRate(question) != null)
   const fullCount = scored.filter(
@@ -110,8 +120,8 @@ function MyExamReportPage() {
     { label: "部分得分", count: partialCount, tone: "amber" },
     { label: "零分题", count: zeroCount, tone: "pink" },
   ]
-  const summaryLine = buildSummaryLine(questions)
-  const advice = buildAdvice(questions)
+  const summaryLine = buildSummaryLine(questions, knowledgeByLabel)
+  const advice = buildAdvice(questions, knowledgeByLabel)
 
   return (
     <div className="flex flex-col gap-6">
@@ -210,7 +220,11 @@ function MyExamReportPage() {
         </section>
 
         {/* 错题回顾：得分率 <60% 的题，含评语/正确思路 */}
-        <WrongQuestionsSection examId={examId} questions={questions} />
+        <WrongQuestionsSection
+          examId={examId}
+          questions={questions}
+          knowledgeByLabel={knowledgeByLabel}
+        />
 
         {/* 学习建议 */}
         <section className="border-t py-6">

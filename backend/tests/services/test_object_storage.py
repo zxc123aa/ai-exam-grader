@@ -17,7 +17,9 @@ def test_normalize_storage_key_rejects_path_traversal() -> None:
             normalize_storage_key(value)
 
 
-def test_local_storage_round_trip(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_local_storage_round_trip(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
     upload_dir = tmp_path / "uploads"
     monkeypatch.setattr(settings, "LOCAL_UPLOAD_DIR", upload_dir)
     monkeypatch.setattr(settings, "STORAGE_CACHE_DIR", tmp_path / "cache")
