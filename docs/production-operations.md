@@ -21,7 +21,7 @@
 
 1. 发布由 tag 触发：`git tag v1.2.3 && git push origin v1.2.3`。`.github/workflows/release.yml` 构建 backend、frontend、reference-algorithm 三个镜像推到 ghcr，每个都带 tag 与提交 SHA 两个标记。除此之外没有别的触发方式，普通提交和合并 PR 不会发布镜像。
 2. 前端的 API 地址会被 vite 编译进产物，取自仓库变量 `RELEASE_VITE_API_URL`（当前 `https://app.dianfandig.com`，与 staging 的 `FRONTEND_HOST` 同源，nginx 用 `/api/` 前缀分流到后端）。该变量为空时 frontend 任务直接失败，不会产出一个接口全挂的镜像。Turnstile 站点密钥用 `RELEASE_TURNSTILE_SITE_KEY`，留空即不启用。
-3. 仓库私有，ghcr 镜像也是私有的。服务器首次改用发布镜像前要 `docker login ghcr.io`，用一个带 `read:packages` 的 PAT，匿名拉不到。
+3. 三个 ghcr 包已设为公开，服务器匿名即可拉取，不需要 `docker login`，也不需要 PAT。注意包的可见性与仓库可见性是两套独立开关：如果哪天把包改回私有，服务器就要先用一个带 `read:packages` 的 PAT 登录 `ghcr.io`，否则 `pull` 会卡在认证上。
 4. 部署时先把镜像前缀指到 registry，再拉取并启动：
 
 ```bash
