@@ -65,6 +65,16 @@ jobs:
         with:
           persist-credentials: false
 
+      # buildx 把上下文路径塞进 gRPC 头 x-docker-expose-session-sharedkey，
+      # 中文目录名会让它以「contains value with non-printable ASCII
+      # characters」直接失败，所以先把上下文原样复制到纯 ASCII 路径。
+      # Dockerfile 里的 COPY 是相对上下文的，不能改用仓库根目录当上下文，
+      # 否则 package.json 会落到 npm workspace 根上。
+      - name: Stage build context on an ASCII path
+        run: |
+          mkdir -p release-context/reference-algorithm
+          cp -a 参考算法/2_试卷分析文件/. release-context/reference-algorithm/
+
       - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
@@ -75,7 +85,7 @@ jobs:
 
       - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
-          context: 参考算法/2_试卷分析文件
+          context: release-context/reference-algorithm
           push: true
           provenance: false
           tags: |
