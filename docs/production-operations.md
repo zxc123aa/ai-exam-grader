@@ -11,11 +11,29 @@
 
 ## 上线流程
 
-1. CI 必须通过后构建不可变镜像，以提交 SHA 标记。
+1. CI 必须通过后构建不可变镜像，以提交 SHA 标记（操作见「镜像发布」）。
 2. 先在 staging 执行 `alembic upgrade head`，完成上传、生成答案、批改、复核、发布的冒烟测试。
 3. 生产采用 expand-contract 数据库迁移：先增加兼容字段/表，应用全部升级后再移除旧结构。
 4. 先发布一个 canary 实例，观察错误率、P95 延迟、队列积压和模型成本 15 分钟，再全量。
 5. 回滚只切回上一镜像；如果迁移不可逆，必须在发布前提供恢复脚本和演练记录。
+
+## 镜像发布
+
+1. 发布由 tag 触发：`git tag v1.2.3 && git push origin v1.2.3`。`.github/workflows/release.yml` 构建 backend、frontend、reference-algorithm 三个镜像推到 ghcr，每个都带 tag 与提交 SHA 两个标记。除此之外没有别的触发方式，普通提交和合并 PR 不会发布镜像。
+2. 前端的 API 地址会被 vite 编译进产物，取自仓库变量 `RELEASE_VITE_API_URL`（当前 `https://app.dianfandig.com`，与 staging 的 `FRONTEND_HOST` 同源，nginx 用 `/api/` 前缀分流到后端）。该变量为空时 frontend 任务直接失败，不会产出一个接口全挂的镜像。Turnstile 站点密钥用 `RELEASE_TURNSTILE_SITE_KEY`，留空即不启用。
+3. 仓库私有，ghcr 镜像也是私有的。服务器首次改用发布镜像前要 `docker login ghcr.io`，用一个带 `read:packages` 的 PAT，匿名拉不到。
+4. 部署时先把镜像前缀指到 registry，再拉取并启动：
+
+```bash
+export DIANFAN_IMAGE_BACKEND=ghcr.io/zxc123aa/dianfan-backend
+export DIANFAN_IMAGE_FRONTEND=ghcr.io/zxc123aa/dianfan-frontend
+export DIANFAN_IMAGE_REFERENCE=ghcr.io/zxc123aa/dianfan-reference-algorithm
+服务器部署/deploy-staging.sh v1.2.3 pull
+服务器部署/deploy-staging.sh v1.2.3 app
+```
+
+5. 不设置这三个变量时脚本仍按 `build` 在本机构建，与改造前行为一致。服务器同机跑着别的服务，长期应走 `pull`，把构建留在 CI。
+6. 回滚把 tag 换成上一个已发布版本，重跑 `pull` 与 `app` 即可；镜像不可变，不需要重新构建，也不依赖当时的源码状态。
 
 ## 商业运营闭环
 
