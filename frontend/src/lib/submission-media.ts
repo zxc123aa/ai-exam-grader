@@ -49,6 +49,15 @@ export async function fetchSubmissionAnnotationCropBlob(
   )
 }
 
+/** 错题本条目自带的答题图，学生本人可取，不依赖考试权限。 */
+export async function fetchWrongbookEntryImageBlob(entryId: string) {
+  return fetchBlob(
+    `/api/v1/students/me/wrongbook/entries/${entryId}/image`,
+    "/api/v1/students/me/wrongbook/entries/{entry_id}/image",
+    "Failed to load wrongbook entry image",
+  )
+}
+
 export async function fetchSubmissionRegionCropBlob(
   examId: string,
   submissionId: string,

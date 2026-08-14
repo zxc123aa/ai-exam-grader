@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
+import logging
 import time
 import uuid
 from decimal import Decimal
@@ -61,30 +61,26 @@ from app.models import (
 )
 from app.services import billing as billing_service
 from app.services.file_storage import get_stored_file_path
+from app.services.knowledge_points import tag_exam_questions
 from app.services.org_scope import can_see_exam, can_write_exam
 from app.services.pdf_rendering import get_pdf_page_count
 from app.services.question_answer_workflow import (
     persist_question_recognition_payload,
 )
+from app.services.question_text_normalization import question_key_sort_key
 from app.services.system_config import get_grading_defaults, get_school_model_target
 from app.worker import (
     process_answer_preparation_run,
     process_question_recognition_run,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(
     prefix="/exams",
     tags=["question-answer-workflow"],
     dependencies=[Depends(get_current_teacher_user)],
 )
-
-
-def _natural_key(value: str | None) -> tuple:
-    return tuple(
-        int(part) if part.isdigit() else part.casefold()
-        for part in re.split(r"(\d+)", value or "")
-        if part
-    )
 
 
 def _owned_exam(
@@ -177,7 +173,7 @@ def list_exam_questions(
     questions = list(
         session.exec(select(ExamQuestion).where(ExamQuestion.exam_id == exam_id)).all()
     )
-    questions.sort(key=lambda question: _natural_key(question.question_key))
+    questions.sort(key=lambda question: question_key_sort_key(question.question_key))
     return ExamQuestionsPublic(
         data=[_question_public(session, question) for question in questions],
         count=len(questions),
@@ -445,7 +441,7 @@ def list_question_recognition_items(
             )
         ).all()
     )
-    items.sort(key=lambda item: _natural_key(item.question_key))
+    items.sort(key=lambda item: question_key_sort_key(item.question_key))
     return [QuestionRecognitionItemPublic.model_validate(item) for item in items]
 
 
@@ -670,6 +666,14 @@ def confirm_question_recognition_run(
         raise HTTPException(
             status_code=409, detail="题目标识或区域关联发生冲突"
         ) from exc
+    exam = session.get(Exam, exam_id)
+    try:
+        if exam:
+            tag_exam_questions(session, exam=exam)
+    except Exception:
+        # 知识点是增强信息，标注失败不能让教师的题目确认失败。
+        session.rollback()
+        logger.warning("knowledge point tagging failed", exc_info=True)
     session.refresh(run)
     return _question_run_public(session, run)
 
@@ -818,7 +822,7 @@ def list_answer_preparation_items(
     items.sort(
         key=lambda item: (
             item.question_id is None,
-            _natural_key(question_keys.get(item.question_id)),
+            question_key_sort_key(question_keys.get(item.question_id)),
             item.created_at,
         )
     )
@@ -1074,7 +1078,10 @@ def list_standard_answer_revisions(
         ).all()
     )
     revisions.sort(
-        key=lambda item: (_natural_key(item.question_key), -item.revision_number)
+        key=lambda item: (
+            question_key_sort_key(item.question_key),
+            -item.revision_number,
+        )
     )
     return StandardAnswerRevisionsPublic(
         data=[StandardAnswerRevisionPublic.model_validate(item) for item in revisions],

@@ -1,3 +1,4 @@
+import logging
 import uuid
 from typing import Any
 
@@ -59,7 +60,11 @@ from app.worker import (
     process_grading_run,
     process_recognition_run,
     process_rubric_generation,
+    process_wrongbook_snapshot,
+    run_wrongbook_snapshot,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/grading",
@@ -857,6 +862,28 @@ def audit_log(session: SessionDep, current_user: CurrentUser, run_id: uuid.UUID)
     )
 
 
+def _enqueue_wrongbook_snapshot(release_id: uuid.UUID) -> None:
+    """发布成绩后异步写错题本。
+
+    快照是学生端的增强能力，任何失败都不能影响教师已经完成的成绩发布，
+    因此这里吞掉异常，只记日志，由后续重新发布或补跑脚本兜底。
+    """
+    try:
+        if settings.ENVIRONMENT == "local":
+            run_wrongbook_snapshot(str(release_id))
+            return
+        try:
+            process_wrongbook_snapshot.send(str(release_id))
+        except Exception:
+            run_wrongbook_snapshot(str(release_id))
+    except Exception:
+        logger.warning(
+            "wrongbook snapshot failed",
+            extra={"release_id": str(release_id)},
+            exc_info=True,
+        )
+
+
 @router.post("/exams/{exam_id}/score-releases", response_model=ScoreReleasePublic)
 def publish_exam_scores(
     session: SessionDep,
@@ -986,6 +1013,7 @@ def publish_exam_scores(
     session.add_all(items)
     session.commit()
     session.refresh(release)
+    _enqueue_wrongbook_snapshot(release.id)
     return ScoreReleasePublic(**release.model_dump(), item_count=len(items))
 
 

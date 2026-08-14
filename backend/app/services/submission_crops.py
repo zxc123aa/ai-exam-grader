@@ -84,6 +84,30 @@ def resolve_exam_region_paper_page(session: Session, region: ExamRegion) -> int:
     return region.page_number
 
 
+def crop_region_from_image(
+    *,
+    image: Image.Image,
+    region: ExamRegion,
+    padding_ratio: float = 0.012,
+) -> Image.Image:
+    """从已渲染的页面图裁出题区。
+
+    不关闭传入的 `image`：调用方可能要在同一页上裁多个题区（例如错题本快照按页
+    缓存渲染结果），页面图的生命周期由调用方负责。
+    """
+    image_width, image_height = image.size
+    # 外扩一点余量，避免公式/图形边缘被裁掉（夹紧到页面边界内）
+    pad_x = round(image_height * padding_ratio)
+    pad_y = round(image_height * padding_ratio)
+    left = max(0, round(region.x * image_width) - pad_x)
+    top = max(0, round(region.y * image_height) - pad_y)
+    right = min(image_width, round((region.x + region.width) * image_width) + pad_x)
+    bottom = min(image_height, round((region.y + region.height) * image_height) + pad_y)
+    if right <= left or bottom <= top:
+        raise SubmissionCropError("Region crop is empty")
+    return image.crop((left, top, right, bottom))
+
+
 def crop_region_image(
     *,
     stored_file: StoredFile,
@@ -96,19 +120,9 @@ def crop_region_image(
         page_number=page_number if page_number is not None else region.page_number,
     )
     try:
-        image_width, image_height = image.size
-        # 外扩一点余量，避免公式/图形边缘被裁掉（夹紧到页面边界内）
-        pad_x = round(image_height * padding_ratio)
-        pad_y = round(image_height * padding_ratio)
-        left = max(0, round(region.x * image_width) - pad_x)
-        top = max(0, round(region.y * image_height) - pad_y)
-        right = min(image_width, round((region.x + region.width) * image_width) + pad_x)
-        bottom = min(
-            image_height, round((region.y + region.height) * image_height) + pad_y
+        return crop_region_from_image(
+            image=image, region=region, padding_ratio=padding_ratio
         )
-        if right <= left or bottom <= top:
-            raise SubmissionCropError("Region crop is empty")
-        return image.crop((left, top, right, bottom))
     finally:
         image.close()
 

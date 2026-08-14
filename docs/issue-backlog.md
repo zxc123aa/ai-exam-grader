@@ -912,6 +912,140 @@
   - `OutboxEvent` dispatcher 真正投递（至少履约与退款成功通知邮件），失败可重试并保留 `last_error`。
   - 微信退款真实接口调用与每日对账口径，按 `docs/production-operations.md` 的商业运营闭环执行。
 
+## 周期 9：学生端终身错题本
+
+方案文档：`docs/student-wrongbook-plan.md`。以下条目是该方案的执行拆解，阶段 A 之外的条目在形态与合规路径确认前不要开工。
+
+### AEG-065 知识点体系与 AI 自动打标
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：`ExamQuestion.knowledge_point` 是自由文本且上限 100 字符，AI 识别阶段完全不写该字段（`question_answer_workflow.py` 创建识别项时不填），只能靠教师手打，实际基本为空。没有知识点就没有失分归因聚合、掌握度和复习推荐。
+- 目标：建立知识点树，并让识别阶段自动打标、教师确认时校正。
+- 验收标准：
+  - 新增 `KnowledgePoint` 表（学科、学段、编码、名称、父节点、别名），第一版覆盖初中物理与数学。
+  - 题目识别产出「知识点 + 置信度」，低置信度不写入、留给教师。
+  - 教师在确认题目界面可校正知识点，校正结果可导出用于评估 AI 打标准确率。
+  - 知识点从自由文本迁移为受控引用，保留旧自由文本作为回填来源。
+
+### AEG-066 学生逐题详情与失分原因
+
+- 类型：Feature
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：学生端只有两个接口，报告只返回 `{label, score, max_score, comment}`，`suggested_comment` 被写死为 `None`、`score_source` 写死为 `"final"`；裁切图端点的 `can_see_exam` 不包含学生角色。而判分模型的评分点级证据 `{"point","matched","points","reason"}` 已经写进 `SubmissionAnnotation.grading_evidence`，只是没有暴露。注意 `grading_reasons` 装的是复核门禁信号（`low_confidence`/`unreadable`/`answer_count_mismatch`/`model_failure`/`unconfirmed_answer_evidence`），不是失分原因，**不得展示给学生**。
+- 目标：让学生看到「题干、标准答案、我的作答、为什么扣分、我的手写原件」。
+- 验收标准：
+  - 新增学生逐题详情端点，只在成绩已发布后可见。
+  - 失分原因取 `grading_evidence` 中 `matched=false` 的评分点，**不引入额外模型调用**。
+  - 裁切图提供 learner 作用域的受保护访问，不复用教师端 `can_see_exam` 判定。
+  - 教师自由文本评语在给学生前有脱敏或长度约束策略。
+  - 前端 `my.exams_.$examId` 接通图像与失分原因（`WrongQuestionsSection` 已具备渲染能力）。
+
+### AEG-072 发布过成绩的考试无法删除
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Done
+- 所属周期：周期 9 阶段 A 附带
+- 症状：一场考试只要发布过成绩，`DELETE /exams/{exam_id}` 就返回 500。
+- 根因：`ScoreReleaseItem.submission_id` 是 `ondelete="RESTRICT"`，而 `Exam` 只对 documents/regions/submissions 建了 ORM 级联，删考试时 SQLAlchemy 先删答卷，被数据库的 RESTRICT 拒绝。DB 层面 `ScoreRelease.exam_id` 本来就是 CASCADE，属于 ORM 删除顺序问题。
+- 修复：给 `Exam` 补 `score_releases` 级联关系、给 `ScoreRelease` 补 `items` 级联关系，删考试时先清成绩发布快照。单份答卷仍受 RESTRICT 保护，不会把已发布成绩删出空洞。
+- 回归：`test_wrongbook_survives_exam_deletion` 同时覆盖删除成功与错题本留存。
+
+### AEG-067 发布即快照：错题条目独立留存
+
+- 类型：Architecture
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 A
+- 背景：`Exam` 删除会级联清空 documents / regions / submissions / questions / annotations / score releases；裁切图依赖 `ProcessingTask.output_ref` 或按 `ExamRegion` 实时重裁。错题本若做成教师端数据的视图，老师删一场考试，学生的「终身」错题会静默消失。
+- 目标：错题本成为独立留存实体，来源可消失而错题本完整。
+- 验收标准：
+  - 新增 `WrongQuestionEntry`，快照题干、标准答案、评分点、学生作答、失分原因标签、教师评语、考试元数据。
+  - 对 `exam_id`/`submission_id`/`annotation_id`/`question_id` 只保留 `ON DELETE SET NULL` 弱引用。
+  - 裁切图在快照时复制到学习者命名空间并压缩（建议 WebP），不依赖考试与答卷生命周期。
+  - 挂在成绩发布动作上异步生成；重新发布生成新条目并把旧条目标记 superseded，不原地改写。
+  - 失分原因使用**有限标签集**，保证可跨考试聚合。
+  - 实测单个学生年度存储量并记录，用于成本估算。
+
+### AEG-068 终身学习者身份
+
+- 类型：Architecture
+- 优先级：P0
+- 状态：Done
+- 所属周期：周期 9 阶段 B
+- 决策依据：D-029 学生身份走 C 端账号，与学校租户解耦。
+- 背景：`Student` 是班级内实体（`UniqueConstraint(class_id, name)` 且不支持修改 `class_id`），升班等于新建档案，历史断裂；学生端兜底匹配用「当前班名 + 姓名」，旧班答卷可能查不到。同时 `get_current_user` 对每个请求执行 `assert_organization_access`，学校冻结后学生一律 403。
+- 目标：身份跨班、跨学年、跨学校稳定，且不随学校租户状态失效。
+- 验收标准：
+  - 新增 `LearnerProfile`（锚定学生自己的登录账号，不带 org_id）与 `LearnerEnrollment`（在校经历，可多条）。已完成。
+  - 转班、升学、转学通过新增 enrollment 表达，错题本连续。已完成（`test_learner_keeps_history_across_class_change`）。
+  - 错题本读取只依赖 learner 身份，学校 `frozen` 不影响学生查阅历史。已完成（学生角色豁免学校服务状态门禁）。
+  - 存量 `Student` 与 `{学号}@school.local` 账号有明确回填与升级路径。已完成（迁移内回填 + 首次访问自动认领孤立条目）。
+  - 在校经历快照学校名与班级名，学校被删也能说清「这题是哪一年在哪个班考的」。已完成。
+
+### AEG-069 复习闭环
+
+- 类型：Feature
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 9 阶段 C
+- 目标：错题从「躺着」变成「被复习」，这是留存的真实来源。
+- 验收标准：
+  - 间隔重复调度（简化 SM-2，1/3/7/15/30 天），交互只问「还会不会」。
+  - 考前突击清单：按学科 + 知识点错误密度 + 距上次复习时间排序，可打印 A4。
+  - 相似题优先检索本校题库（`question-bank` 已跨考试），检索不到再用 LLM 生成变式题并标注「AI 生成，未经教师审核」。
+  - 掌握度视图按知识点聚合，纯统计不调模型。
+
+### AEG-070 学生端客户端形态
+
+- 类型：Design
+- 优先级：P1
+- 状态：Ready
+- 所属周期：周期 9 阶段 C
+- 决策依据：D-028 学生端以微信小程序为主，Web 端保留。
+- 待办（需要产品侧提供资产后才能开工）：
+  - 微信小程序主体注册与服务类目，取得 AppID / AppSecret（工程侧无法自助完成）。
+  - 微信登录：`wx.login` 换 openid/unionid，与 `LearnerProfile` 换绑，学生从此可脱离学校创建的账号。
+  - 家长视角与学生视角的权限边界。
+  - 视觉与 `AGENTS.md` 的小程序色板一致。
+- 已就绪的前置：学生端 API 已与学校租户解耦，小程序与 Web 共用同一套 `/students/me/*` 接口。
+
+### AEG-071 未成年人合规与数据可携带
+
+- 类型：Compliance
+- 优先级：P0
+- 状态：Ready
+- 所属周期：周期 9 阶段 D（但需在学生端上线前完成）
+- 背景：仓库当前在未成年人同意、保留期、导出与删除方面基本空白。学生端长期留存成绩与手写影像，属于典型敏感场景。
+- 验收标准：
+  - 明确数据控制者与受托处理者关系，先走学校委托路径。
+  - 不满十四周岁的监护人同意链路与单独处理规则。
+  - 错题本导出（PDF + JSON）与删除；删除学生个人错题本不影响学校成绩档案。
+  - 核实是否需要教育移动互联网应用程序备案。
+  - 明确不提供「拍照搜题」，理由写入决策记录（双减意见第 15 条）。
+  - 需法务确认，工程侧只负责提供能力。
+
+### AEG-072 错题本失分点文案不说人话
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 9 阶段 B
+- 背景：2026-08-13 用真实物理答卷（海口八年级期末 B 卷）本地跑完「确认题目 → 判分 → 发布成绩」后，检查学生端 `/my/wrongbook` 实际渲染的 `missed_points`，发现三处直接违反「文案说人话」。裁切图、知识点打标、按页缓存均正常，只有文案有问题。
+- 具体问题：
+  - `app/services/grading_rules.py` 把 Python 列表字面量写进学生可见文案：客观题失分理由渲染成「学生选择 ['A']，本评分点要求 ['B']，且包含错误选项 ['A']」，应当是「你选了 A，正确答案是 B」。
+  - 评分点标题回落到内部编号：`extract_missed_points` 取 `point.id`，学生看到加粗的「p1」「p3」。评分点没有 description 时应回落到题号或「未答到的要点」，不能暴露编号。
+  - `frontend/src/routes/_layout/my.wrongbook.tsx` 把「该评分点得分」当扣分展示：未命中评分点的 `points` 恒为 0，界面渲染成「-0 分」。应改为展示该评分点的满分值作为扣分，或不展示。
+- 验收标准：
+  - 客观题失分理由不含列表、括号等数据结构字面量。
+  - 学生端不出现 `p1` 这类内部编号。
+  - 未命中评分点不出现「-0 分」。
+
 ## 状态更正
 
 - AEG-003、AEG-008、AEG-020 的容器化验收在周期 0/1 长期停在 In Progress，实际已由 staging 部署（`compose.staging.yml` + `deploy-staging.sh`）覆盖：数据库、Redis、后端、worker、前端和 Node 参考服务均以容器运行。已在对应条目更新状态并注明验证以 staging compose 为准，本地开发 override（Traefik、Adminer、Mailcatcher）仍未做过一次完整 `docker compose up --build` 验收。

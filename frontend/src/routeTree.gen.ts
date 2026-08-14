@@ -29,6 +29,7 @@ import { Route as LayoutPlatformSettingsRouteImport } from './routes/_layout/pla
 import { Route as LayoutPlatformRoutingRouteImport } from './routes/_layout/platform_.routing'
 import { Route as LayoutPlatformCommerceRouteImport } from './routes/_layout/platform_.commerce'
 import { Route as LayoutPlatformOrgIdRouteImport } from './routes/_layout/platform_.$orgId'
+import { Route as LayoutMyWrongbookRouteImport } from './routes/_layout/my.wrongbook'
 import { Route as LayoutMyExamsRouteImport } from './routes/_layout/my.exams'
 import { Route as LayoutExamsExamIdRouteImport } from './routes/_layout/exams_.$examId'
 import { Route as LayoutExamsExamIdIndexRouteImport } from './routes/_layout/exams_.$examId.index'
@@ -141,6 +142,11 @@ const LayoutPlatformOrgIdRoute = LayoutPlatformOrgIdRouteImport.update({
   path: '/platform/$orgId',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutMyWrongbookRoute = LayoutMyWrongbookRouteImport.update({
+  id: '/my/wrongbook',
+  path: '/my/wrongbook',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutMyExamsRoute = LayoutMyExamsRouteImport.update({
   id: '/my/exams',
   path: '/my/exams',
@@ -225,6 +231,7 @@ export interface FileRoutesByFullPath {
   '/signup/verify': typeof SignupVerifyRoute
   '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/my/exams': typeof LayoutMyExamsRoute
+  '/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
   '/platform/commerce': typeof LayoutPlatformCommerceRoute
   '/platform/routing': typeof LayoutPlatformRoutingRoute
@@ -257,6 +264,7 @@ export interface FileRoutesByTo {
   '/signup/verify': typeof SignupVerifyRoute
   '/': typeof LayoutIndexRoute
   '/my/exams': typeof LayoutMyExamsRoute
+  '/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
   '/platform/commerce': typeof LayoutPlatformCommerceRoute
   '/platform/routing': typeof LayoutPlatformRoutingRoute
@@ -292,6 +300,7 @@ export interface FileRoutesById {
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/exams_/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/_layout/my/exams': typeof LayoutMyExamsRoute
+  '/_layout/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/_layout/platform_/$orgId': typeof LayoutPlatformOrgIdRoute
   '/_layout/platform_/commerce': typeof LayoutPlatformCommerceRoute
   '/_layout/platform_/routing': typeof LayoutPlatformRoutingRoute
@@ -327,6 +336,7 @@ export interface FileRouteTypes {
     | '/signup/verify'
     | '/exams/$examId'
     | '/my/exams'
+    | '/my/wrongbook'
     | '/platform/$orgId'
     | '/platform/commerce'
     | '/platform/routing'
@@ -359,6 +369,7 @@ export interface FileRouteTypes {
     | '/signup/verify'
     | '/'
     | '/my/exams'
+    | '/my/wrongbook'
     | '/platform/$orgId'
     | '/platform/commerce'
     | '/platform/routing'
@@ -393,6 +404,7 @@ export interface FileRouteTypes {
     | '/_layout/'
     | '/_layout/exams_/$examId'
     | '/_layout/my/exams'
+    | '/_layout/my/wrongbook'
     | '/_layout/platform_/$orgId'
     | '/_layout/platform_/commerce'
     | '/_layout/platform_/routing'
@@ -561,6 +573,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutPlatformOrgIdRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/my/wrongbook': {
+      id: '/_layout/my/wrongbook'
+      path: '/my/wrongbook'
+      fullPath: '/my/wrongbook'
+      preLoaderRoute: typeof LayoutMyWrongbookRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/my/exams': {
       id: '/_layout/my/exams'
       path: '/my/exams'
@@ -688,6 +707,7 @@ interface LayoutRouteChildren {
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutExamsExamIdRoute: typeof LayoutExamsExamIdRouteWithChildren
   LayoutMyExamsRoute: typeof LayoutMyExamsRoute
+  LayoutMyWrongbookRoute: typeof LayoutMyWrongbookRoute
   LayoutPlatformOrgIdRoute: typeof LayoutPlatformOrgIdRoute
   LayoutPlatformCommerceRoute: typeof LayoutPlatformCommerceRoute
   LayoutPlatformRoutingRoute: typeof LayoutPlatformRoutingRoute
@@ -708,6 +728,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutExamsExamIdRoute: LayoutExamsExamIdRouteWithChildren,
   LayoutMyExamsRoute: LayoutMyExamsRoute,
+  LayoutMyWrongbookRoute: LayoutMyWrongbookRoute,
   LayoutPlatformOrgIdRoute: LayoutPlatformOrgIdRoute,
   LayoutPlatformCommerceRoute: LayoutPlatformCommerceRoute,
   LayoutPlatformRoutingRoute: LayoutPlatformRoutingRoute,

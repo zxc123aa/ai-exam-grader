@@ -17,6 +17,7 @@
 - [Issue 草稿池](docs/issue-backlog.md)：本地 issue 队列，后续可迁移到 GitHub Issues。
 - [决策记录](docs/decision-log.md)：记录关键产品和技术决策。
 - [模板、标准答案与评分闭环计划](docs/template-answer-grading-plan.md)：记录“空白卷重建 -> 标准答案 -> 学生答案识别评分”的主线方案。
+- [学生端终身错题本方案](docs/student-wrongbook-plan.md)：学生端主线的定位、数据模型、身份与生命周期、合规与分阶段落地（待决策）。
 - [生产运行手册](docs/production-operations.md)：生产基线、上线流程、商业运营闭环、OSS 迁移、备份恢复、告警与故障处置。
 - [渠道运营手册](docs/provider-relay-operations.md)：模型中转渠道的接入与运维口径。
 - [开发指南](development.md)：本地启动、pre-commit、CI 检查与本地复现方式。

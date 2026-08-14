@@ -4019,6 +4019,116 @@ export const InvoiceStatusSchema = {
     title: 'InvoiceStatus'
 } as const;
 
+export const LearnerEnrollmentPublicSchema = {
+    properties: {
+        org_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Org Name'
+        },
+        class_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name'
+        },
+        student_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Name'
+        },
+        started_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Started At'
+        },
+        ended_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Ended At'
+        }
+    },
+    type: 'object',
+    required: ['started_at'],
+    title: 'LearnerEnrollmentPublic'
+} as const;
+
+export const LearnerProfilePublicSchema = {
+    properties: {
+        learner_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Learner Id'
+        },
+        display_name: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Display Name'
+        },
+        grade_band: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Band'
+        },
+        entry_count: {
+            type: 'integer',
+            title: 'Entry Count',
+            default: 0
+        },
+        wrong_count: {
+            type: 'integer',
+            title: 'Wrong Count',
+            default: 0
+        },
+        enrollments: {
+            items: {
+                '$ref': '#/components/schemas/LearnerEnrollmentPublic'
+            },
+            type: 'array',
+            title: 'Enrollments'
+        }
+    },
+    type: 'object',
+    required: ['learner_id'],
+    title: 'LearnerProfilePublic'
+} as const;
+
 export const MarkingRecognitionImportSchema = {
     properties: {
         document_ids: {
@@ -9534,6 +9644,30 @@ export const StudentExamReportQuestionSchema = {
                 }
             ],
             title: 'Suggested Comment'
+        },
+        entry_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Entry Id'
+        },
+        knowledge_point_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Knowledge Point Names'
+        },
+        has_image: {
+            type: 'boolean',
+            title: 'Has Image',
+            default: false
         }
     },
     type: 'object',
@@ -11422,4 +11556,479 @@ export const WorkflowRunStatusSchema = {
     type: 'string',
     enum: ['queued', 'running', 'completed', 'completed_with_errors', 'failed'],
     title: 'WorkflowRunStatus'
+} as const;
+
+export const WrongQuestionReviewResultSchema = {
+    type: 'string',
+    enum: ['again', 'hard', 'good', 'easy'],
+    title: 'WrongQuestionReviewResult'
+} as const;
+
+export const WrongbookEntriesPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/WrongbookEntryListItem'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        },
+        subjects: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Subjects'
+        },
+        knowledge_points: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Knowledge Points'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'WrongbookEntriesPublic'
+} as const;
+
+export const WrongbookEntryDetailSchema = {
+    properties: {
+        entry_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Entry Id'
+        },
+        exam_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Id'
+        },
+        exam_title: {
+            type: 'string',
+            title: 'Exam Title'
+        },
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        grade_level: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Grade Level'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        class_name_at_time: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Class Name At Time'
+        },
+        question_label: {
+            type: 'string',
+            title: 'Question Label'
+        },
+        question_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Text'
+        },
+        question_type: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Question Type'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        is_wrong: {
+            type: 'boolean',
+            title: 'Is Wrong',
+            default: true
+        },
+        standard_answer_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Standard Answer Text'
+        },
+        scoring_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Scoring Points'
+        },
+        student_answer_text: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Student Answer Text'
+        },
+        missed_points: {
+            items: {
+                additionalProperties: true,
+                type: 'object'
+            },
+            type: 'array',
+            title: 'Missed Points'
+        },
+        teacher_comment: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Teacher Comment'
+        },
+        knowledge_point_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Knowledge Point Names'
+        },
+        has_image: {
+            type: 'boolean',
+            title: 'Has Image',
+            default: false
+        },
+        released_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Released At'
+        }
+    },
+    type: 'object',
+    required: ['entry_id', 'exam_title', 'question_label', 'released_at'],
+    title: 'WrongbookEntryDetail'
+} as const;
+
+export const WrongbookEntryListItemSchema = {
+    properties: {
+        entry_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Entry Id'
+        },
+        exam_id: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'uuid'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Id'
+        },
+        exam_title: {
+            type: 'string',
+            title: 'Exam Title'
+        },
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        question_label: {
+            type: 'string',
+            title: 'Question Label'
+        },
+        score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Score'
+        },
+        max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Max Score'
+        },
+        is_wrong: {
+            type: 'boolean',
+            title: 'Is Wrong',
+            default: true
+        },
+        knowledge_point_names: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Knowledge Point Names'
+        },
+        has_image: {
+            type: 'boolean',
+            title: 'Has Image',
+            default: false
+        },
+        released_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Released At'
+        },
+        review_count: {
+            type: 'integer',
+            title: 'Review Count',
+            default: 0
+        },
+        next_due_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Next Due At'
+        }
+    },
+    type: 'object',
+    required: ['entry_id', 'exam_title', 'question_label', 'released_at'],
+    title: 'WrongbookEntryListItem'
+} as const;
+
+export const WrongbookMasteryItemSchema = {
+    properties: {
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        knowledge_point_name: {
+            type: 'string',
+            title: 'Knowledge Point Name'
+        },
+        attempts: {
+            type: 'integer',
+            title: 'Attempts',
+            default: 0
+        },
+        wrong_count: {
+            type: 'integer',
+            title: 'Wrong Count',
+            default: 0
+        },
+        wrong_rate: {
+            type: 'integer',
+            title: 'Wrong Rate',
+            default: 0
+        },
+        last_wrong_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Wrong At'
+        },
+        last_reviewed_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Last Reviewed At'
+        }
+    },
+    type: 'object',
+    required: ['knowledge_point_name'],
+    title: 'WrongbookMasteryItem'
+} as const;
+
+export const WrongbookMasteryPublicSchema = {
+    properties: {
+        data: {
+            items: {
+                '$ref': '#/components/schemas/WrongbookMasteryItem'
+            },
+            type: 'array',
+            title: 'Data'
+        },
+        count: {
+            type: 'integer',
+            title: 'Count'
+        }
+    },
+    type: 'object',
+    required: ['data', 'count'],
+    title: 'WrongbookMasteryPublic'
+} as const;
+
+export const WrongbookReviewCreateSchema = {
+    properties: {
+        result: {
+            '$ref': '#/components/schemas/WrongQuestionReviewResult'
+        }
+    },
+    type: 'object',
+    required: ['result'],
+    title: 'WrongbookReviewCreate'
+} as const;
+
+export const WrongbookReviewPublicSchema = {
+    properties: {
+        entry_id: {
+            type: 'string',
+            format: 'uuid',
+            title: 'Entry Id'
+        },
+        result: {
+            '$ref': '#/components/schemas/WrongQuestionReviewResult'
+        },
+        review_count: {
+            type: 'integer',
+            title: 'Review Count'
+        },
+        interval_days: {
+            type: 'integer',
+            title: 'Interval Days'
+        },
+        next_due_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Next Due At'
+        },
+        due_count: {
+            type: 'integer',
+            title: 'Due Count',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['entry_id', 'result', 'review_count', 'interval_days', 'next_due_at'],
+    title: 'WrongbookReviewPublic'
 } as const;
