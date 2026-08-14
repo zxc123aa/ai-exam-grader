@@ -10,7 +10,22 @@ from app.services.question_text_normalization import (
     normalize_recognized_question_text,
     normalize_recognized_question_text_with_audit,
     normalize_reference_result_question,
+    question_key_sort_key,
 )
+
+
+def test_question_key_sort_key_orders_numbers_and_tolerates_mixed_keys() -> None:
+    # A real recognition run mixes plain numbers with region fallback keys, which
+    # used to make the sort compare int against str and 500 the items endpoint.
+    keys = ["10", "A1", "2", "fallback:page:2::region_1", "1", None]
+    assert sorted(keys, key=question_key_sort_key) == [
+        None,
+        "1",
+        "2",
+        "10",
+        "A1",
+        "fallback:page:2::region_1",
+    ]
 
 
 def test_normalize_recognized_question_text_removes_format_noise_only() -> None:

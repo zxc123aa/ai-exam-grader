@@ -1030,6 +1030,22 @@
   - 明确不提供「拍照搜题」，理由写入决策记录（双减意见第 15 条）。
   - 需法务确认，工程侧只负责提供能力。
 
+### AEG-072 错题本失分点文案不说人话
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Backlog
+- 所属周期：周期 9 阶段 B
+- 背景：2026-08-13 用真实物理答卷（海口八年级期末 B 卷）本地跑完「确认题目 → 判分 → 发布成绩」后，检查学生端 `/my/wrongbook` 实际渲染的 `missed_points`，发现三处直接违反「文案说人话」。裁切图、知识点打标、按页缓存均正常，只有文案有问题。
+- 具体问题：
+  - `app/services/grading_rules.py` 把 Python 列表字面量写进学生可见文案：客观题失分理由渲染成「学生选择 ['A']，本评分点要求 ['B']，且包含错误选项 ['A']」，应当是「你选了 A，正确答案是 B」。
+  - 评分点标题回落到内部编号：`extract_missed_points` 取 `point.id`，学生看到加粗的「p1」「p3」。评分点没有 description 时应回落到题号或「未答到的要点」，不能暴露编号。
+  - `frontend/src/routes/_layout/my.wrongbook.tsx` 把「该评分点得分」当扣分展示：未命中评分点的 `points` 恒为 0，界面渲染成「-0 分」。应改为展示该评分点的满分值作为扣分，或不展示。
+- 验收标准：
+  - 客观题失分理由不含列表、括号等数据结构字面量。
+  - 学生端不出现 `p1` 这类内部编号。
+  - 未命中评分点不出现「-0 分」。
+
 ## 状态更正
 
 - AEG-003、AEG-008、AEG-020 的容器化验收在周期 0/1 长期停在 In Progress，实际已由 staging 部署（`compose.staging.yml` + `deploy-staging.sh`）覆盖：数据库、Redis、后端、worker、前端和 Node 参考服务均以容器运行。已在对应条目更新状态并注明验证以 staging compose 为准，本地开发 override（Traefik、Adminer、Mailcatcher）仍未做过一次完整 `docker compose up --build` 验收。

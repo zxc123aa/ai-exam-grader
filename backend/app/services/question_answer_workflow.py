@@ -35,6 +35,7 @@ from app.models import (
 from app.services import billing as billing_service
 from app.services.billing import ModelCallContext
 from app.services.model_concurrency import distributed_model_slot
+from app.services.question_text_normalization import question_key_sort_key
 from app.services.reference_algorithm import (
     process_stored_files,
     stored_file_page_data_urls,
@@ -49,14 +50,6 @@ def _bounded_decimal(value: Any, *, default: str = "0") -> Decimal:
     except (InvalidOperation, TypeError, ValueError):
         result = Decimal(default)
     return max(Decimal("0"), min(Decimal("1"), result)).quantize(Decimal("0.0001"))
-
-
-def _natural_key(value: str | None) -> tuple:
-    return tuple(
-        int(part) if part.isdigit() else part.casefold()
-        for part in re.split(r"(\d+)", value or "")
-        if part
-    )
 
 
 def _score_decimal(value: Any, *, default: str = "1") -> Decimal:
@@ -1160,7 +1153,9 @@ def execute_answer_preparation(run_id: str) -> None:
                     .order_by(ExamQuestion.question_key)
                 ).all()
             ]
-            questions.sort(key=lambda question: _natural_key(question["question_key"]))
+            questions.sort(
+                key=lambda question: question_key_sort_key(question["question_key"])
+            )
             if not questions:
                 raise RuntimeError("请先确认至少一道题目")
             declared_allocations: dict[str, dict] = {}

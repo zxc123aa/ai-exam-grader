@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
-import re
 import time
 import uuid
 from decimal import Decimal
@@ -68,6 +67,7 @@ from app.services.pdf_rendering import get_pdf_page_count
 from app.services.question_answer_workflow import (
     persist_question_recognition_payload,
 )
+from app.services.question_text_normalization import question_key_sort_key
 from app.services.system_config import get_grading_defaults, get_school_model_target
 from app.worker import (
     process_answer_preparation_run,
@@ -81,14 +81,6 @@ router = APIRouter(
     tags=["question-answer-workflow"],
     dependencies=[Depends(get_current_teacher_user)],
 )
-
-
-def _natural_key(value: str | None) -> tuple:
-    return tuple(
-        int(part) if part.isdigit() else part.casefold()
-        for part in re.split(r"(\d+)", value or "")
-        if part
-    )
 
 
 def _owned_exam(
@@ -181,7 +173,7 @@ def list_exam_questions(
     questions = list(
         session.exec(select(ExamQuestion).where(ExamQuestion.exam_id == exam_id)).all()
     )
-    questions.sort(key=lambda question: _natural_key(question.question_key))
+    questions.sort(key=lambda question: question_key_sort_key(question.question_key))
     return ExamQuestionsPublic(
         data=[_question_public(session, question) for question in questions],
         count=len(questions),
@@ -449,7 +441,7 @@ def list_question_recognition_items(
             )
         ).all()
     )
-    items.sort(key=lambda item: _natural_key(item.question_key))
+    items.sort(key=lambda item: question_key_sort_key(item.question_key))
     return [QuestionRecognitionItemPublic.model_validate(item) for item in items]
 
 
@@ -830,7 +822,7 @@ def list_answer_preparation_items(
     items.sort(
         key=lambda item: (
             item.question_id is None,
-            _natural_key(question_keys.get(item.question_id)),
+            question_key_sort_key(question_keys.get(item.question_id)),
             item.created_at,
         )
     )
@@ -1086,7 +1078,10 @@ def list_standard_answer_revisions(
         ).all()
     )
     revisions.sort(
-        key=lambda item: (_natural_key(item.question_key), -item.revision_number)
+        key=lambda item: (
+            question_key_sort_key(item.question_key),
+            -item.revision_number,
+        )
     )
     return StandardAnswerRevisionsPublic(
         data=[StandardAnswerRevisionPublic.model_validate(item) for item in revisions],
