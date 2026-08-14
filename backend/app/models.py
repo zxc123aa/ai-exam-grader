@@ -853,11 +853,19 @@ class ExamDocumentQuadPreprocessRequest(SQLModel):
     margin_mode: str = Field(default="conservative", regex="^(conservative|minimal)$")
 
 
+# 与直传路径的 MAX_UPLOAD_BYTES(25 MiB) 保持同一上限；
+# base64 编码后长度约为原始字节的 4/3。常量写在此处而不是从
+# file_storage 导入，避免 models 与 file_storage 循环引用。
+MAX_PREPROCESSED_PAGE_BASE64_LENGTH = 25 * 1024 * 1024 * 4 // 3
+
+
 class PreprocessedPageUpload(SQLModel):
     """A single client-preprocessed page (JPEG, base64-encoded)."""
 
     name: str = Field(default="page.jpg", max_length=200)
-    image_base64: str = Field(min_length=1)
+    image_base64: str = Field(
+        min_length=1, max_length=MAX_PREPROCESSED_PAGE_BASE64_LENGTH
+    )
     width: int = Field(ge=1)
     height: int = Field(ge=1)
     source_quad: list[list[float]] | None = Field(default=None)
@@ -869,7 +877,9 @@ class ExamDocumentPreprocessedUploadRequest(SQLModel):
 
     pages: list[PreprocessedPageUpload] = Field(min_length=1, max_length=2)
     detector: str = Field(default="client_opencvjs", max_length=100)
-    margin_mode: str = Field(default="conservative", regex="^(conservative|minimal|safe)$")
+    margin_mode: str = Field(
+        default="conservative", regex="^(conservative|minimal|safe)$"
+    )
 
 
 class ExamRegionBase(SQLModel):

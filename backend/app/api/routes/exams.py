@@ -32,9 +32,9 @@ from app.models import (
     ExamCreate,
     ExamDocument,
     ExamDocumentOrderUpdate,
+    ExamDocumentPreprocessedUploadRequest,
     ExamDocumentPublic,
     ExamDocumentQuadPreprocessRequest,
-    ExamDocumentPreprocessedUploadRequest,
     ExamDocumentRecognitionRequest,
     ExamDocumentsPublic,
     ExamDocumentType,
@@ -2546,9 +2546,7 @@ def upload_client_preprocessed_pages(
         # Laplacian variance for a sharp exam page is typically 50–200;
         # normalise to [0, 1] so the UI percentage is meaningful.
         _raw_sharpness = round(
-            statistics.mean(
-                [estimate_sharpness(page.image) for page in pages]
-            ),
+            statistics.mean([estimate_sharpness(page.image) for page in pages]),
             2,
         )
         quality_score = round(min(1.0, _raw_sharpness / 50.0), 4)
@@ -2558,7 +2556,10 @@ def upload_client_preprocessed_pages(
             "detector": upload_in.detector,
             "margin_mode": upload_in.margin_mode,
             "page_count": len(pages),
-            "spread_size": [current_x, max((p.image.shape[0] for p in pages), default=0)],
+            "spread_size": [
+                current_x,
+                max((p.image.shape[0] for p in pages), default=0),
+            ],
             "split": {
                 "strategy": "client_provided",
                 "gutter_ratio": 0.5 if len(pages) > 1 else None,
@@ -2604,7 +2605,7 @@ def upload_client_preprocessed_pages(
         session.rollback()
         if processed_file is not None:
             try:
-                cleanup_stored_file_path(processed_file)
+                cleanup_stored_file_path(get_stored_file_path(processed_file))
             except Exception:
                 pass
         raise HTTPException(
