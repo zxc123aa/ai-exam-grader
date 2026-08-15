@@ -4074,6 +4074,154 @@ export const InvoiceStatusSchema = {
     title: 'InvoiceStatus'
 } as const;
 
+export const KnowledgeTrendPointSchema = {
+    properties: {
+        exam_title: {
+            type: 'string',
+            title: 'Exam Title'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        released_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Released At'
+        },
+        wrong_rate: {
+            type: 'integer',
+            title: 'Wrong Rate',
+            default: 0
+        },
+        attempts: {
+            type: 'integer',
+            title: 'Attempts',
+            default: 0
+        },
+        wrong: {
+            type: 'integer',
+            title: 'Wrong',
+            default: 0
+        }
+    },
+    type: 'object',
+    required: ['exam_title', 'released_at'],
+    title: 'KnowledgeTrendPoint',
+    description: '一个知识点在一场发布里的表现。wrong_rate 为 0-100 的整数百分比。'
+} as const;
+
+export const KnowledgeTrendScorePointSchema = {
+    properties: {
+        exam_title: {
+            type: 'string',
+            title: 'Exam Title'
+        },
+        exam_date: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Exam Date'
+        },
+        released_at: {
+            type: 'string',
+            format: 'date-time',
+            title: 'Released At'
+        },
+        total_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Score'
+        },
+        total_max_score: {
+            anyOf: [
+                {
+                    type: 'number'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Total Max Score'
+        }
+    },
+    type: 'object',
+    required: ['exam_title', 'released_at'],
+    title: 'KnowledgeTrendScorePoint',
+    description: '一场发布的总分。快照含满分题（is_wrong=false 也建行），分母自带。'
+} as const;
+
+export const KnowledgeTrendSeriesSchema = {
+    properties: {
+        subject: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Subject'
+        },
+        knowledge_point: {
+            type: 'string',
+            title: 'Knowledge Point'
+        },
+        points: {
+            items: {
+                '$ref': '#/components/schemas/KnowledgeTrendPoint'
+            },
+            type: 'array',
+            title: 'Points'
+        }
+    },
+    type: 'object',
+    required: ['knowledge_point'],
+    title: 'KnowledgeTrendSeries'
+} as const;
+
+export const KnowledgeTrendsPublicSchema = {
+    properties: {
+        score_trend: {
+            items: {
+                '$ref': '#/components/schemas/KnowledgeTrendScorePoint'
+            },
+            type: 'array',
+            title: 'Score Trend'
+        },
+        kp_trends: {
+            items: {
+                '$ref': '#/components/schemas/KnowledgeTrendSeries'
+            },
+            type: 'array',
+            title: 'Kp Trends'
+        }
+    },
+    type: 'object',
+    title: 'KnowledgeTrendsPublic'
+} as const;
+
 export const LearnerEnrollmentPublicSchema = {
     properties: {
         org_name: {

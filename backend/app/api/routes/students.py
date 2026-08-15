@@ -19,6 +19,10 @@ from app.models import (
     Exam,
     ExamScoreSummaryPublic,
     ExamScoreSummaryRow,
+    KnowledgeTrendPoint,
+    KnowledgeTrendScorePoint,
+    KnowledgeTrendSeries,
+    KnowledgeTrendsPublic,
     LearnerEnrollmentPublic,
     LearnerProfile,
     LearnerProfilePublic,
@@ -578,6 +582,121 @@ def read_my_mastery(session: SessionDep, current_user: CurrentStudentUser) -> An
         ],
         count=len(rows),
     )
+
+
+@router.get("/me/knowledge-trends", response_model=KnowledgeTrendsPublic)
+def read_my_knowledge_trends(
+    session: SessionDep, current_user: CurrentStudentUser
+) -> Any:
+    """跨场次的长期趋势：每场发布的总分曲线 + 知识点错误率曲线。
+
+    纯 SQL 聚合错题本快照（满分题也建行，分母自带），不调用模型。
+    """
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    scope = _my_wrongbook_scope(learner)
+
+    # 按发布场次聚合总分。release_id 会因考试删除变 NULL，NULL 场次的标题和
+    # 日期仍在快照里，同一场的标题+日期一致，合并到一点不影响趋势展示。
+    score_rows = session.exec(
+        _entry_source_join(
+            select(
+                col(WrongQuestionSource.exam_title),
+                col(WrongQuestionSource.exam_date),
+                *[
+                    func.max(col(WrongQuestionEntry.released_at)),
+                    func.sum(WrongQuestionEntry.score),
+                    func.sum(WrongQuestionEntry.max_score),
+                ],
+            )
+        )
+        .where(*scope)
+        .group_by(
+            WrongQuestionEntry.release_id,
+            WrongQuestionSource.exam_title,
+            WrongQuestionSource.exam_date,
+        )
+        .order_by(func.max(col(WrongQuestionEntry.released_at)))
+    ).all()
+    score_trend = [
+        KnowledgeTrendScorePoint(
+            exam_title=title,
+            exam_date=exam_date,
+            released_at=released_at,
+            total_score=round(score, 2) if score is not None else None,
+            total_max_score=round(max_score, 2) if max_score is not None else None,
+        )
+        for title, exam_date, released_at, score, max_score in score_rows
+    ]
+
+    # 按（知识点 × 发布场次）聚合错误率；JSONB 展开在数据库里做，配 GIN 索引
+    kp_name = func.jsonb_array_elements_text(
+        WrongQuestionSource.knowledge_point_names
+    ).label("kp_name")
+    kp_rows = session.exec(
+        _entry_source_join(
+            select(
+                kp_name,
+                col(WrongQuestionSource.subject),
+                col(WrongQuestionSource.exam_title),
+                col(WrongQuestionSource.exam_date),
+                *[
+                    func.max(col(WrongQuestionEntry.released_at)),
+                    func.count(),
+                    func.coalesce(
+                        func.sum(
+                            case(
+                                (col(WrongQuestionEntry.is_wrong).is_(True), 1),
+                                else_=0,
+                            )
+                        ),
+                        0,
+                    ),
+                ],
+            )
+        )
+        .where(*scope)
+        .group_by(
+            kp_name,
+            WrongQuestionSource.subject,
+            WrongQuestionEntry.release_id,
+            WrongQuestionSource.exam_title,
+            WrongQuestionSource.exam_date,
+        )
+    ).all()
+    series_map: dict[tuple[str | None, str], dict[str, Any]] = {}
+    for name, subject, title, exam_date, released_at, attempts, wrong in kp_rows:
+        series = series_map.setdefault(
+            (subject, name),
+            {
+                "subject": subject,
+                "knowledge_point": name,
+                "total_wrong": 0,
+                "points": [],
+            },
+        )
+        series["total_wrong"] += int(wrong)
+        series["points"].append(
+            KnowledgeTrendPoint(
+                exam_title=title,
+                exam_date=exam_date,
+                released_at=released_at,
+                wrong_rate=round(int(wrong) / int(attempts) * 100) if attempts else 0,
+                attempts=int(attempts),
+                wrong=int(wrong),
+            )
+        )
+    kp_trends = [
+        KnowledgeTrendSeries(
+            subject=series["subject"],
+            knowledge_point=series["knowledge_point"],
+            points=sorted(series["points"], key=lambda point: point.released_at),
+        )
+        for series in sorted(
+            series_map.values(),
+            key=lambda item: (-item["total_wrong"], item["knowledge_point"]),
+        )
+    ]
+    return KnowledgeTrendsPublic(score_trend=score_trend, kp_trends=kp_trends)
 
 
 @router.post(

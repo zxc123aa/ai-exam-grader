@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import { BookMarked, FileText, Network } from "lucide-react"
-import { ApiError, StudentsService, type WrongbookMasteryItem } from "@/client"
+import {
+  ApiError,
+  type KnowledgeTrendScorePoint,
+  type KnowledgeTrendsPublic,
+  StudentsService,
+  type WrongbookMasteryItem,
+} from "@/client"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { PageHead } from "@/components/Common/PageHead"
 import { ProgressBar, type ProgressTone } from "@/components/Common/ProgressBar"
 import { Tag } from "@/components/Common/Tag"
 import { DonutChart, type DonutSegment } from "@/components/charts/DonutChart"
+import { LineChart, type LineSeries } from "@/components/charts/LineChart"
+import { CHART_PALETTE } from "@/components/charts/theme"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 
@@ -46,6 +54,133 @@ function formatDate(value: string | null | undefined): string | null {
     month: "long",
     day: "numeric",
   })
+}
+
+/** 场次横轴标签：优先考试日期（M/D），同名同日的重复发布补上发布时间区分。 */
+function trendLabels(releases: KnowledgeTrendScorePoint[]): string[] {
+  const base = releases.map((point) => {
+    if (point.exam_date) {
+      const date = new Date(point.exam_date)
+      if (!Number.isNaN(date.getTime()))
+        return `${date.getMonth() + 1}/${date.getDate()}`
+    }
+    return point.exam_title
+  })
+  if (new Set(base).size === base.length) return base
+  return releases.map((point, index) => {
+    const time = new Date(point.released_at)
+    const suffix = Number.isNaN(time.getTime())
+      ? `#${index + 1}`
+      : `${String(time.getHours()).padStart(2, "0")}:${String(time.getMinutes()).padStart(2, "0")}`
+    return `${base[index]} ${suffix}`
+  })
+}
+
+function scoreRateOf(point: KnowledgeTrendScorePoint): number | null {
+  if (point.total_score == null || !point.total_max_score) return null
+  return Math.round((point.total_score / point.total_max_score) * 100)
+}
+
+/** 长期趋势：总分得分率曲线 + 错误数前 5 知识点的错误率曲线。 */
+function TrendSection({ trends }: { trends: KnowledgeTrendsPublic }) {
+  const releases = trends.score_trend ?? []
+  if (releases.length === 0) return null
+  const labels = trendLabels(releases)
+
+  if (releases.length === 1) {
+    const only = releases[0]
+    const rate = scoreRateOf(only)
+    return (
+      <section className="flex flex-col gap-3">
+        <h3 className="font-semibold">长期趋势</h3>
+        <div className="rounded-2xl bg-card p-5 shadow-card">
+          <div className="flex items-center gap-2">
+            <span className="font-medium">{only.exam_title}</span>
+            {only.exam_date && (
+              <span className="text-muted-foreground text-xs">
+                {formatDate(only.exam_date)}
+              </span>
+            )}
+            <span className="ml-auto font-semibold tabular-nums">
+              得分率 {rate ?? 0}%
+            </span>
+          </div>
+          <ProgressBar value={rate ?? 0} slim className="mt-2" />
+          <p className="mt-2 text-muted-foreground text-xs">
+            再考一场就能看到趋势
+          </p>
+        </div>
+      </section>
+    )
+  }
+
+  const scoreSeries: LineSeries[] = [
+    { name: "得分率", data: releases.map(scoreRateOf) },
+  ]
+  // 后端已按总错误数降序排，取前 5；知识点没出现的场次留空（断线）
+  const kpSeries: LineSeries[] = (trends.kp_trends ?? [])
+    .slice(0, 5)
+    .map((series) => {
+      const byRelease = new Map(
+        (series.points ?? []).map((point) => [
+          point.released_at,
+          point.wrong_rate ?? 0,
+        ]),
+      )
+      return {
+        name: series.knowledge_point,
+        data: releases.map((point) => byRelease.get(point.released_at) ?? null),
+      }
+    })
+
+  return (
+    <section className="flex flex-col gap-3">
+      <h3 className="font-semibold">长期趋势</h3>
+      <div className="rounded-2xl bg-card p-5 shadow-card">
+        <p className="mb-2 font-medium text-muted-foreground text-xs">
+          总分得分率
+        </p>
+        <LineChart
+          labels={labels}
+          series={scoreSeries}
+          unit="%"
+          yMin={0}
+          yMax={100}
+        />
+      </div>
+      {kpSeries.length > 0 && (
+        <div className="rounded-2xl bg-card p-5 shadow-card">
+          <p className="mb-2 font-medium text-muted-foreground text-xs">
+            知识点错误率（错得最多的 {kpSeries.length} 个）
+          </p>
+          <LineChart
+            labels={labels}
+            series={kpSeries}
+            unit="%"
+            yMin={0}
+            yMax={100}
+          />
+          <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1">
+            {kpSeries.map((series, index) => (
+              <span
+                key={series.name}
+                className="flex items-center gap-1.5 text-muted-foreground text-xs"
+              >
+                <span
+                  className="inline-block size-2 rounded-full"
+                  style={{
+                    backgroundColor:
+                      CHART_PALETTE[index % CHART_PALETTE.length],
+                  }}
+                />
+                {series.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </section>
+  )
 }
 
 /** 总览：掌握度分布环图 + 平均掌握度大数字。 */
@@ -215,6 +350,10 @@ function MyKnowledgePage() {
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 3,
   })
+  const trendsQuery = useQuery({
+    queryKey: ["my-knowledge-trends"],
+    queryFn: () => StudentsService.readMyKnowledgeTrends(),
+  })
 
   const rows = query.data?.data ?? []
 
@@ -252,6 +391,7 @@ function MyKnowledgePage() {
       ) : (
         <>
           <OverviewSection rows={rows} />
+          {trendsQuery.data && <TrendSection trends={trendsQuery.data} />}
           <WeakSpotSection rows={rows} />
           <MatrixSection rows={rows} />
         </>
