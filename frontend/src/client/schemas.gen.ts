@@ -1090,6 +1090,18 @@ export const Body_exams_upload_student_submissionSchema = {
             contentMediaType: 'application/octet-stream',
             title: 'File'
         },
+        original_file: {
+            anyOf: [
+                {
+                    type: 'string',
+                    contentMediaType: 'application/octet-stream'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Original File'
+        },
         student_name: {
             anyOf: [
                 {
@@ -1128,6 +1140,19 @@ export const Body_exams_upload_student_submissionSchema = {
             enum: ['auto', 'force', 'none'],
             title: 'Preprocess',
             default: 'auto'
+        },
+        client_quality: {
+            anyOf: [
+                {
+                    type: 'number',
+                    maximum: 1,
+                    minimum: 0
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Client Quality'
         }
     },
     type: 'object',
@@ -1883,6 +1908,36 @@ export const ExamDocumentOrderUpdateSchema = {
     type: 'object',
     required: ['document_ids'],
     title: 'ExamDocumentOrderUpdate'
+} as const;
+
+export const ExamDocumentPreprocessedUploadRequestSchema = {
+    properties: {
+        pages: {
+            items: {
+                '$ref': '#/components/schemas/PreprocessedPageUpload'
+            },
+            type: 'array',
+            maxItems: 2,
+            minItems: 1,
+            title: 'Pages'
+        },
+        detector: {
+            type: 'string',
+            maxLength: 100,
+            title: 'Detector',
+            default: 'client_opencvjs'
+        },
+        margin_mode: {
+            type: 'string',
+            title: 'Margin Mode',
+            default: 'conservative'
+        }
+    },
+    type: 'object',
+    required: ['pages'],
+    title: 'ExamDocumentPreprocessedUploadRequest',
+    description: `Client-preprocessed pages — warp/enhance/deskew already done.
+Server only applies orientation normalization (Gemini) and PDF packaging.`
 } as const;
 
 export const ExamDocumentPublicSchema = {
@@ -4129,6 +4184,76 @@ export const LearnerProfilePublicSchema = {
     title: 'LearnerProfilePublic'
 } as const;
 
+export const LearningAdviceFocusPointSchema = {
+    properties: {
+        knowledge_point: {
+            type: 'string',
+            title: 'Knowledge Point'
+        },
+        times: {
+            type: 'integer',
+            title: 'Times',
+            default: 0
+        },
+        advice: {
+            type: 'string',
+            title: 'Advice'
+        }
+    },
+    type: 'object',
+    required: ['knowledge_point', 'advice'],
+    title: 'LearningAdviceFocusPoint'
+} as const;
+
+export const LearningAdvicePublicSchema = {
+    properties: {
+        has_data: {
+            type: 'boolean',
+            title: 'Has Data'
+        },
+        overall: {
+            anyOf: [
+                {
+                    type: 'string'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Overall'
+        },
+        focus_points: {
+            items: {
+                '$ref': '#/components/schemas/LearningAdviceFocusPoint'
+            },
+            type: 'array',
+            title: 'Focus Points'
+        },
+        weekly_plan: {
+            items: {
+                type: 'string'
+            },
+            type: 'array',
+            title: 'Weekly Plan'
+        },
+        generated_at: {
+            anyOf: [
+                {
+                    type: 'string',
+                    format: 'date-time'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Generated At'
+        }
+    },
+    type: 'object',
+    required: ['has_data'],
+    title: 'LearningAdvicePublic'
+} as const;
+
 export const MarkingRecognitionImportSchema = {
     properties: {
         document_ids: {
@@ -6344,6 +6469,54 @@ export const PlatformOrgsPublicSchema = {
     type: 'object',
     required: ['data', 'count'],
     title: 'PlatformOrgsPublic'
+} as const;
+
+export const PreprocessedPageUploadSchema = {
+    properties: {
+        name: {
+            type: 'string',
+            maxLength: 200,
+            title: 'Name',
+            default: 'page.jpg'
+        },
+        image_base64: {
+            type: 'string',
+            maxLength: 34952533,
+            minLength: 1,
+            title: 'Image Base64'
+        },
+        width: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Width'
+        },
+        height: {
+            type: 'integer',
+            minimum: 1,
+            title: 'Height'
+        },
+        source_quad: {
+            anyOf: [
+                {
+                    items: {
+                        items: {
+                            type: 'number'
+                        },
+                        type: 'array'
+                    },
+                    type: 'array'
+                },
+                {
+                    type: 'null'
+                }
+            ],
+            title: 'Source Quad'
+        }
+    },
+    type: 'object',
+    required: ['image_base64', 'width', 'height'],
+    title: 'PreprocessedPageUpload',
+    description: 'A single client-preprocessed page (JPEG, base64-encoded).'
 } as const;
 
 export const PrivateUserCreateSchema = {
@@ -11558,6 +11731,13 @@ export const WorkflowRunStatusSchema = {
     title: 'WorkflowRunStatus'
 } as const;
 
+export const WrongQuestionErrorReasonSchema = {
+    type: 'string',
+    enum: ['concept', 'calculation', 'reading', 'unknown_knowledge'],
+    title: 'WrongQuestionErrorReason',
+    description: '错因标注：学生复习错题时自己选的原因，供学习建议引擎统计。'
+} as const;
+
 export const WrongQuestionReviewResultSchema = {
     type: 'string',
     enum: ['again', 'hard', 'good', 'easy'],
@@ -11774,6 +11954,16 @@ export const WrongbookEntryDetailSchema = {
             type: 'array',
             title: 'Knowledge Point Names'
         },
+        error_reason: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/WrongQuestionErrorReason'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
         has_image: {
             type: 'boolean',
             title: 'Has Image',
@@ -11874,6 +12064,16 @@ export const WrongbookEntryListItemSchema = {
             type: 'array',
             title: 'Knowledge Point Names'
         },
+        error_reason: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/WrongQuestionErrorReason'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        },
         has_image: {
             type: 'boolean',
             title: 'Has Image',
@@ -11905,6 +12105,24 @@ export const WrongbookEntryListItemSchema = {
     type: 'object',
     required: ['entry_id', 'exam_title', 'question_label', 'released_at'],
     title: 'WrongbookEntryListItem'
+} as const;
+
+export const WrongbookEntryUpdateSchema = {
+    properties: {
+        error_reason: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/WrongQuestionErrorReason'
+                },
+                {
+                    type: 'null'
+                }
+            ]
+        }
+    },
+    type: 'object',
+    title: 'WrongbookEntryUpdate',
+    description: '单独修改错因标注；传 null 表示清除。'
 } as const;
 
 export const WrongbookMasteryItemSchema = {
@@ -11992,6 +12210,16 @@ export const WrongbookReviewCreateSchema = {
     properties: {
         result: {
             '$ref': '#/components/schemas/WrongQuestionReviewResult'
+        },
+        error_reason: {
+            anyOf: [
+                {
+                    '$ref': '#/components/schemas/WrongQuestionErrorReason'
+                },
+                {
+                    type: 'null'
+                }
+            ]
         }
     },
     type: 'object',

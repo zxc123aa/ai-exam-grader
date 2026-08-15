@@ -23,13 +23,16 @@ import { Route as LayoutGettingStartedRouteImport } from './routes/_layout/getti
 import { Route as LayoutExamsRouteImport } from './routes/_layout/exams'
 import { Route as LayoutComposeRouteImport } from './routes/_layout/compose'
 import { Route as LayoutClassesRouteImport } from './routes/_layout/classes'
+import { Route as LayoutAdvancedSettingsRouteImport } from './routes/_layout/advanced-settings'
 import { Route as LayoutAdminRouteImport } from './routes/_layout/admin'
 import { Route as LayoutPlatformUsageRouteImport } from './routes/_layout/platform_.usage'
 import { Route as LayoutPlatformSettingsRouteImport } from './routes/_layout/platform_.settings'
 import { Route as LayoutPlatformRoutingRouteImport } from './routes/_layout/platform_.routing'
 import { Route as LayoutPlatformCommerceRouteImport } from './routes/_layout/platform_.commerce'
 import { Route as LayoutPlatformOrgIdRouteImport } from './routes/_layout/platform_.$orgId'
+import { Route as LayoutMyWrongbookSheetRouteImport } from './routes/_layout/my.wrongbook-sheet'
 import { Route as LayoutMyWrongbookRouteImport } from './routes/_layout/my.wrongbook'
+import { Route as LayoutMyKnowledgeRouteImport } from './routes/_layout/my.knowledge'
 import { Route as LayoutMyExamsRouteImport } from './routes/_layout/my.exams'
 import { Route as LayoutExamsExamIdRouteImport } from './routes/_layout/exams_.$examId'
 import { Route as LayoutExamsExamIdIndexRouteImport } from './routes/_layout/exams_.$examId.index'
@@ -112,6 +115,11 @@ const LayoutClassesRoute = LayoutClassesRouteImport.update({
   path: '/classes',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutAdvancedSettingsRoute = LayoutAdvancedSettingsRouteImport.update({
+  id: '/advanced-settings',
+  path: '/advanced-settings',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutAdminRoute = LayoutAdminRouteImport.update({
   id: '/admin',
   path: '/admin',
@@ -142,9 +150,19 @@ const LayoutPlatformOrgIdRoute = LayoutPlatformOrgIdRouteImport.update({
   path: '/platform/$orgId',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutMyWrongbookSheetRoute = LayoutMyWrongbookSheetRouteImport.update({
+  id: '/my/wrongbook-sheet',
+  path: '/my/wrongbook-sheet',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutMyWrongbookRoute = LayoutMyWrongbookRouteImport.update({
   id: '/my/wrongbook',
   path: '/my/wrongbook',
+  getParentRoute: () => LayoutRoute,
+} as any)
+const LayoutMyKnowledgeRoute = LayoutMyKnowledgeRouteImport.update({
+  id: '/my/knowledge',
+  path: '/my/knowledge',
   getParentRoute: () => LayoutRoute,
 } as any)
 const LayoutMyExamsRoute = LayoutMyExamsRouteImport.update({
@@ -221,6 +239,7 @@ export interface FileRoutesByFullPath {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/classes': typeof LayoutClassesRoute
   '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
@@ -231,7 +250,9 @@ export interface FileRoutesByFullPath {
   '/signup/verify': typeof SignupVerifyRoute
   '/exams/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/my/exams': typeof LayoutMyExamsRoute
+  '/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/my/wrongbook': typeof LayoutMyWrongbookRoute
+  '/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
   '/platform/commerce': typeof LayoutPlatformCommerceRoute
   '/platform/routing': typeof LayoutPlatformRoutingRoute
@@ -254,6 +275,7 @@ export interface FileRoutesByTo {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/admin': typeof LayoutAdminRoute
+  '/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/classes': typeof LayoutClassesRoute
   '/compose': typeof LayoutComposeRoute
   '/exams': typeof LayoutExamsRoute
@@ -264,7 +286,9 @@ export interface FileRoutesByTo {
   '/signup/verify': typeof SignupVerifyRoute
   '/': typeof LayoutIndexRoute
   '/my/exams': typeof LayoutMyExamsRoute
+  '/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/my/wrongbook': typeof LayoutMyWrongbookRoute
+  '/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
   '/platform/commerce': typeof LayoutPlatformCommerceRoute
   '/platform/routing': typeof LayoutPlatformRoutingRoute
@@ -289,6 +313,7 @@ export interface FileRoutesById {
   '/reset-password': typeof ResetPasswordRoute
   '/signup': typeof SignupRoute
   '/_layout/admin': typeof LayoutAdminRoute
+  '/_layout/advanced-settings': typeof LayoutAdvancedSettingsRoute
   '/_layout/classes': typeof LayoutClassesRoute
   '/_layout/compose': typeof LayoutComposeRoute
   '/_layout/exams': typeof LayoutExamsRoute
@@ -300,7 +325,9 @@ export interface FileRoutesById {
   '/_layout/': typeof LayoutIndexRoute
   '/_layout/exams_/$examId': typeof LayoutExamsExamIdRouteWithChildren
   '/_layout/my/exams': typeof LayoutMyExamsRoute
+  '/_layout/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/_layout/my/wrongbook': typeof LayoutMyWrongbookRoute
+  '/_layout/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/_layout/platform_/$orgId': typeof LayoutPlatformOrgIdRoute
   '/_layout/platform_/commerce': typeof LayoutPlatformCommerceRoute
   '/_layout/platform_/routing': typeof LayoutPlatformRoutingRoute
@@ -326,6 +353,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/advanced-settings'
     | '/classes'
     | '/compose'
     | '/exams'
@@ -336,7 +364,9 @@ export interface FileRouteTypes {
     | '/signup/verify'
     | '/exams/$examId'
     | '/my/exams'
+    | '/my/knowledge'
     | '/my/wrongbook'
+    | '/my/wrongbook-sheet'
     | '/platform/$orgId'
     | '/platform/commerce'
     | '/platform/routing'
@@ -359,6 +389,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/admin'
+    | '/advanced-settings'
     | '/classes'
     | '/compose'
     | '/exams'
@@ -369,7 +400,9 @@ export interface FileRouteTypes {
     | '/signup/verify'
     | '/'
     | '/my/exams'
+    | '/my/knowledge'
     | '/my/wrongbook'
+    | '/my/wrongbook-sheet'
     | '/platform/$orgId'
     | '/platform/commerce'
     | '/platform/routing'
@@ -393,6 +426,7 @@ export interface FileRouteTypes {
     | '/reset-password'
     | '/signup'
     | '/_layout/admin'
+    | '/_layout/advanced-settings'
     | '/_layout/classes'
     | '/_layout/compose'
     | '/_layout/exams'
@@ -404,7 +438,9 @@ export interface FileRouteTypes {
     | '/_layout/'
     | '/_layout/exams_/$examId'
     | '/_layout/my/exams'
+    | '/_layout/my/knowledge'
     | '/_layout/my/wrongbook'
+    | '/_layout/my/wrongbook-sheet'
     | '/_layout/platform_/$orgId'
     | '/_layout/platform_/commerce'
     | '/_layout/platform_/routing'
@@ -531,6 +567,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutClassesRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/advanced-settings': {
+      id: '/_layout/advanced-settings'
+      path: '/advanced-settings'
+      fullPath: '/advanced-settings'
+      preLoaderRoute: typeof LayoutAdvancedSettingsRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/admin': {
       id: '/_layout/admin'
       path: '/admin'
@@ -573,11 +616,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutPlatformOrgIdRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/my/wrongbook-sheet': {
+      id: '/_layout/my/wrongbook-sheet'
+      path: '/my/wrongbook-sheet'
+      fullPath: '/my/wrongbook-sheet'
+      preLoaderRoute: typeof LayoutMyWrongbookSheetRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/my/wrongbook': {
       id: '/_layout/my/wrongbook'
       path: '/my/wrongbook'
       fullPath: '/my/wrongbook'
       preLoaderRoute: typeof LayoutMyWrongbookRouteImport
+      parentRoute: typeof LayoutRoute
+    }
+    '/_layout/my/knowledge': {
+      id: '/_layout/my/knowledge'
+      path: '/my/knowledge'
+      fullPath: '/my/knowledge'
+      preLoaderRoute: typeof LayoutMyKnowledgeRouteImport
       parentRoute: typeof LayoutRoute
     }
     '/_layout/my/exams': {
@@ -697,6 +754,7 @@ const LayoutExamsExamIdRouteWithChildren =
 
 interface LayoutRouteChildren {
   LayoutAdminRoute: typeof LayoutAdminRoute
+  LayoutAdvancedSettingsRoute: typeof LayoutAdvancedSettingsRoute
   LayoutClassesRoute: typeof LayoutClassesRoute
   LayoutComposeRoute: typeof LayoutComposeRoute
   LayoutExamsRoute: typeof LayoutExamsRoute
@@ -707,7 +765,9 @@ interface LayoutRouteChildren {
   LayoutIndexRoute: typeof LayoutIndexRoute
   LayoutExamsExamIdRoute: typeof LayoutExamsExamIdRouteWithChildren
   LayoutMyExamsRoute: typeof LayoutMyExamsRoute
+  LayoutMyKnowledgeRoute: typeof LayoutMyKnowledgeRoute
   LayoutMyWrongbookRoute: typeof LayoutMyWrongbookRoute
+  LayoutMyWrongbookSheetRoute: typeof LayoutMyWrongbookSheetRoute
   LayoutPlatformOrgIdRoute: typeof LayoutPlatformOrgIdRoute
   LayoutPlatformCommerceRoute: typeof LayoutPlatformCommerceRoute
   LayoutPlatformRoutingRoute: typeof LayoutPlatformRoutingRoute
@@ -718,6 +778,7 @@ interface LayoutRouteChildren {
 
 const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutAdminRoute: LayoutAdminRoute,
+  LayoutAdvancedSettingsRoute: LayoutAdvancedSettingsRoute,
   LayoutClassesRoute: LayoutClassesRoute,
   LayoutComposeRoute: LayoutComposeRoute,
   LayoutExamsRoute: LayoutExamsRoute,
@@ -728,7 +789,9 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutIndexRoute: LayoutIndexRoute,
   LayoutExamsExamIdRoute: LayoutExamsExamIdRouteWithChildren,
   LayoutMyExamsRoute: LayoutMyExamsRoute,
+  LayoutMyKnowledgeRoute: LayoutMyKnowledgeRoute,
   LayoutMyWrongbookRoute: LayoutMyWrongbookRoute,
+  LayoutMyWrongbookSheetRoute: LayoutMyWrongbookSheetRoute,
   LayoutPlatformOrgIdRoute: LayoutPlatformOrgIdRoute,
   LayoutPlatformCommerceRoute: LayoutPlatformCommerceRoute,
   LayoutPlatformRoutingRoute: LayoutPlatformRoutingRoute,

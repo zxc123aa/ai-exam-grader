@@ -259,7 +259,11 @@ def tag_exam_questions(
 def question_knowledge_names(
     session: Session, question_ids: list[uuid.UUID]
 ) -> dict[uuid.UUID, list[str]]:
-    """题目 -> 知识点名称列表，供错题本快照与学生端展示。"""
+    """题目 -> 知识点名称列表，供错题本快照与学生端展示。
+
+    优先读 KnowledgePoint 链接表；没有链接时回退到题目的
+    knowledge_point 文本字段（早期标注方式），两套并存兼容。
+    """
     if not question_ids:
         return {}
     rows = session.exec(
@@ -275,4 +279,14 @@ def question_knowledge_names(
         bucket = names.setdefault(link.question_id, [])
         if point.name not in bucket:
             bucket.append(point.name)
+    # 回退：无链接表的题目用 knowledge_point 文本字段
+    missing = [qid for qid in question_ids if not names.get(qid)]
+    if missing:
+        questions = session.exec(
+            select(ExamQuestion).where(col(ExamQuestion.id).in_(missing))
+        ).all()
+        for question in questions:
+            text = (question.knowledge_point or "").strip()
+            if text:
+                names[question.id] = [text]
     return names

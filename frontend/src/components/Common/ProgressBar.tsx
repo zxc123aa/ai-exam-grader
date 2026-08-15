@@ -11,6 +11,7 @@ export type ProgressTone =
   | "amber"
   | "sky"
   | "pink"
+  | "red"
 
 const TONE_FILL: Record<ProgressTone, string> = {
   indigo: "bg-primary",
@@ -19,6 +20,7 @@ const TONE_FILL: Record<ProgressTone, string> = {
   amber: "bg-amber-500",
   sky: "bg-sky-400",
   pink: "bg-pink-400",
+  red: "bg-red-500",
 }
 
 export function ProgressBar({

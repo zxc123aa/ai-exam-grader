@@ -2835,6 +2835,15 @@ class WrongQuestionEntryStatus(StrEnum):
     SUPERSEDED = "superseded"
 
 
+class WrongQuestionErrorReason(StrEnum):
+    """错因标注：学生复习错题时自己选的原因，供学习建议引擎统计。"""
+
+    CONCEPT = "concept"  # 概念不清
+    CALCULATION = "calculation"  # 计算失误
+    READING = "reading"  # 审题不清
+    UNKNOWN_KNOWLEDGE = "unknown_knowledge"  # 完全不会
+
+
 class WrongQuestionSource(SQLModel, table=True):
     """错题本的题面快照，每次成绩发布的每道题一行。
 
@@ -2958,6 +2967,17 @@ class WrongQuestionEntry(SQLModel, table=True):
         default_factory=list, sa_column=Column(JSONB, nullable=False)
     )
     teacher_comment: str | None = Field(default=None, max_length=2000)
+    error_reason: WrongQuestionErrorReason | None = Field(
+        default=None,
+        sa_column=Column(
+            SAEnum(
+                WrongQuestionErrorReason,
+                name="wrongquestionerrorreason",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=True,
+        ),
+    )
     score_source: str | None = Field(default=None, max_length=30)
     image_storage_key: str | None = Field(default=None, max_length=1024)
     status: WrongQuestionEntryStatus = Field(
@@ -3165,6 +3185,14 @@ class LearnerMastery(SQLModel, table=True):
 
 class WrongbookReviewCreate(SQLModel):
     result: WrongQuestionReviewResult
+    # 复习时顺手标注错因；不标注也可以
+    error_reason: WrongQuestionErrorReason | None = None
+
+
+class WrongbookEntryUpdate(SQLModel):
+    """单独修改错因标注；传 null 表示清除。"""
+
+    error_reason: WrongQuestionErrorReason | None = None
 
 
 class WrongbookReviewPublic(SQLModel):
@@ -3202,6 +3230,7 @@ class WrongbookEntryListItem(SQLModel):
     max_score: float | None = None
     is_wrong: bool = True
     knowledge_point_names: list[str] = Field(default_factory=list)
+    error_reason: WrongQuestionErrorReason | None = None
     has_image: bool = False
     released_at: datetime
     review_count: int = 0
@@ -3235,8 +3264,23 @@ class WrongbookEntryDetail(SQLModel):
     missed_points: list[dict] = Field(default_factory=list)
     teacher_comment: str | None = None
     knowledge_point_names: list[str] = Field(default_factory=list)
+    error_reason: WrongQuestionErrorReason | None = None
     has_image: bool = False
     released_at: datetime
+
+
+class LearningAdviceFocusPoint(SQLModel):
+    knowledge_point: str
+    times: int = 0
+    advice: str
+
+
+class LearningAdvicePublic(SQLModel):
+    has_data: bool
+    overall: str | None = None
+    focus_points: list[LearningAdviceFocusPoint] = Field(default_factory=list)
+    weekly_plan: list[str] = Field(default_factory=list)
+    generated_at: datetime | None = None
 
 
 # 平台级系统配置（仅 platform_superuser 可写）：模型与批改默认值，

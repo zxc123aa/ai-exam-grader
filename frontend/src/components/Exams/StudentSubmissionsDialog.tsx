@@ -42,6 +42,13 @@ import {
 import { Input } from "@/components/ui/input"
 import { LoadingButton } from "@/components/ui/loading-button"
 import useCustomToast from "@/hooks/useCustomToast"
+import {
+  checkPreprocessingAvailability,
+  clientPreprocessWithQuads,
+  detectDocumentWithScanic,
+  loadImageElement,
+  type NormalizedPageQuad,
+} from "@/lib/document-normalizer"
 import { handleError } from "@/utils"
 
 function formatBytes(size: number) {
@@ -320,6 +327,112 @@ function isSubmissionZip(file: File) {
   )
 }
 
+/** 横版双页摊开的照片：把检测到的整张三段式四角从中缝拆成左右两页 */
+function splitNormalizedSpreadQuad(page: NormalizedPageQuad) {
+  const [topLeft, topRight, bottomRight, bottomLeft] = page.points
+  const midpoint = (
+    a: { x: number; y: number },
+    b: { x: number; y: number },
+  ) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 })
+  const topMid = midpoint(topLeft, topRight)
+  const bottomMid = midpoint(bottomLeft, bottomRight)
+  const pages: NormalizedPageQuad[] = [
+    {
+      label: "left",
+      points: [topLeft, topMid, bottomMid, bottomLeft],
+    },
+    {
+      label: "right",
+      points: [topMid, topRight, bottomRight, bottomMid],
+    },
+  ]
+  return pages
+}
+
+/** 检测结果的可信下限：四角多边形至少要盖住画面 40%，否则视为误检 */
+const MIN_DETECTION_AREA_RATIO = 0.4
+
+/** 四角多边形占整图面积比例（归一化坐标，shoelace 公式） */
+function quadAreaRatio(page: NormalizedPageQuad) {
+  const [a, b, c, d] = page.points
+  return (
+    Math.abs(
+      a.x * (b.y - d.y) +
+        b.x * (c.y - a.y) +
+        c.x * (d.y - b.y) +
+        d.x * (a.y - c.y),
+    ) / 2
+  )
+}
+
+/** 检测失败/误检时的整图四角（内缩 3%），与模板卷四角编辑器同款兜底 */
+function buildFullFrameQuad(inset = 0.03): NormalizedPageQuad {
+  return {
+    label: "full_frame",
+    points: [
+      { x: inset, y: inset },
+      { x: 1 - inset, y: inset },
+      { x: 1 - inset, y: 1 - inset },
+      { x: inset, y: 1 - inset },
+    ],
+  }
+}
+
+export type ClientProcessedSubmissionPhoto = {
+  pages: Array<{ name: string; blob: Blob }>
+  /** 浏览器内文档检测置信度（0-1），检测失败取不到时为 null */
+  quality: number | null
+}
+
+/**
+ * 学生答卷照片的客户端预处理：浏览器内检测四角 → OpenCV.js（Web Worker）
+ * 摆正/双页拆分/增强，返回可直接上传的 JPEG 页。
+ *
+ * 检测不到或误检（覆盖率过低）时退用整图四角继续做增强和双页拆分；
+ * 只有 worker 处理本身失败才返回 null，调用方静默回退服务端 preprocess-photo。
+ */
+export async function preprocessSubmissionPhotoOnClient(
+  file: File,
+): Promise<ClientProcessedSubmissionPhoto | null> {
+  if (!checkPreprocessingAvailability().supported) return null
+  try {
+    const image = await loadImageElement(file)
+    const detection = await detectDocumentWithScanic(image)
+    const detected =
+      detection.success && detection.pages.length > 0
+        ? detection.pages[0]
+        : null
+    const baseQuad =
+      detected && quadAreaRatio(detected) >= MIN_DETECTION_AREA_RATIO
+        ? detected
+        : buildFullFrameQuad()
+
+    // 横版照片视为双页摊开，从中缝拆成左右两页（与模板卷 spread 模式一致）
+    const width = image.naturalWidth || image.width
+    const height = image.naturalHeight || image.height
+    const pages =
+      width >= height * 1.18 ? splitNormalizedSpreadQuad(baseQuad) : [baseQuad]
+
+    const result = await clientPreprocessWithQuads(file, pages)
+    if (!result.clientProcessed || result.pages.length === 0) return null
+
+    const stem = file.name.replace(/\.[^.]+$/, "") || "scan"
+    return {
+      pages: result.pages.map((page, index) => ({
+        name: `${stem}-p${index + 1}.jpg`,
+        blob: page.blob,
+      })),
+      quality: detection.confidence,
+    }
+  } catch (err) {
+    console.warn(
+      "[submission-photo] Client preprocessing failed, falling back to server:",
+      err,
+    )
+    return null
+  }
+}
+
 export function StudentSubmissionsContent({
   exam,
   active = true,
@@ -338,6 +451,7 @@ export function StudentSubmissionsContent({
   const appendInputRef = useRef<HTMLInputElement | null>(null)
   const [appendTarget, setAppendTarget] =
     useState<StudentSubmissionPublic | null>(null)
+  const [localProcessing, setLocalProcessing] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const queryKey = ["student-submissions", exam.id]
@@ -349,7 +463,8 @@ export function StudentSubmissionsContent({
   })
 
   // 单个上传控件按文件类型分流：PDF/zip 直接作为答卷导入（zip 由后端解包合并），
-  // JPG/PNG 照片走 preprocess-photo 接口先校正再转成答卷。
+  // JPG/PNG 照片先在浏览器本地校正（四角检测 → 摆正/双页拆分/增强）再上传，
+  // 本地处理失败时静默回退服务端 preprocess-photo。
   const uploadMutation = useMutation({
     mutationFn: async (files: File[]) => {
       // 姓名/学号只在单份上传时预填，避免批量上传张冠李戴
@@ -372,14 +487,53 @@ export function StudentSubmissionsContent({
               },
             })
           } else {
-            await ExamsService.preprocessStudentSubmissionPhoto({
-              examId: exam.id,
-              formData: {
-                file: file as unknown as string,
-                student_name: name,
-                student_identifier: identifier,
-              },
-            })
+            setLocalProcessing(true)
+            let clientPhoto: ClientProcessedSubmissionPhoto | null = null
+            try {
+              clientPhoto = await preprocessSubmissionPhotoOnClient(file)
+            } finally {
+              setLocalProcessing(false)
+            }
+            if (clientPhoto) {
+              // 客户端已校正：第一页建答卷，其余页追加；preprocess=none
+              // 避免服务端重复处理，自动归位（班级+姓名）仍由这两个入口完成。
+              // 原始照片与检测置信度随第一页上传留存（原图回溯 + 质量元数据）。
+              const [firstPage, ...restPages] = clientPhoto.pages
+              const submission = await ExamsService.uploadStudentSubmission({
+                examId: exam.id,
+                formData: {
+                  file: new File([firstPage.blob], firstPage.name, {
+                    type: "image/jpeg",
+                  }) as unknown as string,
+                  original_file: file as unknown as string,
+                  student_name: name,
+                  student_identifier: identifier,
+                  preprocess: "none",
+                  client_quality: clientPhoto.quality ?? undefined,
+                },
+              })
+              for (const page of restPages) {
+                await ExamsService.appendStudentSubmissionPages({
+                  examId: exam.id,
+                  submissionId: submission.id,
+                  formData: {
+                    file: new File([page.blob], page.name, {
+                      type: "image/jpeg",
+                    }) as unknown as string,
+                    preprocess: "none",
+                  },
+                })
+              }
+            } else {
+              await ExamsService.preprocessStudentSubmissionPhoto({
+                examId: exam.id,
+                formData: {
+                  file: file as unknown as string,
+                  student_name: name,
+                  student_identifier: identifier,
+                },
+              })
+            }
           }
           succeeded += 1
         } catch {
@@ -449,24 +603,51 @@ export function StudentSubmissionsContent({
     },
   })
 
-  // 给已上传的答卷追加页面：PDF 全部页追加，照片自动摆正分割后追加。
+  // 给已上传的答卷追加页面：PDF 全部页追加，照片先在浏览器本地校正
+  // （失败静默回退服务端摆正分割）再追加。
   // 已配准或已有批改数据的答卷后端返回 409，不允许追加。
   const appendPagesMutation = useMutation({
-    mutationFn: ({
+    mutationFn: async ({
       submission,
       file,
     }: {
       submission: StudentSubmissionPublic
       file: File
-    }) =>
-      ExamsService.appendStudentSubmissionPages({
+    }) => {
+      if (!isSubmissionPdf(file) && !isSubmissionZip(file)) {
+        setLocalProcessing(true)
+        let clientPhoto: ClientProcessedSubmissionPhoto | null = null
+        try {
+          clientPhoto = await preprocessSubmissionPhotoOnClient(file)
+        } finally {
+          setLocalProcessing(false)
+        }
+        if (clientPhoto) {
+          let latest = submission
+          for (const page of clientPhoto.pages) {
+            latest = await ExamsService.appendStudentSubmissionPages({
+              examId: exam.id,
+              submissionId: submission.id,
+              formData: {
+                file: new File([page.blob], page.name, {
+                  type: "image/jpeg",
+                }) as unknown as string,
+                preprocess: "none",
+              },
+            })
+          }
+          return latest
+        }
+      }
+      return ExamsService.appendStudentSubmissionPages({
         examId: exam.id,
         submissionId: submission.id,
         formData: {
           file: file as unknown as string,
           preprocess: "auto",
         },
-      }),
+      })
+    },
     onSuccess: (_data, { submission }) => {
       showSuccessToast(
         `已向「${submission.student_name || "未命名学生"}」的答卷追加页面`,
@@ -504,7 +685,7 @@ export function StudentSubmissionsContent({
           <div className="text-sm font-medium">上传学生答卷</div>
           <p className="mt-1 text-xs text-muted-foreground">
             一次多选会为每个文件各创建一份答卷，适合「不同学生各传一份」的场景；同一学生有多个文件请用下方文件夹批量上传，或先传一份再用列表里的「追加页面」。PDF
-            直接导入，zip（内装照片）自动解包合并，照片（JPG/PNG）会先自动校正再转成答卷。姓名/学号可留空，仅单份上传时支持预填。
+            直接导入，zip（内装照片）自动解包合并，照片（JPG/PNG）会先在浏览器本地自动校正再转成答卷。姓名/学号可留空，仅单份上传时支持预填。
           </p>
         </div>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -530,6 +711,16 @@ export function StudentSubmissionsContent({
             上传 {selectedFiles.length || ""}
           </LoadingButton>
         </div>
+        {localProcessing && (
+          <div
+            data-testid="submission-local-processing-hint"
+            className="flex items-center gap-2 text-xs text-muted-foreground"
+          >
+            <Loader2 className="size-3.5 animate-spin" />
+            本地处理中…照片在你的浏览器里完成校正，首次使用需加载本地处理引擎（约
+            11 MB），请稍候
+          </div>
+        )}
         {selectedFiles.length === 1 && (
           <div className="grid gap-3 sm:grid-cols-2">
             <Input

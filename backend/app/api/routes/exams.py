@@ -8,7 +8,16 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
-from fastapi import APIRouter, Depends, Form, Header, HTTPException, UploadFile, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    Header,
+    HTTPException,
+    UploadFile,
+    status,
+)
 from fastapi.responses import FileResponse, Response
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, func, select
@@ -3005,10 +3014,12 @@ async def upload_student_submission(
     current_user: CurrentUser,
     exam_id: uuid.UUID,
     file: UploadFile,
+    original_file: UploadFile | None = File(default=None),
     student_name: str | None = Form(default=None),
     student_identifier: str | None = Form(default=None),
     class_name: str | None = Form(default=None),
     preprocess: Literal["auto", "force", "none"] = Form(default="auto"),
+    client_quality: float | None = Form(default=None, ge=0.0, le=1.0),
 ) -> Any:
     exam = get_exam_for_user(
         session=session,
@@ -3016,6 +3027,25 @@ async def upload_student_submission(
         exam_id=exam_id,
         require_write=True,
     )
+    # 客户端本地预处理路径：原始照片随首屏一并上传留存，
+    # client_quality 为浏览器内文档检测的置信度。
+    client_original_file: StoredFile | None = None
+    if original_file is not None:
+        validate_scan_photo_upload_file(original_file)
+        original_contents = await read_upload_file_bytes(file=original_file)
+        assert_allowed_signature(
+            contents_start=original_contents[:16],
+            allowed_content_types=SCAN_PHOTO_CONTENT_TYPES,
+            content_type=original_file.content_type,
+        )
+        client_original_file = store_generated_file(
+            session=session,
+            owner_id=exam.owner_id,
+            original_filename=original_file.filename or "original-photo.jpg",
+            content_type=original_file.content_type or "image/jpeg",
+            contents=original_contents,
+            commit=False,
+        )
     zip_upload = is_zip_upload(filename=file.filename, content_type=file.content_type)
     stored_file = await store_upload_file(
         session=session,
@@ -3076,6 +3106,9 @@ async def upload_student_submission(
                 stored_file=stored_file,
                 preprocess_mode=preprocess,
             )
+        if client_original_file is not None:
+            # 客户端本地预处理：显式上传的原始照片优先作为原图留存
+            original_file_id = client_original_file.id
         submission = StudentSubmission(
             exam_id=exam.id,
             stored_file_id=active_file.id,
@@ -3085,14 +3118,20 @@ async def upload_student_submission(
             class_name=class_name,
             status=StudentSubmissionStatus.REGISTRATION_PENDING,
             registration_status=SubmissionRegistrationStatus.PENDING,
-            registration_quality=preprocessing_quality,
+            registration_quality=(
+                client_quality if client_quality is not None else preprocessing_quality
+            ),
             registration_notes=(
-                zip_note
-                if zip_note is not None
+                f"客户端本地预处理；检测置信度 {round(client_quality * 100)}%"
+                if client_quality is not None
                 else (
-                    f"scan_preprocessing={preprocessing_status}"
-                    if preprocessing_metadata is not None
-                    else None
+                    zip_note
+                    if zip_note is not None
+                    else (
+                        f"scan_preprocessing={preprocessing_status}"
+                        if preprocessing_metadata is not None
+                        else None
+                    )
                 )
             ),
             registration_homography=preprocessing_metadata,
@@ -3113,6 +3152,8 @@ async def upload_student_submission(
         cleanup_stored_file_path(get_stored_file_path(stored_file))
         if active_file.id != stored_file.id:
             cleanup_stored_file_path(get_stored_file_path(active_file))
+        if client_original_file is not None:
+            cleanup_stored_file_path(get_stored_file_path(client_original_file))
         raise
     session.refresh(submission)
     session.refresh(active_file)
