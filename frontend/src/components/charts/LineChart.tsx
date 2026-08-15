@@ -16,7 +16,8 @@ import { CHART_PALETTE, GRID_COLOR, TICK_PROPS, TOOLTIP_STYLE } from "./theme"
  */
 export interface LineSeries {
   name: string
-  data: number[]
+  /** null 表示该场次缺数据（知识点没出现），线条在此断开 */
+  data: (number | null)[]
   /** 缺省按 chart-1..5 色板循环 */
   color?: string
 }

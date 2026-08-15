@@ -3219,6 +3219,38 @@ class WrongbookMasteryPublic(SQLModel):
     count: int
 
 
+class KnowledgeTrendScorePoint(SQLModel):
+    """一场发布的总分。快照含满分题（is_wrong=false 也建行），分母自带。"""
+
+    exam_title: str
+    exam_date: date | None = None
+    released_at: datetime
+    total_score: float | None = None
+    total_max_score: float | None = None
+
+
+class KnowledgeTrendPoint(SQLModel):
+    """一个知识点在一场发布里的表现。wrong_rate 为 0-100 的整数百分比。"""
+
+    exam_title: str
+    exam_date: date | None = None
+    released_at: datetime
+    wrong_rate: int = 0
+    attempts: int = 0
+    wrong: int = 0
+
+
+class KnowledgeTrendSeries(SQLModel):
+    subject: str | None = None
+    knowledge_point: str
+    points: list[KnowledgeTrendPoint] = Field(default_factory=list)
+
+
+class KnowledgeTrendsPublic(SQLModel):
+    score_trend: list[KnowledgeTrendScorePoint] = Field(default_factory=list)
+    kp_trends: list[KnowledgeTrendSeries] = Field(default_factory=list)
+
+
 class WrongbookEntryListItem(SQLModel):
     entry_id: uuid.UUID
     exam_id: uuid.UUID | None = None

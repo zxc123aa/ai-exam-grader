@@ -780,6 +780,40 @@ export type status3 = 'approved' | 'issued' | 'rejected';
 
 export type InvoiceStatus = 'submitted' | 'approved' | 'issued' | 'rejected';
 
+/**
+ * 一个知识点在一场发布里的表现。wrong_rate 为 0-100 的整数百分比。
+ */
+export type KnowledgeTrendPoint = {
+    exam_title: string;
+    exam_date?: (string | null);
+    released_at: string;
+    wrong_rate?: number;
+    attempts?: number;
+    wrong?: number;
+};
+
+/**
+ * 一场发布的总分。快照含满分题（is_wrong=false 也建行），分母自带。
+ */
+export type KnowledgeTrendScorePoint = {
+    exam_title: string;
+    exam_date?: (string | null);
+    released_at: string;
+    total_score?: (number | null);
+    total_max_score?: (number | null);
+};
+
+export type KnowledgeTrendSeries = {
+    subject?: (string | null);
+    knowledge_point: string;
+    points?: Array<KnowledgeTrendPoint>;
+};
+
+export type KnowledgeTrendsPublic = {
+    score_trend?: Array<KnowledgeTrendScorePoint>;
+    kp_trends?: Array<KnowledgeTrendSeries>;
+};
+
 export type LearnerEnrollmentPublic = {
     org_name?: (string | null);
     class_name?: (string | null);
@@ -3466,6 +3500,8 @@ export type StudentsReadMyCramListData = {
 export type StudentsReadMyCramListResponse = (WrongbookEntriesPublic);
 
 export type StudentsReadMyMasteryResponse = (WrongbookMasteryPublic);
+
+export type StudentsReadMyKnowledgeTrendsResponse = (KnowledgeTrendsPublic);
 
 export type StudentsReviewMyWrongbookEntryData = {
     entryId: string;
