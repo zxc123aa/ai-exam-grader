@@ -1073,6 +1073,66 @@ def test_upload_student_submission(
     assert content["page_count"] == 1
 
 
+def test_upload_student_submission_with_client_original_and_quality(
+    client: TestClient, school_owner_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=school_owner_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Client Preprocess Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=school_owner_token_headers,
+        files={
+            "file": ("student-a-p1.jpg", SCAN_PHOTO_BYTES, "image/jpeg"),
+            "original_file": (
+                "student-a-original.jpg",
+                SCAN_PHOTO_BYTES,
+                "image/jpeg",
+            ),
+        },
+        data={
+            "student_name": "Student A",
+            "preprocess": "none",
+            "client_quality": "0.87",
+        },
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["original_stored_file_id"] is not None
+    assert content["original_stored_file_id"] != content["stored_file"]["id"]
+    assert content["registration_quality"] == 0.87
+    assert content["registration_notes"] == "客户端本地预处理；检测置信度 87%"
+
+
+def test_upload_student_submission_without_client_metadata_unchanged(
+    client: TestClient, school_owner_token_headers: dict[str, str]
+) -> None:
+    create_response = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=school_owner_token_headers,
+        json={"org_id": DEFAULT_ORG_ID, "title": "Plain Photo Upload Exam"},
+    )
+    exam_id = create_response.json()["id"]
+
+    response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam_id}/submissions",
+        headers=school_owner_token_headers,
+        files={"file": ("student-a.jpg", SCAN_PHOTO_BYTES, "image/jpeg")},
+        data={"student_name": "Student A", "preprocess": "none"},
+    )
+
+    assert response.status_code == 200
+    content = response.json()
+    assert content["original_stored_file_id"] is None
+    assert content["registration_quality"] is None
+    assert content["registration_notes"] is None
+
+
 def test_read_student_submissions(
     client: TestClient, school_owner_token_headers: dict[str, str]
 ) -> None:

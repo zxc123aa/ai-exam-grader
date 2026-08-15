@@ -1,7 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import {
   BookMarked,
+  FileText,
+  Lightbulb,
+  Loader2,
+  Network,
   Printer,
   RotateCcw,
   SlidersHorizontal,
@@ -9,18 +13,35 @@ import {
 } from "lucide-react"
 import type React from "react"
 import { useEffect, useState } from "react"
-import type { WrongbookEntryListItem } from "@/client"
+import { z } from "zod"
+import type { WrongbookEntryListItem, WrongQuestionErrorReason } from "@/client"
 import { ApiError, StudentsService } from "@/client"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { PageHead } from "@/components/Common/PageHead"
 import { Tag } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
+import useCustomToast from "@/hooks/useCustomToast"
 import { fetchWrongbookEntryImageBlob } from "@/lib/submission-media"
 import { cn } from "@/lib/utils"
 
+const searchSchema = z.object({
+  /** 知识点过滤：知识图谱点某个知识点进来时带上 */
+  kp: z.string().optional().catch(undefined),
+})
+
 export const Route = createFileRoute("/_layout/my/wrongbook")({
   component: MyWrongbookPage,
+  validateSearch: searchSchema,
   head: () => ({ meta: [{ title: "我的错题本 - 点凡阅卷" }] }),
 })
 
@@ -39,6 +60,33 @@ function formatDate(value: string | null | undefined): string | null {
     day: "numeric",
   })
 }
+
+function formatDateTime(value: string | null | undefined): string | null {
+  if (!value) return null
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString("zh-CN", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  })
+}
+
+const ERROR_REASONS: Array<{
+  value: WrongQuestionErrorReason
+  label: string
+}> = [
+  { value: "concept", label: "概念不清" },
+  { value: "calculation", label: "计算失误" },
+  { value: "reading", label: "审题不清" },
+  { value: "unknown_knowledge", label: "完全不会" },
+]
+
+const ERROR_REASON_LABELS = Object.fromEntries(
+  ERROR_REASONS.map((item) => [item.value, item.label]),
+) as Record<WrongQuestionErrorReason, string>
 
 /** 答题图：错题本自带留存图，考试被删也还在。 */
 function EntryImage({ entryId, label }: { entryId: string; label: string }) {
@@ -66,6 +114,57 @@ function EntryImage({ entryId, label }: { entryId: string; label: string }) {
       alt={`${label} 我的作答`}
       className="max-h-52 w-auto max-w-full rounded-lg border bg-white object-contain"
     />
+  )
+}
+
+/** 错因快选：点选即存，再点已选中的可清除。 */
+function ErrorReasonPicker({
+  entryId,
+  value,
+}: {
+  entryId: string
+  value: WrongQuestionErrorReason | null | undefined
+}) {
+  const queryClient = useQueryClient()
+  const { showSuccessToast, showErrorToast } = useCustomToast()
+  const mutation = useMutation({
+    mutationFn: (reason: WrongQuestionErrorReason | null) =>
+      StudentsService.updateMyWrongbookEntry({
+        entryId,
+        requestBody: { error_reason: reason },
+      }),
+    onSuccess: (_data, reason) => {
+      queryClient.invalidateQueries({ queryKey: ["wrongbook-entry", entryId] })
+      queryClient.invalidateQueries({ queryKey: ["my-wrongbook"] })
+      queryClient.invalidateQueries({ queryKey: ["my-wrongbook-due"] })
+      showSuccessToast(reason ? "已记下这道题的错因" : "已清除这道题的错因标注")
+    },
+    onError: () => showErrorToast("错因没保存成功，请再点一次"),
+  })
+
+  return (
+    <section>
+      <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+        这道题为什么错（选一个，学习建议会更准）
+      </h5>
+      <div className="flex flex-wrap gap-2">
+        {ERROR_REASONS.map((item) => {
+          const selected = value === item.value
+          return (
+            <Button
+              key={item.value}
+              variant={selected ? "secondary" : "outline"}
+              size="sm"
+              disabled={mutation.isPending}
+              title={selected ? "再点一次清除" : undefined}
+              onClick={() => mutation.mutate(selected ? null : item.value)}
+            >
+              {item.label}
+            </Button>
+          )
+        })}
+      </div>
+    </section>
   )
 }
 
@@ -168,6 +267,7 @@ function EntryDetail({ entryId }: { entryId: string }) {
           </p>
         </section>
       )}
+      <ErrorReasonPicker entryId={entry.entry_id} value={entry.error_reason} />
     </div>
   )
 }
@@ -217,6 +317,11 @@ function EntryCard({
       </div>
       <p className="mt-1 text-muted-foreground text-xs">
         {[entry.exam_title, ...meta].join(" · ")}
+        {entry.error_reason && (
+          <span className="ml-2 text-amber-600 dark:text-amber-400">
+            错因 · {ERROR_REASON_LABELS[entry.error_reason]}
+          </span>
+        )}
       </p>
       {!defaultOpen && (
         <div className="mt-3">
@@ -343,6 +448,133 @@ function ReviewPanel({
   )
 }
 
+/** 学习建议卡：学生主动点「生成」才调接口（模型分析较慢），结果含总体建议、重点知识点和一周安排。 */
+function LearningAdviceCard() {
+  const [requested, setRequested] = useState(false)
+  // generation 递增强制重新生成（绕过 query 缓存）
+  const [generation, setGeneration] = useState(0)
+  const query = useQuery({
+    queryKey: ["my-learning-advice", generation],
+    queryFn: () => StudentsService.readMyLearningAdvice(),
+    enabled: requested,
+    retry: false,
+  })
+
+  const regenerate = () => {
+    setRequested(true)
+    setGeneration((value) => value + 1)
+  }
+
+  return (
+    <div className="rounded-2xl bg-card p-5 shadow-card print:hidden">
+      <div className="flex items-center gap-2">
+        <Lightbulb className="size-4 text-muted-foreground" />
+        <p className="font-semibold">学习建议</p>
+      </div>
+
+      {!requested ? (
+        <>
+          <p className="mt-2 text-muted-foreground text-sm leading-6">
+            根据你错题本里的记录，整理出薄弱环节和接下来一周的练习安排。
+          </p>
+          <Button className="mt-3" size="sm" onClick={regenerate}>
+            生成我的学习建议
+          </Button>
+        </>
+      ) : query.isPending ? (
+        <p className="mt-3 flex items-center gap-2 text-muted-foreground text-sm">
+          <Loader2 className="size-4 animate-spin" />
+          正在分析你的错题记录，可能需要半分钟…
+        </p>
+      ) : query.isError || !query.data ? (
+        <>
+          <p className="mt-2 text-muted-foreground text-sm">
+            这次没生成成功，等下再试试。
+          </p>
+          <Button
+            className="mt-3"
+            variant="ghost"
+            size="sm"
+            onClick={regenerate}
+          >
+            重新生成
+          </Button>
+        </>
+      ) : !query.data.has_data ? (
+        <p className="mt-2 text-muted-foreground text-sm leading-6">
+          还没有错题记录，考完一场试再来看看。
+        </p>
+      ) : (
+        <div className="mt-3 flex flex-col gap-4">
+          {query.data.overall && (
+            <p className="whitespace-pre-wrap text-sm leading-6">
+              {query.data.overall}
+            </p>
+          )}
+          {(query.data.focus_points ?? []).length > 0 && (
+            <section>
+              <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+                最该补的几块
+              </h5>
+              <ul className="flex flex-col gap-2">
+                {(query.data.focus_points ?? []).map((point) => (
+                  <li
+                    key={point.knowledge_point}
+                    className="rounded-lg border p-3"
+                  >
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Tag variant="neutral">{point.knowledge_point}</Tag>
+                      {point.times != null && (
+                        <span className="text-muted-foreground text-xs">
+                          错了 {point.times} 次
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-1.5 text-sm leading-6">{point.advice}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+          {(query.data.weekly_plan ?? []).length > 0 && (
+            <section>
+              <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+                这一周怎么练
+              </h5>
+              <ol className="flex flex-col gap-1.5">
+                {(query.data.weekly_plan ?? []).map((item, index) => (
+                  <li
+                    key={`${index}-${item.slice(0, 12)}`}
+                    className="text-sm leading-6"
+                  >
+                    <span className="mr-1.5 font-medium">{index + 1}.</span>
+                    {item}
+                  </li>
+                ))}
+              </ol>
+            </section>
+          )}
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-muted-foreground text-xs">
+              {formatDateTime(query.data.generated_at)
+                ? `生成于 ${formatDateTime(query.data.generated_at)}`
+                : ""}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="px-0"
+              onClick={regenerate}
+            >
+              重新生成
+            </Button>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function MasterySection() {
   const query = useQuery({
     queryKey: ["my-wrongbook-mastery"],
@@ -447,12 +679,141 @@ function CramSection({ subject }: { subject: string | null }) {
 
 type WrongbookTab = "entries" | "review" | "mastery" | "cram"
 
+const SHEET_RANGES = [
+  { value: "30d", label: "近30天" },
+  { value: "90d", label: "近90天" },
+  { value: "all", label: "全部" },
+] as const
+
+const SHEET_LIMITS = [5, 10, 20] as const
+
+/** 生成错题卷：选知识点、时间范围和题数，跳转到可打印的练习卷页。 */
+function GenerateSheetDialog({
+  knowledgePoints,
+}: {
+  knowledgePoints: string[]
+}) {
+  const navigate = useNavigate()
+  const [open, setOpen] = useState(false)
+  const [selected, setSelected] = useState<string[]>([])
+  const [range, setRange] = useState<"30d" | "90d" | "all">("90d")
+  const [limit, setLimit] = useState<number>(10)
+
+  const toggle = (name: string) =>
+    setSelected((value) =>
+      value.includes(name)
+        ? value.filter((item) => item !== name)
+        : [...value, name],
+    )
+
+  const generate = () => {
+    setOpen(false)
+    navigate({
+      to: "/my/wrongbook-sheet",
+      search: {
+        kps: selected.length > 0 ? selected.join(",") : undefined,
+        range,
+        limit,
+      },
+    })
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button variant="ghost">
+          <FileText className="size-4" />
+          生成错题卷
+        </Button>
+      </DialogTrigger>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>生成错题练习卷</DialogTitle>
+          <DialogDescription>
+            把错题按知识点整理成一张 A4 练习卷，打印出来线下做，卷尾附参考答案。
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex flex-col gap-5 py-2">
+          <section>
+            <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+              知识点（不选就是全部）
+            </h5>
+            {knowledgePoints.length === 0 ? (
+              <p className="text-muted-foreground text-sm leading-6">
+                错题还没有标注知识点，等老师批改时在题目上标好知识点后再来生成。
+              </p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {knowledgePoints.map((name) => (
+                  <Button
+                    key={name}
+                    variant={selected.includes(name) ? "secondary" : "outline"}
+                    size="sm"
+                    onClick={() => toggle(name)}
+                  >
+                    {name}
+                  </Button>
+                ))}
+              </div>
+            )}
+          </section>
+          <section>
+            <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+              时间范围
+            </h5>
+            <div className="flex gap-2">
+              {SHEET_RANGES.map((item) => (
+                <Button
+                  key={item.value}
+                  variant={range === item.value ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setRange(item.value)}
+                >
+                  {item.label}
+                </Button>
+              ))}
+            </div>
+          </section>
+          <section>
+            <h5 className="mb-2 font-medium text-muted-foreground text-xs">
+              题数上限
+            </h5>
+            <div className="flex gap-2">
+              {SHEET_LIMITS.map((value) => (
+                <Button
+                  key={value}
+                  variant={limit === value ? "secondary" : "outline"}
+                  size="sm"
+                  onClick={() => setLimit(value)}
+                >
+                  {value} 题
+                </Button>
+              ))}
+            </div>
+          </section>
+        </div>
+        <DialogFooter>
+          <Button onClick={generate}>生成错题卷</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function MyWrongbookPage() {
+  const { kp } = Route.useSearch()
   const [subject, setSubject] = useState<string | null>(null)
-  const [knowledgePoint, setKnowledgePoint] = useState<string | null>(null)
+  const [knowledgePoint, setKnowledgePoint] = useState<string | null>(
+    kp ?? null,
+  )
   const [tab, setTab] = useState<WrongbookTab>("entries")
   const [filtersOpen, setFiltersOpen] = useState(false)
   const [reviewDone, setReviewDone] = useState(false)
+
+  // 从知识图谱带 kp 跳进来时同步过滤器；组件复用（连续点不同知识点）也要生效
+  useEffect(() => {
+    if (kp) setKnowledgePoint(kp)
+  }, [kp])
   const query = useQuery({
     queryKey: ["my-wrongbook", subject, knowledgePoint],
     queryFn: () =>
@@ -492,6 +853,17 @@ function MyWrongbookPage() {
         <PageHead
           title="我的错题本"
           subtitle="每次考试出分后自动收进来，不用自己录"
+          actions={
+            <>
+              <Button asChild variant="ghost">
+                <Link to="/my/knowledge">
+                  <Network className="size-4" />
+                  知识图谱
+                </Link>
+              </Button>
+              <GenerateSheetDialog knowledgePoints={knowledgePoints} />
+            </>
+          }
         />
       )}
 
@@ -513,6 +885,7 @@ function MyWrongbookPage() {
 
       {!isUnbound && !query.isPending && (
         <>
+          {!focused && <LearningAdviceCard />}
           {dueCount > 0 && tab !== "review" && (
             <button
               type="button"

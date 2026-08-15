@@ -7,6 +7,7 @@ import {
   FileText,
   GraduationCap,
   LayoutDashboard,
+  Network,
   NotebookPen,
   PenLine,
   ReceiptText,
@@ -192,6 +193,22 @@ export function AppSidebar() {
                   <RouterLink to="/my/wrongbook" onClick={handleMenuClick}>
                     <BookMarked />
                     <span>我的错题本</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="知识图谱"
+                  isActive={pathname.startsWith("/my/knowledge")}
+                  asChild
+                  className={cn(
+                    "transition-all",
+                    pathname.startsWith("/my/knowledge") && ACTIVE_ITEM_CLASS,
+                  )}
+                >
+                  <RouterLink to="/my/knowledge" onClick={handleMenuClick}>
+                    <Network />
+                    <span>知识图谱</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
@@ -386,6 +403,26 @@ export function AppSidebar() {
                     <RouterLink to="/classes" onClick={handleMenuClick}>
                       <Users />
                       <span>班级学生</span>
+                    </RouterLink>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    tooltip="高级设置"
+                    isActive={pathname.startsWith("/advanced-settings")}
+                    asChild
+                    className={cn(
+                      "transition-all",
+                      pathname.startsWith("/advanced-settings") &&
+                        ACTIVE_ITEM_CLASS,
+                    )}
+                  >
+                    <RouterLink
+                      to="/advanced-settings"
+                      onClick={handleMenuClick}
+                    >
+                      <Settings2 />
+                      <span>高级设置</span>
                     </RouterLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

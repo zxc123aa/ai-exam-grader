@@ -8,6 +8,7 @@ import {
   Play,
   RefreshCw,
   Send,
+  Settings2,
 } from "lucide-react"
 import { useMemo, useState } from "react"
 
@@ -16,6 +17,7 @@ import { resolveRole } from "@/components/Admin/roleMeta"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { PageHead } from "@/components/Common/PageHead"
 import { ProgressBar } from "@/components/Common/ProgressBar"
+import { RunSettingsForm } from "@/components/Common/RunSettingsForm"
 import { Tag, type TagVariant } from "@/components/Common/Tag"
 import {
   GradingAssignmentsCard,
@@ -33,6 +35,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import {
+  Sheet,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
+import {
   Table,
   TableBody,
   TableCell,
@@ -47,6 +57,7 @@ import {
 } from "@/components/ui/tooltip"
 import useAuth from "@/hooks/useAuth"
 import useCustomToast from "@/hooks/useCustomToast"
+import { useRunSettings } from "@/hooks/useRunSettings"
 import { workflowApi } from "@/lib/workflow-api"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/grading")({
@@ -148,6 +159,8 @@ function GradingWorkspace() {
   const { user } = useAuth()
   const { showSuccessToast, showErrorToast } = useCustomToast()
   const [publishDialogOpen, setPublishDialogOpen] = useState(false)
+  // 批改设置（抽屉/高级设置页共享 localStorage 配置，对之后的批次生效）
+  const { runSettings } = useRunSettings()
   // 分配管理仅管理角色；老师只看到面向批改任务的业务设置。
   const role = user ? resolveRole(user) : "teacher"
   const isManager = ["school_owner", "school_admin"].includes(role)
@@ -267,6 +280,10 @@ function GradingWorkspace() {
         method: "POST",
         body: JSON.stringify({
           exam_id: examId,
+          provider: runSettings.provider,
+          model: runSettings.model,
+          review_threshold: Number(runSettings.threshold),
+          max_concurrency: Number(runSettings.maxConcurrency),
         }),
       }),
     onSuccess: (run) => {
@@ -352,6 +369,25 @@ function GradingWorkspace() {
                 还有 {unassignedCount} 个班未分配老师，分配后才能开始批改
               </span>
             )}
+            <Sheet>
+              <SheetTrigger asChild>
+                <Button variant="ghost" size="sm">
+                  <Settings2 />
+                  批改设置
+                </Button>
+              </SheetTrigger>
+              <SheetContent side="right" className="w-[360px]">
+                <SheetHeader>
+                  <SheetTitle>批改设置</SheetTitle>
+                  <SheetDescription>
+                    只对之后发起的批改批次生效，不想折腾就用默认配置，直接点开始批改即可。
+                  </SheetDescription>
+                </SheetHeader>
+                <div className="grid gap-4 px-4 py-2">
+                  <RunSettingsForm />
+                </div>
+              </SheetContent>
+            </Sheet>
             <Button
               variant={readyToPublish ? "outline" : "default"}
               className={

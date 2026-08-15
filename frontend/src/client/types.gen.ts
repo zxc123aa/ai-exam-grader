@@ -221,10 +221,12 @@ export type Body_exams_upload_exam_files = {
 
 export type Body_exams_upload_student_submission = {
     file: string;
+    original_file?: (string | null);
     student_name?: (string | null);
     student_identifier?: (string | null);
     class_name?: (string | null);
     preprocess?: 'auto' | 'force' | 'none';
+    client_quality?: (number | null);
 };
 
 export type Body_files_upload_file = {
@@ -379,6 +381,16 @@ export type ExamCreate = {
 
 export type ExamDocumentOrderUpdate = {
     document_ids: Array<(string)>;
+};
+
+/**
+ * Client-preprocessed pages — warp/enhance/deskew already done.
+ * Server only applies orientation normalization (Gemini) and PDF packaging.
+ */
+export type ExamDocumentPreprocessedUploadRequest = {
+    pages: Array<PreprocessedPageUpload>;
+    detector?: string;
+    margin_mode?: string;
 };
 
 export type ExamDocumentPublic = {
@@ -783,6 +795,20 @@ export type LearnerProfilePublic = {
     entry_count?: number;
     wrong_count?: number;
     enrollments?: Array<LearnerEnrollmentPublic>;
+};
+
+export type LearningAdviceFocusPoint = {
+    knowledge_point: string;
+    times?: number;
+    advice: string;
+};
+
+export type LearningAdvicePublic = {
+    has_data: boolean;
+    overall?: (string | null);
+    focus_points?: Array<LearningAdviceFocusPoint>;
+    weekly_plan?: Array<(string)>;
+    generated_at?: (string | null);
 };
 
 export type MarkingRecognitionImport = {
@@ -1235,6 +1261,17 @@ export type PlatformOrgUserItem = {
     full_name?: (string | null);
     role: UserRole;
     is_active: boolean;
+};
+
+/**
+ * A single client-preprocessed page (JPEG, base64-encoded).
+ */
+export type PreprocessedPageUpload = {
+    name?: string;
+    image_base64: string;
+    width: number;
+    height: number;
+    source_quad?: (Array<Array<(number)>> | null);
 };
 
 export type PrivateUserCreate = {
@@ -2178,6 +2215,7 @@ export type WrongbookEntryDetail = {
     }>;
     teacher_comment?: (string | null);
     knowledge_point_names?: Array<(string)>;
+    error_reason?: (WrongQuestionErrorReason | null);
     has_image?: boolean;
     released_at: string;
 };
@@ -2193,10 +2231,18 @@ export type WrongbookEntryListItem = {
     max_score?: (number | null);
     is_wrong?: boolean;
     knowledge_point_names?: Array<(string)>;
+    error_reason?: (WrongQuestionErrorReason | null);
     has_image?: boolean;
     released_at: string;
     review_count?: number;
     next_due_at?: (string | null);
+};
+
+/**
+ * 单独修改错因标注；传 null 表示清除。
+ */
+export type WrongbookEntryUpdate = {
+    error_reason?: (WrongQuestionErrorReason | null);
 };
 
 export type WrongbookMasteryItem = {
@@ -2216,6 +2262,7 @@ export type WrongbookMasteryPublic = {
 
 export type WrongbookReviewCreate = {
     result: WrongQuestionReviewResult;
+    error_reason?: (WrongQuestionErrorReason | null);
 };
 
 export type WrongbookReviewPublic = {
@@ -2226,6 +2273,11 @@ export type WrongbookReviewPublic = {
     next_due_at: string;
     due_count?: number;
 };
+
+/**
+ * 错因标注：学生复习错题时自己选的原因，供学习建议引擎统计。
+ */
+export type WrongQuestionErrorReason = 'concept' | 'calculation' | 'reading' | 'unknown_knowledge';
 
 export type WrongQuestionReviewResult = 'again' | 'hard' | 'good' | 'easy';
 
@@ -2563,6 +2615,14 @@ export type ExamsPreprocessExamFileWithQuadsData = {
 };
 
 export type ExamsPreprocessExamFileWithQuadsResponse = (ExamDocumentPublic);
+
+export type ExamsUploadClientPreprocessedPagesData = {
+    documentId: string;
+    examId: string;
+    requestBody: ExamDocumentPreprocessedUploadRequest;
+};
+
+export type ExamsUploadClientPreprocessedPagesResponse = (ExamDocumentPublic);
 
 export type ExamsAutoRectifyExamFileData = {
     documentId: string;
@@ -3419,6 +3479,15 @@ export type StudentsReadMyWrongbookEntryData = {
 };
 
 export type StudentsReadMyWrongbookEntryResponse = (WrongbookEntryDetail);
+
+export type StudentsUpdateMyWrongbookEntryData = {
+    entryId: string;
+    requestBody: WrongbookEntryUpdate;
+};
+
+export type StudentsUpdateMyWrongbookEntryResponse = (WrongbookEntryDetail);
+
+export type StudentsReadMyLearningAdviceResponse = (LearningAdvicePublic);
 
 export type StudentsReadMyWrongbookEntryImageData = {
     authorization?: (string | null);

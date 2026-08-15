@@ -1,4 +1,6 @@
+import json
 import uuid
+from collections import Counter
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -20,6 +22,8 @@ from app.models import (
     LearnerEnrollmentPublic,
     LearnerProfile,
     LearnerProfilePublic,
+    LearningAdviceFocusPoint,
+    LearningAdvicePublic,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -34,6 +38,7 @@ from app.models import (
     WrongbookEntriesPublic,
     WrongbookEntryDetail,
     WrongbookEntryListItem,
+    WrongbookEntryUpdate,
     WrongbookMasteryItem,
     WrongbookMasteryPublic,
     WrongbookReviewCreate,
@@ -42,9 +47,12 @@ from app.models import (
     WrongQuestionEntryStatus,
     WrongQuestionReview,
     WrongQuestionSource,
+    get_datetime_utc,
 )
 from app.services import learner_identity, wrongbook_review
 from app.services.object_storage import materialize_storage_key
+from app.services.system_config import get_grading_defaults
+from app.services.vision_grading import VisionGradingError, call_json_model
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -439,23 +447,7 @@ def read_my_wrongbook(
     subjects, knowledge_points = _wrongbook_facets(session, scope)
     return WrongbookEntriesPublic(
         data=[
-            WrongbookEntryListItem(
-                entry_id=entry.id,
-                exam_id=source.exam_id,
-                exam_title=source.exam_title,
-                subject=source.subject,
-                exam_date=source.exam_date,
-                question_label=entry.question_label,
-                score=entry.score,
-                max_score=entry.max_score,
-                is_wrong=entry.is_wrong,
-                knowledge_point_names=source.knowledge_point_names or [],
-                has_image=bool(entry.image_storage_key),
-                released_at=entry.released_at,
-                review_count=review.review_count if review else 0,
-                next_due_at=review.next_due_at if review else None,
-            )
-            for entry, source, review in rows
+            _entry_list_item(entry, source, review) for entry, source, review in rows
         ],
         count=count,
         subjects=subjects,
@@ -479,6 +471,7 @@ def _entry_list_item(
         max_score=entry.max_score,
         is_wrong=entry.is_wrong,
         knowledge_point_names=source.knowledge_point_names or [],
+        error_reason=entry.error_reason,
         has_image=bool(entry.image_storage_key),
         released_at=entry.released_at,
         review_count=review.review_count if review else 0,
@@ -596,9 +589,12 @@ def review_my_wrongbook_entry(
     entry_id: uuid.UUID,
     review_in: WrongbookReviewCreate,
 ) -> Any:
-    """提交一次复习结果，推进下次到期时间。"""
+    """提交一次复习结果，推进下次到期时间；可顺手标注错因。"""
     learner, _student = get_current_learner(session=session, current_user=current_user)
     entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
+    if review_in.error_reason is not None:
+        entry.error_reason = review_in.error_reason
+        session.add(entry)
     review = wrongbook_review.record_review(
         session,
         entry=entry,
@@ -637,12 +633,9 @@ def _owned_entry(
     return row
 
 
-@router.get("/me/wrongbook/entries/{entry_id}", response_model=WrongbookEntryDetail)
-def read_my_wrongbook_entry(
-    session: SessionDep, current_user: CurrentStudentUser, entry_id: uuid.UUID
-) -> Any:
-    learner, _student = get_current_learner(session=session, current_user=current_user)
-    entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
+def _entry_detail(
+    entry: WrongQuestionEntry, source: WrongQuestionSource
+) -> WrongbookEntryDetail:
     return WrongbookEntryDetail(
         entry_id=entry.id,
         exam_id=source.exam_id,
@@ -663,8 +656,224 @@ def read_my_wrongbook_entry(
         missed_points=entry.missed_points or [],
         teacher_comment=entry.teacher_comment,
         knowledge_point_names=source.knowledge_point_names or [],
+        error_reason=entry.error_reason,
         has_image=bool(entry.image_storage_key),
         released_at=entry.released_at,
+    )
+
+
+@router.get("/me/wrongbook/entries/{entry_id}", response_model=WrongbookEntryDetail)
+def read_my_wrongbook_entry(
+    session: SessionDep, current_user: CurrentStudentUser, entry_id: uuid.UUID
+) -> Any:
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
+    return _entry_detail(entry, source)
+
+
+@router.patch("/me/wrongbook/entries/{entry_id}", response_model=WrongbookEntryDetail)
+def update_my_wrongbook_entry(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    entry_id: uuid.UUID,
+    update_in: WrongbookEntryUpdate,
+) -> Any:
+    """单独修改错因标注（复习提交之外的入口）。传 null 清除已标注的错因。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
+    entry.error_reason = update_in.error_reason
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
+    return _entry_detail(entry, source)
+
+
+def _learning_advice_stats(
+    session: Session, learner: LearnerProfile
+) -> dict[str, Any] | None:
+    """聚合错题本统计供学习建议模型参考；没有错题时返回 None。"""
+    rows = session.exec(
+        select(WrongQuestionEntry, WrongQuestionSource, WrongQuestionReview)
+        .select_from(WrongQuestionEntry)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .outerjoin(
+            WrongQuestionReview,
+            WrongQuestionReview.entry_id == WrongQuestionEntry.id,  # type: ignore[arg-type]
+        )
+        .where(
+            *_my_wrongbook_scope(learner),
+            col(WrongQuestionEntry.is_wrong).is_(True),
+        )
+    ).all()
+    if not rows:
+        return None
+
+    mastery = {
+        (item.subject, item.knowledge_point_name): item
+        for item in wrongbook_review.rebuild_mastery(session, learner=learner)
+    }
+    points: dict[str, dict[str, Any]] = {}
+    reasons: Counter[str] = Counter()
+    exams: dict[str, dict[str, Any]] = {}
+    for entry, source, review in rows:
+        if entry.error_reason is not None:
+            reasons[entry.error_reason.value] += 1
+        for name in source.knowledge_point_names or []:
+            point = points.setdefault(
+                name,
+                {
+                    "knowledge_point": name,
+                    "subject": source.subject,
+                    "wrong_times": 0,
+                    "last_wrong_at": None,
+                    "review_count": 0,
+                },
+            )
+            point["wrong_times"] += 1
+            last = point["last_wrong_at"]
+            if last is None or entry.released_at > last:
+                point["last_wrong_at"] = entry.released_at
+            if review:
+                point["review_count"] += review.review_count
+        exam_key = str(source.exam_id or source.release_id or source.exam_title)
+        exam = exams.setdefault(
+            exam_key,
+            {
+                "exam_title": source.exam_title,
+                "exam_date": source.exam_date,
+                "released_at": entry.released_at,
+                "wrong_count": 0,
+                "lost_points": 0.0,
+            },
+        )
+        exam["wrong_count"] += 1
+        if entry.released_at > exam["released_at"]:
+            exam["released_at"] = entry.released_at
+        if entry.max_score:
+            exam["lost_points"] += max(
+                0.0, float(entry.max_score) - float(entry.score or 0)
+            )
+
+    point_rows = sorted(
+        points.values(),
+        key=lambda item: (-item["wrong_times"], item["knowledge_point"]),
+    )
+    for point in point_rows:
+        item = mastery.get((point["subject"] or "", point["knowledge_point"]))
+        point["wrong_rate"] = (
+            round(item.wrong_count / item.attempts * 100)
+            if item and item.attempts
+            else 0
+        )
+        if point["last_wrong_at"] is not None:
+            point["last_wrong_at"] = point["last_wrong_at"].isoformat()
+    recent_exams = sorted(
+        exams.values(), key=lambda item: item["released_at"], reverse=True
+    )[:3]
+    for exam in recent_exams:
+        exam["released_at"] = exam["released_at"].isoformat()
+        exam["lost_points"] = round(exam["lost_points"], 2)
+        # exam_date 是 date 对象，json.dumps 不可序列化，统一转 ISO 字符串
+        if exam["exam_date"] is not None:
+            exam["exam_date"] = exam["exam_date"].isoformat()
+    return {
+        "wrong_total": len(rows),
+        "knowledge_points": point_rows,
+        "error_reasons": dict(reasons),
+        "recent_exams": recent_exams,
+    }
+
+
+def _parse_learning_advice(parsed: dict[str, Any]) -> dict[str, Any] | None:
+    """校验模型返回的结构；字段缺失或类型不对都视为不可用。"""
+    overall = str(parsed.get("overall") or "").strip()
+    raw_points = parsed.get("focus_points")
+    raw_plan = parsed.get("weekly_plan")
+    if (
+        not overall
+        or not isinstance(raw_points, list)
+        or not raw_points
+        or not isinstance(raw_plan, list)
+        or not raw_plan
+    ):
+        return None
+    focus_points: list[dict[str, Any]] = []
+    for item in raw_points:
+        if not isinstance(item, dict):
+            return None
+        name = str(item.get("knowledge_point") or "").strip()
+        advice = str(item.get("advice") or "").strip()
+        raw_times = item.get("times")
+        if raw_times is None:
+            return None
+        try:
+            times = int(raw_times)
+        except (TypeError, ValueError):
+            return None
+        if not name or not advice:
+            return None
+        focus_points.append({"knowledge_point": name, "times": times, "advice": advice})
+    weekly_plan = [str(step).strip() for step in raw_plan if str(step).strip()]
+    if not weekly_plan:
+        return None
+    return {
+        "overall": overall,
+        "focus_points": focus_points,
+        "weekly_plan": weekly_plan[:5],
+    }
+
+
+@router.get("/me/learning-advice", response_model=LearningAdvicePublic)
+def read_my_learning_advice(
+    session: SessionDep, current_user: CurrentStudentUser
+) -> Any:
+    """基于错题本的针对性学习建议。
+
+    暂不缓存——每次请求都重新统计并调用模型生成；若成本或耗时成为问题，
+    可后续按「统计摘要哈希」加缓存复用结果。
+    """
+    # 学习建议面向在校学生：未绑定学校档案的账号返回 404
+    get_current_student_profile(session=session, current_user=current_user)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    stats = _learning_advice_stats(session, learner)
+    if stats is None:
+        return LearningAdvicePublic(has_data=False)
+
+    prompt = (
+        "你是一位耐心的中学老师，正在根据学生的错题记录写学习建议。"
+        "要求：说人话；具体到知识点和出错次数；禁止空话套话"
+        "（不要写「努力学习」「继续加油」这类话）。"
+        "只返回 JSON，不要 Markdown："
+        '{"overall":"一段总述，点名最薄弱的知识点和它出错的次数",'
+        '"focus_points":[{"knowledge_point":"知识点名","times":出错次数,'
+        '"advice":"具体到题型或操作的建议，比如先背公式再做哪类题"}],'
+        '"weekly_plan":["3-5条本周可执行的动作"]}。\n'
+        f"错题统计：{json.dumps(stats, ensure_ascii=False)}"
+    )
+    defaults = get_grading_defaults(session)
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"学习建议生成失败：{exc}") from exc
+    advice = _parse_learning_advice(parsed)
+    if advice is None:
+        raise HTTPException(status_code=502, detail="学习建议返回内容不完整，请重试")
+    return LearningAdvicePublic(
+        has_data=True,
+        overall=advice["overall"],
+        focus_points=[
+            LearningAdviceFocusPoint(**item) for item in advice["focus_points"]
+        ],
+        weekly_plan=advice["weekly_plan"],
+        generated_at=get_datetime_utc(),
     )
 
 

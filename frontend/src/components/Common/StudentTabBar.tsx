@@ -1,5 +1,5 @@
 import { Link as RouterLink } from "@tanstack/react-router"
-import { BookMarked, GraduationCap, UserRound } from "lucide-react"
+import { BookMarked, GraduationCap, Network, UserRound } from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TABS = [
@@ -10,6 +10,7 @@ const TABS = [
     icon: BookMarked,
     match: "/my/wrongbook",
   },
+  { to: "/my/knowledge", label: "图谱", icon: Network, match: "/my/knowledge" },
   { to: "/settings", label: "我的", icon: UserRound, match: "/settings" },
 ] as const
 

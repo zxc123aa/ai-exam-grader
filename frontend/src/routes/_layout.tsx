@@ -63,6 +63,7 @@ const TITLE_BY_SEGMENT: Record<string, string> = {
   report: "改卷报告",
   scores: "班级分析",
   compose: "重新组卷",
+  "advanced-settings": "高级设置",
   classes: "班级学生",
   admin: "用户管理",
   platform: "学校管理",

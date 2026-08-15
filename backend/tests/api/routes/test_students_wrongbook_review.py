@@ -9,6 +9,7 @@ from app.models import (
     Organization,
     UserRole,
     WrongQuestionEntry,
+    WrongQuestionErrorReason,
     WrongQuestionReview,
     WrongQuestionReviewResult,
 )
@@ -229,3 +230,92 @@ def test_review_endpoints_reject_other_students_and_teachers(
             ).status_code
             == 403
         )
+
+
+def _wrong_entry_id(client: TestClient, headers: dict[str, str]) -> str:
+    due = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/due", headers=headers
+    )
+    assert due.status_code == 200, due.text
+    return due.json()["data"][0]["entry_id"]
+
+
+def test_review_and_patch_record_error_reason(client: TestClient, db: Session) -> None:
+    context = _student_context(client, db, "错因甲")
+    headers = context["headers"]
+    entry_id = _wrong_entry_id(client, headers)
+
+    # 复习提交时顺手标注错因，直接落到条目上
+    reviewed = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}/review",
+        headers=headers,
+        json={"result": "good", "error_reason": "calculation"},
+    )
+    assert reviewed.status_code == 200, reviewed.text
+    db.expire_all()
+    entry = db.get(WrongQuestionEntry, uuid.UUID(entry_id))
+    assert entry is not None
+    assert entry.error_reason == WrongQuestionErrorReason.CALCULATION
+
+    # 列表与详情都带错因
+    detail = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+        headers=headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["error_reason"] == "calculation"
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries", headers=headers
+    ).json()["data"][0]
+    assert listed["error_reason"] == "calculation"
+
+    # PATCH 单独改错因；传 null 清除
+    patched = client.patch(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+        headers=headers,
+        json={"error_reason": "concept"},
+    )
+    assert patched.status_code == 200, patched.text
+    assert patched.json()["error_reason"] == "concept"
+    db.expire_all()
+    entry = db.get(WrongQuestionEntry, uuid.UUID(entry_id))
+    assert entry is not None
+    assert entry.error_reason == WrongQuestionErrorReason.CONCEPT
+
+    cleared = client.patch(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+        headers=headers,
+        json={"error_reason": None},
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["error_reason"] is None
+
+
+def test_error_reason_rejects_invalid_values_and_other_students(
+    client: TestClient, db: Session
+) -> None:
+    context = _student_context(client, db, "错因乙")
+    headers = context["headers"]
+    entry_id = _wrong_entry_id(client, headers)
+
+    bad_review = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}/review",
+        headers=headers,
+        json={"result": "good", "error_reason": "careless"},
+    )
+    assert bad_review.status_code == 422
+    bad_patch = client.patch(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+        headers=headers,
+        json={"error_reason": "粗心"},
+    )
+    assert bad_patch.status_code == 422
+
+    # 别人的错题与不存在的错题返回同一个结果
+    other = _student_context(client, db, "错因丙")
+    forbidden = client.patch(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+        headers=other["headers"],
+        json={"error_reason": "concept"},
+    )
+    assert forbidden.status_code == 404
