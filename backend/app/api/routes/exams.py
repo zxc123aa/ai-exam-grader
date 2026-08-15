@@ -104,7 +104,6 @@ from app.models import (
 from app.services.class_students import resolve_student_for_submission
 from app.services.exam_photo_preprocessing import (
     PhotoPreprocessingError,
-    estimate_sharpness,
     preprocess_exam_photo_with_page_quads,
 )
 from app.services.file_storage import (
@@ -627,14 +626,21 @@ def build_student_submission_public(
     )
 
 
-def build_preprocessing_metadata(preprocessed: Any) -> tuple[dict, float, str]:
+def score_quality_warnings(
+    quality_warnings: Any,
+) -> tuple[list[dict[str, Any]], float]:
+    """把质量告警序列化，并按告警种类折算成 0-1 的扫描质量分。
+
+    客户端前处理上传与服务端管线共用这一套口径。分开各算一套的话，同一张卷子
+    在两条路径下会给出不可比的百分比，老师只会以为扫描质量变了。
+    """
     warnings = [
         {
             "code": warning.code,
             "severity": warning.severity,
             "message": warning.message,
         }
-        for warning in preprocessed.quality_warnings
+        for warning in quality_warnings
     ]
     # Do not make the score depend on page count by deducting the same risk
     # once per page. Score distinct failure modes by their actual severity.
@@ -661,7 +667,11 @@ def build_preprocessing_metadata(preprocessed: Any) -> tuple[dict, float, str]:
     warning_penalty += 0.01 * len(
         {item["code"] for item in warnings if item["severity"] == "info"}
     )
-    quality = max(0.0, min(1.0, 1.0 - warning_penalty))
+    return warnings, round(max(0.0, min(1.0, 1.0 - warning_penalty)), 4)
+
+
+def build_preprocessing_metadata(preprocessed: Any) -> tuple[dict, float, str]:
+    warnings, quality = score_quality_warnings(preprocessed.quality_warnings)
     status = (
         "ready"
         if preprocessed.quality_status == "pass" and quality >= 0.85
@@ -672,7 +682,7 @@ def build_preprocessing_metadata(preprocessed: Any) -> tuple[dict, float, str]:
         "scan_engine": settings.SCAN_ENGINE,
         "quality": {
             "status": preprocessed.quality_status,
-            "score": round(quality, 4),
+            "score": quality,
             "warnings": warnings,
         },
         "detected_quad": preprocessed.detected_quad,
@@ -2465,9 +2475,13 @@ def upload_client_preprocessed_pages(
     """
     from app.services.exam_photo_preprocessing import (
         PreprocessedPage,
+        SplitMetadata,
+        build_page_quality_warnings,
+        build_quality_warnings,
         encode_pdf,
         fine_deskew_page,
         normalize_reading_orientation,
+        quality_status_from_warnings,
     )
 
     exam_document, stored_file = get_exam_document_for_user(
@@ -2542,15 +2556,42 @@ def upload_client_preprocessed_pages(
         # Package as PDF
         pdf_bytes = encode_pdf(pages)
 
-        # Build metadata
-        # Laplacian variance for a sharp exam page is typically 50–200;
-        # normalise to [0, 1] so the UI percentage is meaningful.
-        _raw_sharpness = round(
-            statistics.mean([estimate_sharpness(page.image) for page in pages]),
-            2,
+        # 质量判定与服务端管线共用 build_quality_warnings + 同一张扣分表。
+        # 各算一套的话，同一张卷子在两条路径下会给出不可比的百分比，
+        # 老师只会以为扫描质量变了。
+        # low_sharpness 判的是原始照片，所以这里把原图读出来解一次码：
+        # 相比两次 Gemini 转正（约 10 秒）这点开销可忽略，换来的是
+        # 「照片模糊」「顶部内容靠近裁切边缘」这类该复核的提示不会丢。
+        original_image = cv2.imdecode(
+            np.frombuffer(
+                get_stored_file_path(source_file).read_bytes(), dtype=np.uint8
+            ),
+            cv2.IMREAD_COLOR,
         )
-        quality_score = round(min(1.0, _raw_sharpness / 50.0), 4)
-        status_value = "pass" if quality_score >= 0.5 else "review"
+        split_metadata = SplitMetadata(
+            strategy="client_provided",
+            gutter_ratio=0.5 if len(pages) > 1 else None,
+            gutter_confidence=1.0,
+            overlap_pixels=0,
+        )
+        quality_warnings = (
+            build_page_quality_warnings(pages)
+            if original_image is None
+            else build_quality_warnings(
+                original=original_image,
+                pages=pages,
+                split=split_metadata,
+                partial_landscape=False,
+            )
+        )
+        warnings_json, quality_score = score_quality_warnings(quality_warnings)
+        quality_status = quality_status_from_warnings(quality_warnings)
+        # preprocessing_status 是给界面看的（前端只认 ready/review/failed），
+        # metadata.quality.status 是内部口径（pass/review）。早期版本把 "pass"
+        # 直接写进 preprocessing_status，界面上就会出现生硬的「pass」徽章。
+        status_value = (
+            "ready" if quality_status == "pass" and quality_score >= 0.85 else "review"
+        )
         metadata: dict[str, Any] = {
             "source": "client_preprocessed_upload_v1",
             "detector": upload_in.detector,
@@ -2561,12 +2602,16 @@ def upload_client_preprocessed_pages(
                 max((p.image.shape[0] for p in pages), default=0),
             ],
             "split": {
-                "strategy": "client_provided",
-                "gutter_ratio": 0.5 if len(pages) > 1 else None,
-                "gutter_confidence": 1.0,
-                "overlap_pixels": 0,
+                "strategy": split_metadata.strategy,
+                "gutter_ratio": split_metadata.gutter_ratio,
+                "gutter_confidence": split_metadata.gutter_confidence,
+                "overlap_pixels": split_metadata.overlap_pixels,
             },
-            "quality": {"status": status_value, "score": quality_score, "warnings": []},
+            "quality": {
+                "status": quality_status,
+                "score": quality_score,
+                "warnings": warnings_json,
+            },
             "orientation_attempts": orientation_attempts,
             "timings": {},
             "debug": {

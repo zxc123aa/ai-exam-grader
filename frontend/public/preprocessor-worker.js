@@ -88,69 +88,63 @@ function safeDelete(obj) {
   }
 }
 
+// ---- 编解码 ---------------------------------------------------------------
+//
+// opencv.js 不含 imgcodecs：cv.imdecode / cv.imencode 以及 IMREAD_*、IMWRITE_*
+// 常量都不存在（本文件早期版本调用了它们，导致整条客户端路径每次都抛
+// "cv.imdecode is not a function" 并静默回退服务端）。浏览器里的编解码走
+// createImageBitmap + OffscreenCanvas，两者在 Worker 上下文均可用。
+
 /**
- * Encode a cv.Mat to JPEG ArrayBuffer.
+ * Decode image bytes into a BGR cv.Mat.
+ *
+ * canvas 给出的是 RGBA，转成 BGR 以对齐服务端 cv2.imdecode(IMREAD_COLOR)，
+ * 后续所有通道运算（Lab、灰度、去斜）才和 Python 侧一致。
  */
-function encodeJPEG(mat, quality) {
-  const effectiveQuality = quality || 92
-  // In OpenCV.js 4.x, imencode signature varies.
-  // Try the MatVector path first, then the direct-return path.
-  var vec, encoded, data, result, buf
+async function decodeToBgrMat(imageBuffer) {
+  const bitmap = await createImageBitmap(new Blob([imageBuffer]))
+  var rgba = null
   try {
-    vec = new cv.MatVector()
-    cv.imencode(".jpg", mat, vec, [cv.IMWRITE_JPEG_QUALITY, effectiveQuality])
-    encoded = vec.get(0)
-    // Clone data before deleting the MatVector
-    data = new Uint8Array(encoded.data)
-    safeDelete(encoded)
-    safeDelete(vec)
-    return data.buffer
-  } catch (e1) {
-    safeDelete(vec)
-    // Fallback: direct return
-    try {
-      result = cv.imencode(".jpg", mat, [
-        cv.IMWRITE_JPEG_QUALITY,
-        effectiveQuality,
-      ])
-      if (result?.data) {
-        buf = new Uint8Array(result.data).buffer
-        safeDelete(result)
-        return buf
-      }
-    } catch (e2) {
-      throw new Error(`cv.imencode failed: ${e1} / ${e2}`)
-    }
-    throw e1
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height)
+    const context = canvas.getContext("2d", { willReadFrequently: true })
+    context.drawImage(bitmap, 0, 0)
+    rgba = cv.matFromImageData(
+      context.getImageData(0, 0, bitmap.width, bitmap.height),
+    )
+    const bgr = new cv.Mat()
+    cv.cvtColor(rgba, bgr, cv.COLOR_RGBA2BGR)
+    return bgr
+  } finally {
+    bitmap.close()
+    safeDelete(rgba)
   }
 }
 
 /**
- * Encode a cv.Mat to PNG ArrayBuffer.
+ * Encode a BGR cv.Mat to a JPEG ArrayBuffer.
+ *
+ * quality 沿用服务端的 0-100 口径，convertToBlob 要的是 0-1。
  */
-function _encodePNG(mat) {
-  var vec, encoded, data, result, buf
+async function encodeJPEG(mat, quality) {
+  const effectiveQuality = (quality || 92) / 100
+  var rgba = new cv.Mat()
   try {
-    vec = new cv.MatVector()
-    cv.imencode(".png", mat, vec, [cv.IMWRITE_PNG_COMPRESSION, 3])
-    encoded = vec.get(0)
-    data = new Uint8Array(encoded.data)
-    safeDelete(encoded)
-    safeDelete(vec)
-    return data.buffer
-  } catch (e1) {
-    safeDelete(vec)
-    try {
-      result = cv.imencode(".png", mat, [cv.IMWRITE_PNG_COMPRESSION, 3])
-      if (result?.data) {
-        buf = new Uint8Array(result.data).buffer
-        safeDelete(result)
-        return buf
-      }
-    } catch (e2) {
-      throw new Error(`cv.imencode PNG failed: ${e1} / ${e2}`)
-    }
-    throw e1
+    cv.cvtColor(mat, rgba, cv.COLOR_BGR2RGBA)
+    const canvas = new OffscreenCanvas(rgba.cols, rgba.rows)
+    canvas
+      .getContext("2d")
+      .putImageData(
+        new ImageData(new Uint8ClampedArray(rgba.data), rgba.cols, rgba.rows),
+        0,
+        0,
+      )
+    const blob = await canvas.convertToBlob({
+      type: "image/jpeg",
+      quality: effectiveQuality,
+    })
+    return await blob.arrayBuffer()
+  } finally {
+    safeDelete(rgba)
   }
 }
 
@@ -365,18 +359,33 @@ function enhancePage(src) {
   cv.merge(channels, merged)
   cv.cvtColor(merged, merged, cv.COLOR_Lab2BGR)
 
-  // fastNlMeansDenoisingColored: h=3, hColor=3, templateWindowSize=7, searchWindowSize=21
-  var denoised = new cv.Mat()
-  cv.fastNlMeansDenoisingColored(merged, denoised, 3, 3, 7, 21)
+  // 服务端这里还做一次 fastNlMeansDenoisingColored(h=3, hColor=3, 7, 21)，
+  // 但它属于 OpenCV 的 photo 模块，opencv.js 不包含。有就用以保持一致，
+  // 没有就跳过：代价是产物比服务端略噪（h=3 本身是轻度降噪），
+  // 换来整条客户端路径可用。是否跳过会写进 metadata，避免两条路径静默分叉。
+  var enhanced = merged
+  var denoised = null
+  if (denoiseSupported()) {
+    denoised = new cv.Mat()
+    cv.fastNlMeansDenoisingColored(merged, denoised, 3, 3, 7, 21)
+    enhanced = denoised
+  }
 
   safeDelete(lab)
   safeDelete(enhancedL)
   safeDelete(channels.get(1)) // aChannel
   safeDelete(channels.get(2)) // bChannel
   safeDelete(channels)
-  safeDelete(merged)
+  if (enhanced !== merged) safeDelete(merged)
 
-  return denoised
+  return enhanced
+}
+
+/**
+ * OpenCV 的 photo 模块是否可用（决定能否做非局部均值降噪）。
+ */
+function denoiseSupported() {
+  return typeof cv.fastNlMeansDenoisingColored === "function"
 }
 
 /**
@@ -1125,7 +1134,7 @@ function preprocessPage(
 /**
  * Full preprocessing pipeline: decode → preprocess pages → encode.
  */
-function preprocess(imageBuffer, quads, options) {
+async function preprocess(imageBuffer, quads, options) {
   const opts = options || {}
   var marginMode = opts.marginMode || "conservative"
   var applyDeskew = opts.applyDeskew !== false
@@ -1135,8 +1144,7 @@ function preprocess(imageBuffer, quads, options) {
   var i, result, jpegBuf
 
   // Decode image
-  var buf = new Uint8Array(imageBuffer)
-  var srcImage = cv.imdecode(buf, cv.IMREAD_COLOR)
+  var srcImage = await decodeToBgrMat(imageBuffer)
   if (!srcImage || srcImage.rows === 0) {
     throw new Error("Could not decode image")
   }
@@ -1156,7 +1164,7 @@ function preprocess(imageBuffer, quads, options) {
 
       // Encode to JPEG
       try {
-        jpegBuf = encodeJPEG(result.mat, jpegQuality)
+        jpegBuf = await encodeJPEG(result.mat, jpegQuality)
 
         pages.push({
           name: `page_${i + 1}.jpg`,
@@ -1183,6 +1191,8 @@ function preprocess(imageBuffer, quads, options) {
       margin_mode: marginMode,
       split_axis: splitAxis,
       applied_deskew: applyDeskew,
+      // opencv.js 无 photo 模块时降噪会被跳过，这里如实标注，便于排查两条路径的差异。
+      applied_denoise: denoiseSupported(),
     },
   }
 }
@@ -1196,35 +1206,29 @@ self.onmessage = (event) => {
   var id = msg.id
 
   if (msg.type === "preprocess") {
+    // preprocess 是异步的（canvas 编解码），所以这里用链式 then 而不是 try/catch。
     waitForCV()
-      .then(() => {
-        var result, transferList
-        try {
-          result = preprocess(msg.imageBuffer, msg.quads, msg.options)
-          // Transfer the page ArrayBuffers
-          transferList = result.pages.map((p) => p.buffer)
-          self.postMessage(
-            {
-              id: id,
-              type: "result",
-              pages: result.pages,
-              metadata: result.metadata,
-            },
-            transferList,
-          )
-        } catch (err) {
-          self.postMessage({
+      .catch((err) => {
+        throw new Error(`OpenCV.js not available: ${err.message || err}`)
+      })
+      .then(() => preprocess(msg.imageBuffer, msg.quads, msg.options))
+      .then((result) => {
+        self.postMessage(
+          {
             id: id,
-            type: "error",
-            message: err.message || "Unknown preprocessing error",
-          })
-        }
+            type: "result",
+            pages: result.pages,
+            metadata: result.metadata,
+          },
+          // Transfer the page ArrayBuffers
+          result.pages.map((p) => p.buffer),
+        )
       })
       .catch((err) => {
         self.postMessage({
           id: id,
           type: "error",
-          message: `OpenCV.js not available: ${err.message || err}`,
+          message: err.message || "Unknown preprocessing error",
         })
       })
   } else if (msg.type === "ping") {

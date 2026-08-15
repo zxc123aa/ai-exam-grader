@@ -1046,6 +1046,37 @@
   - 学生端不出现 `p1` 这类内部编号。
   - 未命中评分点不出现「-0 分」。
 
+### AEG-073 客户端前处理从未真正生效，每次都静默回退服务端
+
+- 类型：Bug
+- 优先级：P1
+- 状态：Done（2026-08-14 修复并实测通过）
+- 所属周期：周期 9 阶段 B
+- 背景：2026-08-14 合并 #24（迁移服务器端前处理至前端）后，用真实照片 `参考算法/2_试卷分析文件/material/1.jpg` 在本地跑「导入试卷 → 复核四角 → 确认四角并保存」，实测客户端 OpenCV 路径一次都没成功：命中 `upload-preprocessed` 0 次，回退 `preprocess-with-quads` 1 次，控制台报 `Client preprocessing failed, falling back to server: Error: cv.imdecode is not a function`。产物元数据 `source` 仍是 `manual_quad_document_preprocessing_v1`，即老的服务端路径。
+- 根因：`frontend/public/preprocessor-worker.js` 调用了 opencv.js 不提供的 API。在真实 Worker 里运行时枚举该 worker 用到的全部 45 个 `cv.*`（WASM 就绪约 0.5 秒），只有 6 个不存在：`imdecode`、`imencode`、`IMREAD_COLOR`、`IMWRITE_JPEG_QUALITY`、`IMWRITE_PNG_COMPRESSION`（imgcodecs 模块）和 `fastNlMeansDenoisingColored`（photo 模块）。官方 opencv.js 不含这两个模块，图像编解码必须走 canvas。`preprocess()` 第一行就是 `cv.imdecode`，因此透视矫正、CLAHE 增强、去斜一行都没机会执行。
+- 影响（修复前）：
+  - 功能收益为零且净增开销——每个用户白下载 10.96 MB 的 `opencv.js`，再多花一次失败尝试。
+  - 回退是静默的（只有一行 `console.warn`），界面结果完全正常，靠肉眼验收发现不了；必须看命中的接口或产物元数据 `source`。
+  - 服务端 `upload-preprocessed` 接口（含 Gemini 转正 + PDF 打包）在此之前从未跑过真实流量。
+- 修复内容（`frontend/public/preprocessor-worker.js`）：
+  - 新增 `decodeToBgrMat()`：`createImageBitmap` + `OffscreenCanvas.getImageData()` → `cv.matFromImageData()` → `cvtColor(RGBA2BGR)`，与服务端 `cv2.imdecode(IMREAD_COLOR)` 的 BGR 通道序对齐。
+  - `encodeJPEG()` 改用 `OffscreenCanvas.convertToBlob({ type: "image/jpeg", quality })`（quality 由服务端 0-100 口径换算为 0-1）。
+  - 删除死代码 `_encodePNG()`：它同样只调用不存在的 `cv.imencode`，留着是给后人埋坑。
+  - 降噪改为运行时特性检测（`denoiseSupported()`）：有 photo 模块就按服务端参数 `h=3, hColor=3, 7, 21` 跑，没有就跳过，并把结果写入 metadata `applied_denoise`。
+  - `preprocess()` 与消息处理器改为异步链（canvas 编解码是异步的）。
+- 同时修复的质量口径不一致（`backend/app/api/routes/exams.py`）：
+  - `upload-preprocessed` 原先把 `warnings` 硬编码成 `[]`，并自造 `锐度/50` 当分数，与服务端的「1.0 − 各类告警扣分」不同量纲；同一张卷子客户端判 `pass · 100%`、服务端判 `review · 82%`，且老师看不到裁切告警。
+  - 现改为调用服务端同一个 `build_quality_warnings()`（原图算 `low_sharpness`，页面算 `content_near_*_edge` 与 `page_aspect_outlier`），扣分表抽成共用的 `score_quality_warnings()`，避免两处各维护一张表。为算 `low_sharpness` 需把原图读出来解一次码，相比两次 Gemini 转正（约 10 秒）可忽略。
+  - 另修正一处术语泄漏：原先把内部值 `pass` 写进 `preprocessing_status`，而前端只认 `ready/review/failed`，界面上会出现生硬的「pass」徽章。现按服务端同一规则取 `ready/review`。
+  - 实测同一张照片：客户端由「pass · 100%、无告警」变为「需要复核 · 97%」并正常显示「顶部内容靠近裁切边缘」。
+- 实测结果（同一张真实照片，双页摊开）：命中 `upload-preprocessed` 1 次 HTTP 200，回退 0 次，无告警；产物 `source=client_preprocessed_upload_v1`、`engine=client_opencvjs_upload_v1`、`client-scanned.pdf` 268 KB / 2 页。渲染 PDF 肉眼核对：透视矫正正确、双页拆分正确、色彩正常（无通道错位）。服务端仍按设计承担精修去斜与两页 Gemini 转正（6.1 s + 3.6 s，占接口 11.2 s 的大部分）。
+- 遗留差异（未修，需单独决策）：
+  - 客户端跳过了非局部均值降噪（opencv.js 无 photo 模块），产物比服务端路径略噪。h=3 属轻度降噪，且 JPEG q=92 本身有平滑作用，暂判为可接受；若要严格一致，只能在服务端补做或换带 photo 模块的 opencv.js 构建。
+  - 回退仍然完全静默。客户端路径失败时应上报一次（埋点或后端日志），否则功能再坏一次同样没人知道——这次能发现纯属专门去查了命中的接口。
+  - `upload-preprocessed` 仍无后端测试覆盖，回归只靠上面那条 Playwright 实况用例（需真实模型 Key）。
+- 回归用例：`frontend/tests/client-preprocessing-live.spec.ts`。会自建学校/考试、上传真实照片、走完整界面流程，断言必须命中 `upload-preprocessed`、不得出现回退告警、且元数据 `source == client_preprocessed_upload_v1`。需要真实模型 Key（Gemini 转正），CI 不跑 Playwright。
+- 本地环境坑：#24 新增了 `scanic` 依赖，合并前启动的 vite 进程其 `.vite/deps` 里没有它，动态 import 404 会让四角编辑器整体挂不起来（对话框显示「原图读取或后端稳定算法检测框加载失败」）。需重启开发服务器并带 `--force`。
+
 ## 状态更正
 
 - AEG-003、AEG-008、AEG-020 的容器化验收在周期 0/1 长期停在 In Progress，实际已由 staging 部署（`compose.staging.yml` + `deploy-staging.sh`）覆盖：数据库、Redis、后端、worker、前端和 Node 参考服务均以容器运行。已在对应条目更新状态并注明验证以 staging compose 为准，本地开发 override（Traefik、Adminer、Mailcatcher）仍未做过一次完整 `docker compose up --build` 验收。
