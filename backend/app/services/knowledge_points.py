@@ -39,11 +39,12 @@ QUESTION_TEXT_LIMIT = 600
 def resolve_taxonomy_subject(subject: str | None) -> str | None:
     """把考试科目映射到知识点树的学科键。
 
-    考试科目是自由文本（可能是「物理」「初中物理」「物理（上）」），因此按包含匹配。
+    考试科目是自由文本（可能是「物理」「高中物理」「物理（上）」），因此按包含匹配；
+    长键优先，避免「高中物理」被「物理」（初中词表）截胡。
     """
     if not subject:
         return None
-    for key in TAXONOMY:
+    for key in sorted(TAXONOMY, key=len, reverse=True):
         if key in subject:
             return key
     return None
