@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test"
+import { schoolOwnerEmail, schoolOwnerPassword } from "./config.ts"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
@@ -8,8 +9,8 @@ test("hybrid scan metadata is visible for a real two-page upload", async ({
   const apiBase = "http://localhost:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {
-      username: process.env.LIVE_TEST_EMAIL ?? "",
-      password: process.env.LIVE_TEST_PASSWORD ?? "",
+      username: schoolOwnerEmail,
+      password: schoolOwnerPassword,
     },
   })
   expect(login.ok()).toBeTruthy()
@@ -17,7 +18,7 @@ test("hybrid scan metadata is visible for a real two-page upload", async ({
   const headers = { Authorization: `Bearer ${token}` }
 
   // 找到包含 2-scanned.pdf（双页扫描件）的考试；数据不存在时跳过
-  const examsResponse = await page.request.get(`${apiBase}/exams/?limit=100`, {
+  const examsResponse = await page.request.get(`${apiBase}/exams/?limit=1000`, {
     headers,
   })
   expect(examsResponse.ok()).toBeTruthy()

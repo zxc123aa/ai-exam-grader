@@ -941,12 +941,22 @@ export default function RegionMarkingCanvas({
       setEditingLabel("")
       return
     }
-    setEditingRegion({
-      x: selectedRegion.x,
-      y: selectedRegion.y,
-      width: selectedRegion.width,
-      height: selectedRegion.height,
-    })
+    // selectedRegion 每渲染都是新对象（上游 filter 未 memo），
+    // 值没变时保持原引用，避免 setState 触发无限渲染循环
+    setEditingRegion((current) =>
+      current &&
+      current.x === selectedRegion.x &&
+      current.y === selectedRegion.y &&
+      current.width === selectedRegion.width &&
+      current.height === selectedRegion.height
+        ? current
+        : {
+            x: selectedRegion.x,
+            y: selectedRegion.y,
+            width: selectedRegion.width,
+            height: selectedRegion.height,
+          },
+    )
     setEditingLabel(selectedRegion.label)
   }, [selectedRegion])
 

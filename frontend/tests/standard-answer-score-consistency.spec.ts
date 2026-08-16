@@ -83,7 +83,9 @@ test("standard answer page shows evidence-backed scores totaling 100", async ({
         email: "teacher@example.com",
         full_name: "Teacher",
         is_active: true,
-        is_superuser: true,
+        // 学校角色：平台角色访问 /exams 会被布局重定向到 /platform
+        is_superuser: false,
+        role: "school_owner",
       },
     }),
   )

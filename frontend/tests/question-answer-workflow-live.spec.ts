@@ -1,22 +1,26 @@
 import { expect, test } from "@playwright/test"
+import { schoolOwnerEmail, schoolOwnerPassword } from "./config.ts"
 
 test.use({ storageState: { cookies: [], origins: [] } })
 
 test("real question-recognition draft renders backend counts and timing dynamically", async ({
   page,
 }) => {
+  // （曾因旧版管线数据触发 useCurrentExam 乒乓崩溃而跳过；产品 bug 已修复，恢复）
   test.setTimeout(60_000)
   const apiBase = "http://localhost:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {
-      username: process.env.LIVE_TEST_EMAIL ?? "",
-      password: process.env.LIVE_TEST_PASSWORD ?? "",
+      username: schoolOwnerEmail,
+      password: schoolOwnerPassword,
     },
   })
   expect(login.ok()).toBeTruthy()
   const { access_token: token } = await login.json()
   const headers = { Authorization: `Bearer ${token}` }
-  const examsResponse = await page.request.get(`${apiBase}/exams/`, { headers })
+  const examsResponse = await page.request.get(`${apiBase}/exams/?limit=1000`, {
+    headers,
+  })
   expect(examsResponse.ok()).toBeTruthy()
   const exam = (await examsResponse.json()).data.find(
     (item: { title: string }) => item.title === "高一年级物理期中检测题",
@@ -36,16 +40,24 @@ test("real question-recognition draft renders backend counts and timing dynamica
   expect(itemsResponse.ok()).toBeTruthy()
   const items = await itemsResponse.json()
   expect(items.length).toBeGreaterThan(0)
-  const confidences = items
-    .map((item: { confidence: number | null }) => item.confidence)
-    .filter((value: number | null): value is number => value !== null)
-  const expectedAverage = Math.round(
-    (confidences.reduce((sum: number, value: number) => sum + value, 0) /
-      confidences.length) *
-      100,
-  )
+  // 低置信度（< 0.8）题目数对应页面上的「需要复核 N 道」
+  const expectedReviewCount = items.filter(
+    (item: { confidence: number | null }) =>
+      item.confidence !== null && item.confidence < 0.8,
+  ).length
 
-  await page.goto("/login")
+  await page.goto("/login").catch(() => undefined)
+  await expect
+    .poll(async () => {
+      try {
+        return await page.evaluate(
+          () => performance.getEntriesByType("navigation")[0]?.type,
+        )
+      } catch {
+        return null
+      }
+    })
+    .toBe("reload")
   await page.evaluate(
     (value) => localStorage.setItem("access_token", value),
     token,
@@ -53,15 +65,15 @@ test("real question-recognition draft renders backend counts and timing dynamica
   await page.goto(`/exams/${exam.id}/questions`)
   await expect(page.getByRole("heading", { name: exam.title })).toBeVisible()
   await expect(page.getByTestId(/^recognition-item-/)).toHaveCount(items.length)
-  await expect(page.getByTestId("average-confidence")).toHaveText(
-    `${expectedAverage}%`,
+  await expect(page.getByTestId("review-item-count")).toContainText(
+    `${expectedReviewCount} 道`,
   )
   // 耗时明细默认折叠在「批次详情（调试）」里，先展开再断言
   await page.getByText("批次详情（调试）").click()
   await expect(page.getByText("方向检测")).toBeVisible()
   await expect(page.getByText("版面分割")).toBeVisible()
   await expect(page.getByText("裁切", { exact: true })).toBeVisible()
-  await expect(page.getByText("OCR", { exact: true })).toBeVisible()
+  await expect(page.getByText("文字识别")).toBeVisible()
   // 题目列表默认收起，先展开第一行再断言卷面作答
   await page
     .getByTestId(/^recognition-item-/)
@@ -83,8 +95,8 @@ test("question confirmation and immutable answer publishing render end to end", 
   const apiBase = "http://localhost:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {
-      username: process.env.LIVE_TEST_EMAIL ?? "",
-      password: process.env.LIVE_TEST_PASSWORD ?? "",
+      username: schoolOwnerEmail,
+      password: schoolOwnerPassword,
     },
   })
   expect(login.ok()).toBeTruthy()
@@ -95,8 +107,7 @@ test("question confirmation and immutable answer publishing render end to end", 
     data: {
       title: `工作流验收-${Date.now()}`,
       subject: "物理",
-      // 平台账号创建考试必须指定 org_id（默认学校）
-      org_id: "00000000-0000-0000-0000-000000000001",
+      // 学校账号创建考试自动归入本人学校（默认学校）
     },
   })
   expect(examResponse.ok()).toBeTruthy()
@@ -380,8 +391,8 @@ test("question confirmation and immutable answer publishing render end to end", 
     await expect(page.getByTestId(/^recognition-item-/)).toHaveCount(
       questionItems.length,
     )
-    await expect(page.getByText("平均置信度")).toBeVisible()
-    await expect(page.getByTestId("average-confidence")).toHaveText("85%")
+    // 置信度 0.78 < 0.8 的第2题计入「需要复核」
+    await expect(page.getByTestId("review-item-count")).toContainText("1 道")
     // 题目列表默认收起，先展开第一行再断言卷面作答
     await page
       .getByTestId(/^recognition-item-/)
@@ -394,7 +405,7 @@ test("question confirmation and immutable answer publishing render end to end", 
     await page.getByText("批次详情（调试）").click()
     await expect(page.getByText("方向检测")).toBeVisible()
     await expect(page.getByText("版面分割")).toBeVisible()
-    await expect(page.getByText("OCR", { exact: true })).toBeVisible()
+    await expect(page.getByText("文字识别")).toBeVisible()
     await page.getByRole("button", { name: "确认题目并进入标准答案" }).click()
     // 生成参考答案前，标准答案页只展示模式选择与确认题目数
     await expect(
@@ -402,14 +413,13 @@ test("question confirmation and immutable answer publishing render end to end", 
     ).toBeVisible()
     await page.getByRole("button", { name: "生成参考答案" }).click()
     await expect(page.getByText("答案匹配与评分准则")).toBeVisible()
-    await expect(page.getByText("pomoai", { exact: true })).toBeVisible()
-    await expect(
-      page.getByText("gpt-5.6-sol", { exact: true }).last(),
-    ).toBeVisible()
+    // 教师界面不再暴露 provider/model 名，只展示「来源：自动生成」
+    await expect(page.getByText("来源")).toBeVisible()
+    await expect(page.getByText("自动生成").first()).toBeVisible()
     await expect(page.getByTestId(/^answer-item-/)).toHaveCount(
       answerItems.length,
     )
-    await expect(page.getByText("模型耗时")).toBeVisible()
+    await expect(page.getByText("准备耗时")).toBeVisible()
     await page.getByRole("button", { name: "确认答案与评分准则" }).click()
     await expect(page.getByText("待发布", { exact: true })).toHaveCount(
       revisions.length,

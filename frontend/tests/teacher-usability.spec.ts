@@ -5,7 +5,9 @@ test.use({ storageState: { cookies: [], origins: [] } })
 const teacherEmail = "demo2.physics@example.com"
 const teacherPassword = "Dianfan@2026"
 const publicBaseUrl = process.env.DIANFAN_PUBLIC_BASE_URL
-const teacherOwnedExamId = "7a1c8e43-88de-45dd-924b-adbc401d939a"
+const apiBase = publicBaseUrl
+  ? `${publicBaseUrl}/api/v1`
+  : "http://localhost:8000/api/v1"
 
 async function loginAsTeacher(page: Page) {
   await page.goto(publicBaseUrl ? `${publicBaseUrl}/login` : "/login")
@@ -50,14 +52,33 @@ test("考试创建者打开协作批卷时不请求管理员用户列表", async
   })
 
   await loginAsTeacher(page)
-  const gradingPath = `/exams/${teacherOwnedExamId}/grading`
-  await page.goto(
-    publicBaseUrl ? `${publicBaseUrl}${gradingPath}` : gradingPath,
-  )
-  await expect(page.getByText("协作批卷", { exact: true })).toBeVisible()
-  await expect(page.getByText("新建批改批次", { exact: true })).toBeVisible()
-  expect(userDirectoryRequests).toEqual([])
-  expect(forbiddenResponses).toEqual([])
+
+  // 历史演示数据里的固定考试已不存在，改为用教师本人账号现场建考试，
+  // 保证「考试创建者」身份成立
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const headers = { Authorization: `Bearer ${token}` }
+  const examResponse = await page.request.post(`${apiBase}/exams/`, {
+    headers,
+    data: {
+      title: `协作批卷权限验收-${Date.now()}`,
+      subject: "物理",
+    },
+  })
+  expect(examResponse.ok()).toBeTruthy()
+  const exam = await examResponse.json()
+
+  try {
+    const gradingPath = `/exams/${exam.id}/grading`
+    await page.goto(
+      publicBaseUrl ? `${publicBaseUrl}${gradingPath}` : gradingPath,
+    )
+    await expect(page.getByText("协作批卷", { exact: true })).toBeVisible()
+    await expect(page.getByText("新建批改批次", { exact: true })).toBeVisible()
+    expect(userDirectoryRequests).toEqual([])
+    expect(forbiddenResponses).toEqual([])
+  } finally {
+    await page.request.delete(`${apiBase}/exams/${exam.id}`, { headers })
+  }
 })
 
 test("教师手机端顶栏清晰且页面没有横向溢出", async ({ page }) => {
