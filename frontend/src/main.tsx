@@ -19,6 +19,12 @@ OpenAPI.TOKEN = async () => {
   return localStorage.getItem("access_token") || ""
 }
 
+// 发版后旧 tab 里的动态 import 指向已被新构建替换的 chunk，必然 404。
+// 监听到直接整页刷新换新 bundle，不要砸到错误边界让老师看到「出现错误」。
+window.addEventListener("vite:preloadError", () => {
+  window.location.reload()
+})
+
 const handleApiError = (error: Error) => {
   if (!(error instanceof ApiError)) return
   // 401 = 凭证失效（token 过期/用户被删），一律登出；
