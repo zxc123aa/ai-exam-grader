@@ -4,6 +4,7 @@ import {
   BarChart3,
   BookMarked,
   Building2,
+  Camera,
   FileText,
   GraduationCap,
   LayoutDashboard,
@@ -177,6 +178,22 @@ export function AppSidebar() {
                   <RouterLink to="/my/exams" onClick={handleMenuClick}>
                     <GraduationCap />
                     <span>我的成绩</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="拍题答疑"
+                  isActive={pathname.startsWith("/my/snap")}
+                  asChild
+                  className={cn(
+                    "transition-all",
+                    pathname.startsWith("/my/snap") && ACTIVE_ITEM_CLASS,
+                  )}
+                >
+                  <RouterLink to="/my/snap" onClick={handleMenuClick}>
+                    <Camera />
+                    <span>拍题答疑</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>

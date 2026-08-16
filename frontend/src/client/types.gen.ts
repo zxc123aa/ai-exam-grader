@@ -242,6 +242,14 @@ export type Body_login_login_access_token = {
     client_secret?: (string | null);
 };
 
+export type Body_students_snap_question = {
+    image: string;
+    mode?: 'solve' | 'grade';
+    max_score?: number;
+};
+
+export type mode = 'solve' | 'grade';
+
 export type CatalogItemPublic = {
     item_type: 'plan' | 'addon';
     code: string;
@@ -1732,6 +1740,28 @@ export type SignupOrganizationPublic = {
     code: string;
     name: string;
     organization_type: OrganizationType;
+};
+
+/**
+ * 拍照批改结果：转录题目与作答，判分给点评。
+ */
+export type SnapGradePublic = {
+    mode?: "grade";
+    question_text: string;
+    student_answer: string;
+    score: number;
+    max_score: number;
+    comment: string;
+};
+
+/**
+ * 拍题答疑结果：一次性问答，不落库。
+ */
+export type SnapSolvePublic = {
+    mode?: "solve";
+    question_text: string;
+    answer: string;
+    explanation: string;
 };
 
 export type StandardAnswerCreate = {
@@ -3524,6 +3554,12 @@ export type StudentsUpdateMyWrongbookEntryData = {
 export type StudentsUpdateMyWrongbookEntryResponse = (WrongbookEntryDetail);
 
 export type StudentsReadMyLearningAdviceResponse = (LearningAdvicePublic);
+
+export type StudentsSnapQuestionData = {
+    formData: Body_students_snap_question;
+};
+
+export type StudentsSnapQuestionResponse = ((SnapSolvePublic | SnapGradePublic));
 
 export type StudentsReadMyWrongbookEntryImageData = {
     authorization?: (string | null);

@@ -41,9 +41,12 @@ test("Log in with valid email and password ", async ({ page }) => {
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
   await page.getByRole("button", { name: /登录|Log In/ }).click()
 
-  await page.waitForURL("/")
+  // 平台超管登录后引导到平台工作台，而不是学校工作台
+  await page.waitForURL("/platform")
 
-  await expect(page.getByRole("heading", { name: /老师/ })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "学校管理" }).last(),
+  ).toBeVisible()
   await expect(page.getByTestId("user-menu")).toContainText(firstSuperuser)
 })
 
@@ -72,9 +75,11 @@ test("Successful log out", async ({ page }) => {
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
   await page.getByRole("button", { name: /登录|Log In/ }).click()
 
-  await page.waitForURL("/")
+  await page.waitForURL("/platform")
 
-  await expect(page.getByRole("heading", { name: /老师/ })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "学校管理" }).last(),
+  ).toBeVisible()
   await expect(page.getByTestId("user-menu")).toContainText(firstSuperuser)
 
   await page.getByTestId("user-menu").click()
@@ -88,9 +93,11 @@ test("Logged-out user cannot access protected routes", async ({ page }) => {
   await fillForm(page, firstSuperuser, firstSuperuserPassword)
   await page.getByRole("button", { name: /登录|Log In/ }).click()
 
-  await page.waitForURL("/")
+  await page.waitForURL("/platform")
 
-  await expect(page.getByRole("heading", { name: /老师/ })).toBeVisible()
+  await expect(
+    page.getByRole("heading", { name: "学校管理" }).last(),
+  ).toBeVisible()
   await expect(page.getByTestId("user-menu")).toContainText(firstSuperuser)
 
   await page.getByTestId("user-menu").click()

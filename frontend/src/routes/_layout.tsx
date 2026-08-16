@@ -53,6 +53,7 @@ export const Route = createFileRoute("/_layout")({
 const TITLE_BY_SEGMENT: Record<string, string> = {
   exams: "导入试卷",
   my: "我的成绩",
+  snap: "拍题答疑",
   marking: "框选题目",
   questions: "确认题目",
   answers: "标准答案",
@@ -81,6 +82,7 @@ function pageTitle(pathname: string) {
   if (pathname === "/platform/usage") return "调用记录"
   // 学生端路径优先：/my/exams 的 exams 段不能被误判为「导入试卷」
   if (pathname.startsWith("/my")) {
+    if (pathname === "/my/snap") return "拍题答疑"
     return pathname === "/my/exams" ? "我的成绩" : "成绩报告"
   }
   const segments = pathname.split("/").filter(Boolean)

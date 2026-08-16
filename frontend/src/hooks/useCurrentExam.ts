@@ -47,10 +47,14 @@ export function useCurrentExam() {
   // 存储的考试被删除或从未选择时，回退到最近一场
   useEffect(() => {
     if (!exams.length) return
+    // 路由直接打开的考试优先：列表只拉前 100 场，老考试可能不在其中；
+    // 此时若强行回退到 exams[0]，会与上面的路由同步 effect 互相覆盖，
+    // 两个 effect 每轮渲染交替 setExamId，形成无限渲染循环
+    if (routeExamId && examId === routeExamId) return
     if (!examId || !exams.some((exam) => exam.id === examId)) {
       setExamId(exams[0].id)
     }
-  }, [exams, examId])
+  }, [exams, examId, routeExamId])
 
   useEffect(() => {
     if (examId) localStorage.setItem(STORAGE_KEY, examId)
@@ -65,7 +69,9 @@ export function useCurrentExam() {
   return {
     exams,
     currentExam,
-    currentExamId: currentExam?.id ?? null,
+    // 列表只含前 100 场；路由打开的老考试不在其中时回退到路由 id，
+    // 保证侧栏考试相关链接不丢失当前考试上下文
+    currentExamId: currentExam?.id ?? routeExamId,
     setCurrentExam,
     isLoading: examsQuery.isLoading,
   }

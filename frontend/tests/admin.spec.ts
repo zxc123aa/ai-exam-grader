@@ -25,7 +25,17 @@ test("平台账号页与学校人员目录职责分离", async ({ page }) => {
   await page.goto("/admin")
 
   await expect(page.getByText("示范二中")).toHaveCount(0)
-  await expect(page.getByText("当前账号", { exact: true })).toBeVisible()
+  // 历史测试账号累积后当前账号可能落在第一页之外，先把每页行数放到最大
+  const pageSizeLabel = page.getByText("每页行数")
+  if (await pageSizeLabel.isVisible()) {
+    await pageSizeLabel.locator("xpath=..").getByRole("combobox").click()
+    await page.getByRole("option", { name: "50" }).click()
+  }
+  const currentRow = page.getByRole("row").filter({
+    has: page.getByText(firstSuperuser, { exact: true }),
+  })
+  await expect(currentRow).toBeVisible({ timeout: 15_000 })
+  await expect(currentRow.getByText("当前账号", { exact: true })).toBeVisible()
   await expect(page.getByText("未填写", { exact: true })).toHaveCount(0)
   await expect(page.getByText("You", { exact: true })).toHaveCount(0)
   await expect(page.getByRole("button", { name: "批量导入" })).toHaveCount(0)

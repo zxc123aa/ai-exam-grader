@@ -3,8 +3,11 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { deflateSync } from "node:zlib"
 import { expect, type Page, test } from "@playwright/test"
+import { schoolOwnerEmail, schoolOwnerPassword } from "./config.ts"
 
-test.use({ storageState: "playwright/.auth/user.json" })
+// 学校业务页：用学校账号（默认学校 school_owner）的登录态，
+// 平台超管（user.json）会被重定向到 /platform
+test.use({ storageState: "playwright/.auth/school.json" })
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
@@ -100,7 +103,7 @@ async function createExamViaUI(page: Page, title: string) {
   await expect(dialog).not.toBeVisible()
 }
 
-/** 从考试列表进入区域校正页，通过「导入试卷」上传一份空白卷。 */
+/** 从考试列表进入导入页，上传一份空白卷，然后切到区域校正页。 */
 async function uploadBlankPaper(
   page: Page,
   title: string,
@@ -111,15 +114,16 @@ async function uploadBlankPaper(
   await expect(row).toBeVisible()
   await row.getByRole("link", { name: /继续：|进入批卷/ }).click()
 
-  await page.getByRole("button", { name: "导入试卷" }).click()
+  // 导入中心现在是考试页内联的 tab 面板（不再是弹窗），testid 不变
   await page.getByTestId("exam-file-input").setInputFiles({
     name,
     mimeType: "image/png",
     buffer,
   })
   await page.getByTestId("exam-file-upload-button").click()
-  await expect(page.getByText("试卷导入成功")).toBeVisible()
-  await page.keyboard.press("Escape")
+  // 不触发后台扫描时提示「试卷导入成功」，触发时提示「上传成功，正在后台处理」
+  await expect(page.getByText(/试卷导入成功|上传成功/)).toBeVisible()
+  await page.getByRole("link", { name: "确认题目区域" }).click()
   await expect(page.getByText("第 1 / 1 页")).toBeVisible({ timeout: 15_000 })
 }
 
@@ -202,8 +206,8 @@ test("Standard answer page requires confirmed questions first", async ({
   const apiBase = "http://localhost:8000/api/v1"
   const login = await page.request.post(`${apiBase}/login/access-token`, {
     form: {
-      username: process.env.LIVE_TEST_EMAIL ?? "",
-      password: process.env.LIVE_TEST_PASSWORD ?? "",
+      username: schoolOwnerEmail,
+      password: schoolOwnerPassword,
     },
   })
   expect(login.ok()).toBeTruthy()
@@ -214,7 +218,6 @@ test("Standard answer page requires confirmed questions first", async ({
     data: {
       title: `Answer Gate Exam ${Date.now()}`,
       subject: "物理",
-      org_id: "00000000-0000-0000-0000-000000000001",
     },
   })
   expect(examResponse.ok()).toBeTruthy()
@@ -235,11 +238,8 @@ test("Can load suggested regions and confirm one as a template region", async ({
   await uploadBlankPaper(page, title, questionLayoutBuffer, "layout.png")
 
   // 投影分割引擎在本地运行，不依赖外部 AI 提供者
-  await page
-    .getByRole("combobox")
-    .filter({ hasText: "Gemini 版面分析" })
-    .click()
-  await page.getByRole("option", { name: "投影分割" }).click()
+  await page.getByRole("combobox").filter({ hasText: "版面分析" }).click()
+  await page.getByRole("option", { name: "分栏拆分" }).click()
 
   const responsePromise = page.waitForResponse(
     (response) =>
@@ -294,7 +294,24 @@ test("Can upload and preview a student submission", async ({ page }) => {
   })
   await expect(dialog.getByTestId("submission-overlay-region-Q1")).toBeVisible()
 
-  await dialog.getByRole("link", { name: "复核" }).click()
+  // 「复核」入口现在指向批卷工作台；答卷复核工作区改为直达链接打开
+  const apiBase = "http://localhost:8000/api/v1"
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const headers = { Authorization: `Bearer ${token}` }
+  const examsResponse = await page.request.get(`${apiBase}/exams/?limit=1000`, {
+    headers,
+  })
+  const exam = (await examsResponse.json()).data.find(
+    (item: { title: string }) => item.title === title,
+  )
+  const submissionsResponse = await page.request.get(
+    `${apiBase}/exams/${exam.id}/submissions`,
+    { headers },
+  )
+  const submission = (await submissionsResponse.json()).data.find(
+    (item: { student_name: string }) => item.student_name === "Student A",
+  )
+  await page.goto(`/exams/${exam.id}/submissions/${submission.id}/review`)
   await expect(page.getByTestId("submission-review-canvas")).toBeVisible()
   await expect(page.getByTestId("review-region-list-Q1")).toBeVisible()
 
@@ -316,8 +333,9 @@ test("Can upload and preview a student submission", async ({ page }) => {
   await page.getByTestId("review-comment-input").fill("Good method")
   await page.getByTestId("review-save-annotation-button").click()
   await expect(page.getByText("批注已保存")).toBeVisible()
+  // 人工给分/批注保存后视为已确认（后端将状态置为 accepted）
   await expect(page.getByTestId("review-region-list-Q1")).toContainText(
-    "待复核",
+    "已通过",
   )
 })
 
@@ -368,7 +386,24 @@ test("PaddleOCR draft appears in the review workspace", async ({ page }) => {
   await expect(page.getByText("配准状态已更新")).toBeVisible()
   await expect(dialog.getByText(/人工确认/)).toBeVisible()
 
-  await dialog.getByRole("link", { name: "复核" }).click()
+  // 「复核」入口现在指向批卷工作台；答卷复核工作区改为直达链接打开
+  const apiBase = "http://localhost:8000/api/v1"
+  const token = await page.evaluate(() => localStorage.getItem("access_token"))
+  const headers = { Authorization: `Bearer ${token}` }
+  const examsResponse = await page.request.get(`${apiBase}/exams/?limit=1000`, {
+    headers,
+  })
+  const exam = (await examsResponse.json()).data.find(
+    (item: { title: string }) => item.title === title,
+  )
+  const submissionsResponse = await page.request.get(
+    `${apiBase}/exams/${exam.id}/submissions`,
+    { headers },
+  )
+  const submission = (await submissionsResponse.json()).data.find(
+    (item: { student_name: string }) => item.student_name === "Student OCR",
+  )
+  await page.goto(`/exams/${exam.id}/submissions/${submission.id}/review`)
   await expect(page.getByTestId("review-region-list-Header")).toBeVisible()
 
   await page.getByTestId("run-submission-processing-button").click()
@@ -411,6 +446,7 @@ test("Can convert a scan photo into a student submission", async ({ page }) => {
   await expect(dialog.getByText("Student Scan", { exact: true })).toBeVisible({
     timeout: 15_000,
   })
-  await expect(dialog.getByText(/phone-preprocessed\.pdf/)).toBeVisible()
+  // 客户端预处理按页产出 JPEG（{原名}-p{页码}.jpg），不再合并成单个 PDF
+  await expect(dialog.getByText(/phone-p1\.jpg/)).toBeVisible()
   await expect(dialog.getByText("等待配准")).toBeVisible()
 })

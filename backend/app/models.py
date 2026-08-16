@@ -3315,6 +3315,26 @@ class LearningAdvicePublic(SQLModel):
     generated_at: datetime | None = None
 
 
+class SnapSolvePublic(SQLModel):
+    """拍题答疑结果：一次性问答，不落库。"""
+
+    mode: Literal["solve"] = "solve"
+    question_text: str
+    answer: str
+    explanation: str
+
+
+class SnapGradePublic(SQLModel):
+    """拍照批改结果：转录题目与作答，判分给点评。"""
+
+    mode: Literal["grade"] = "grade"
+    question_text: str
+    student_answer: str
+    score: float
+    max_score: float
+    comment: str
+
+
 # 平台级系统配置（仅 platform_superuser 可写）：模型与批改默认值，
 # DB 无记录时回落到 env 设置（见 services/system_config.py）。
 class SystemConfig(SQLModel, table=True):
