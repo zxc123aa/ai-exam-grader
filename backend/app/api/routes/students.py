@@ -1116,6 +1116,7 @@ async def snap_question(
     max_score: Annotated[float, Form()] = 10.0,
 ) -> Any:
     """拍题答疑 / 拍照批改。一次性问答，不写入任何学习记录。"""
+    del current_user  # 仅做学生角色校验（依赖注入），不使用其数据
     if max_score <= 0 or max_score > 100:
         raise HTTPException(status_code=422, detail="满分需在 0 到 100 之间")
     image_bytes = await image.read()
