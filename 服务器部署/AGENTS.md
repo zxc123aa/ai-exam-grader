@@ -30,3 +30,5 @@
 - 生产部署应显式指定 Compose 文件，例如 `docker compose -f compose.yml ...`，并先解决现有 Nginx 与项目 Traefik 标签/外部网络的衔接。
 - 任何数据库或 volume 变更前先备份；替换镜像前保留带时间戳的回滚标签。
 - 部署后至少验证容器健康、HTTP 健康端点、数据库迁移、worker、持久化目录、端口冲突和最近错误日志。
+- 容器重建会换 IP：`deploy-staging.sh ... app` 之后必须 `docker exec nginx-ui nginx -s reload`，否则外层 nginx 按启动时解析的旧 IP 转发，公网 502（v0.2.0 部署时实测复现并解决）。
+- 标准发布路径：本地打 `v*` tag 推送 → release.yml 构建 ghcr 镜像 → rsync 快照到 `releases/<tag>` 并切换 `current` 软链 → 服务器上 `export DIANFAN_IMAGE_*=ghcr.io/zxc123aa/...` 后 `deploy-staging.sh <tag> pull` + `app`（v0.2.0 首次全程走通）。
