@@ -49,6 +49,34 @@ def render_pdf_page_png(path: Path, page_number: int, scale: float = 2.0) -> byt
             pdf.close()
 
 
+def render_pdf_page_jpeg(
+    path: Path, page_number: int, scale: float = 2.0, quality: int = 82
+) -> bytes:
+    """页面预览用 JPEG：同尺寸下体积约为 PNG 的 1/15，跨区域加载明显更快。
+
+    批卷/框选等页面预览接口专用；裁切、识别等需要无损图的流程仍用 PNG。
+    """
+    with PDFIUM_LOCK:
+        try:
+            pdf = pdfium.PdfDocument(path)
+        except PdfiumError as exc:
+            raise InvalidPdfError("Invalid PDF file") from exc
+        try:
+            if page_number < 1 or page_number > len(pdf):
+                raise IndexError("PDF page out of range")
+            page = pdf[page_number - 1]
+            try:
+                bitmap = page.render(scale=scale)
+                image = bitmap.to_pil().convert("RGB")
+                buffer = BytesIO()
+                image.save(buffer, format="JPEG", quality=quality, optimize=True)
+                return buffer.getvalue()
+            finally:
+                page.close()
+        finally:
+            pdf.close()
+
+
 def image_bytes_to_pdf(contents: bytes) -> bytes:
     """Encode a single image (JPEG/PNG) as a one-page PDF."""
     try:

@@ -408,8 +408,8 @@ def test_read_pdf_exam_file_page_image(
     )
 
     assert response.status_code == 200
-    assert response.headers["content-type"] == "image/png"
-    assert response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert response.headers["content-type"] == "image/jpeg"
+    assert response.content.startswith(b"\xff\xd8\xff")
 
 
 def test_read_exam_region_candidates(
@@ -1215,8 +1215,8 @@ def test_preprocess_student_submission_photo_creates_pdf_submission(
         headers=school_owner_token_headers,
     )
     assert page_response.status_code == 200
-    assert page_response.headers["content-type"] == "image/png"
-    assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert page_response.headers["content-type"] == "image/jpeg"
+    assert page_response.content.startswith(b"\xff\xd8\xff")
 
 
 def test_preprocess_student_submission_photo_uses_scan_http_engine(
@@ -1334,7 +1334,7 @@ def test_append_student_submission_pages_pdf(
             headers=school_owner_token_headers,
         )
         assert page_response.status_code == 200
-        assert page_response.headers["content-type"] == "image/png"
+        assert page_response.headers["content-type"] == "image/jpeg"
 
 
 def test_append_student_submission_pages_photo_runs_split(
@@ -1377,7 +1377,7 @@ def test_append_student_submission_pages_photo_runs_split(
         headers=school_owner_token_headers,
     )
     assert page_response.status_code == 200
-    assert page_response.content.startswith(b"\x89PNG\r\n\x1a\n")
+    assert page_response.content.startswith(b"\xff\xd8\xff")
 
 
 def test_upload_student_submission_zip(

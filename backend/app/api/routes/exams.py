@@ -145,6 +145,7 @@ from app.services.pdf_rendering import (
     get_pdf_page_count,
     image_bytes_to_pdf,
     merge_pdf_bytes,
+    render_pdf_page_jpeg,
     render_pdf_page_png,
 )
 from app.services.question_segmentation import (
@@ -1197,6 +1198,29 @@ def get_submission_annotation_for_write(
     return annotation
 
 
+def _cached_pdf_page_preview(
+    stored_file: StoredFile, path: Path, page_number: int
+) -> bytes:
+    """PDF 页面预览落盘缓存：按文件 id+页码存 JPEG，命中即读，避免每次重渲染。
+
+    StoredFile 内容上传后不可变，缓存不需要失效逻辑。
+    """
+    cache_dir = Path(settings.STORAGE_CACHE_DIR) / "page-previews"
+    cache_path = cache_dir / f"{stored_file.id}-p{page_number}.jpg"
+    try:
+        return cache_path.read_bytes()
+    except OSError:
+        pass
+    contents = render_pdf_page_jpeg(path, page_number)
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(contents)
+    except OSError:
+        # 缓存写不进去不影响出图
+        pass
+    return contents
+
+
 def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> Response:
     path = get_stored_file_path(stored_file)
     if not path.exists():
@@ -1206,14 +1230,19 @@ def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> R
 
     if stored_file.content_type == "application/pdf":
         try:
-            contents = render_pdf_page_png(path, page_number)
+            contents = _cached_pdf_page_preview(stored_file, path, page_number)
         except InvalidPdfError:
             raise HTTPException(
                 status_code=415, detail="Stored PDF could not be opened"
             )
         except IndexError:
             raise HTTPException(status_code=404, detail="PDF page not found")
-        return Response(content=contents, media_type="image/png")
+        return Response(
+            content=contents,
+            media_type="image/jpeg",
+            # 预览按文件 id+页码缓存落盘，内容不可变，长缓存安全
+            headers={"Cache-Control": "private, max-age=31536000, immutable"},
+        )
 
     if page_number != 1:
         raise HTTPException(status_code=404, detail="Image file has only one page")
