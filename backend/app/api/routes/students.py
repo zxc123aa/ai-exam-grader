@@ -29,6 +29,12 @@ from app.models import (
     LearnerProfilePublic,
     LearningAdviceFocusPoint,
     LearningAdvicePublic,
+    PracticeSheet,
+    PracticeSheetCreate,
+    PracticeSheetItemPublic,
+    PracticeSheetListItem,
+    PracticeSheetPublic,
+    PracticeSheetsPublic,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -835,11 +841,7 @@ def _learning_advice_stats(
         .where(
             *_my_wrongbook_scope(learner),
             col(WrongQuestionEntry.is_wrong).is_(True),
-            *(
-                [WrongQuestionSource.exam_id == exam_id]
-                if exam_id is not None
-                else []
-            ),
+            *([WrongQuestionSource.exam_id == exam_id] if exam_id is not None else []),
         )
     ).all()
     if not rows:
@@ -1012,6 +1014,153 @@ def read_my_learning_advice(
         weekly_plan=advice["weekly_plan"],
         generated_at=get_datetime_utc(),
     )
+
+
+PRACTICE_SHEET_MAX_SEEDS = 5
+
+
+def _practice_sheet_public(sheet: PracticeSheet) -> PracticeSheetPublic:
+    return PracticeSheetPublic(
+        id=sheet.id,
+        subject=sheet.subject,
+        knowledge_point=sheet.knowledge_point,
+        title=sheet.title,
+        items=[PracticeSheetItemPublic(**item) for item in sheet.items],
+        seed_count=sheet.seed_count,
+        created_at=sheet.created_at,
+    )
+
+
+@router.post("/me/practice-sheets", response_model=PracticeSheetPublic)
+def create_my_practice_sheet(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    sheet_in: PracticeSheetCreate,
+) -> Any:
+    """以学生在该知识点上的错题为种子，出变式练习卷。
+
+    错题题干+参考答案喂给模型，要求换情境/数值/问法重新命题，
+    并给出参考答案和解析。生成即落库，刷新和打印都能找到同一份。
+    """
+    get_current_student_profile(session=session, current_user=current_user)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    rows = session.exec(
+        select(WrongQuestionEntry, WrongQuestionSource)
+        .select_from(WrongQuestionEntry)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .where(
+            *_my_wrongbook_scope(learner),
+            col(WrongQuestionEntry.is_wrong).is_(True),
+        )
+    ).all()
+    seeds = [
+        source
+        for _entry, source in rows
+        if sheet_in.knowledge_point in (source.knowledge_point_names or [])
+    ]
+    if not seeds:
+        raise HTTPException(
+            status_code=422,
+            detail="这个知识点下还没有错题，先考一场再来出变式题",
+        )
+    seed_payload = [
+        {
+            "question": (source.question_text or "")[:600],
+            "reference_answer": (source.standard_answer_text or "")[:400],
+        }
+        for source in seeds[:PRACTICE_SHEET_MAX_SEEDS]
+    ]
+    subject = seeds[0].subject or ""
+    prompt = (
+        f"你是一位中学{subject or '物理'}老师，正在围绕知识点「{sheet_in.knowledge_point}」"
+        f"出 {sheet_in.count} 道变式练习题。下面是学生做错过的题目和参考答案。"
+        "要求：考查同一个知识点，但换情境、换数值或换问法，不得照抄原题；"
+        "难度与原题相当；每题给出参考答案和一两句解析。"
+        "只返回 JSON，不要 Markdown："
+        '{"questions":[{"question_text":"题目","answer":"参考答案","analysis":"解析"}]}。\n'
+        f"学生错题：{json.dumps(seed_payload, ensure_ascii=False)}"
+    )
+    defaults = get_grading_defaults(session)
+    try:
+        parsed, used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"变式题生成失败：{exc}") from exc
+    items: list[dict] = []
+    for raw in (parsed.get("questions") or [])[: sheet_in.count]:
+        if not isinstance(raw, dict):
+            continue
+        question_text = str(raw.get("question_text") or "").strip()
+        answer = str(raw.get("answer") or "").strip()
+        if not question_text or not answer:
+            continue
+        items.append(
+            {
+                "question_text": question_text,
+                "answer": answer,
+                "analysis": str(raw.get("analysis") or "").strip(),
+            }
+        )
+    if not items:
+        raise HTTPException(status_code=502, detail="变式题返回内容不完整，请重试")
+    sheet = PracticeSheet(
+        learner_id=learner.id,
+        student_user_id=current_user.id,
+        subject=subject,
+        knowledge_point=sheet_in.knowledge_point,
+        title=f"{sheet_in.knowledge_point}变式练习",
+        items=items,
+        seed_count=len(seeds),
+        model=used_model,
+    )
+    session.add(sheet)
+    session.commit()
+    session.refresh(sheet)
+    return _practice_sheet_public(sheet)
+
+
+@router.get("/me/practice-sheets", response_model=PracticeSheetsPublic)
+def read_my_practice_sheets(
+    session: SessionDep, current_user: CurrentStudentUser
+) -> Any:
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    sheets = session.exec(
+        select(PracticeSheet)
+        .where(PracticeSheet.learner_id == learner.id)
+        .order_by(col(PracticeSheet.created_at).desc())
+    ).all()
+    return PracticeSheetsPublic(
+        data=[
+            PracticeSheetListItem(
+                id=sheet.id,
+                subject=sheet.subject,
+                knowledge_point=sheet.knowledge_point,
+                title=sheet.title,
+                item_count=len(sheet.items),
+                created_at=sheet.created_at,
+            )
+            for sheet in sheets
+        ],
+        count=len(sheets),
+    )
+
+
+@router.get("/me/practice-sheets/{sheet_id}", response_model=PracticeSheetPublic)
+def read_my_practice_sheet(
+    session: SessionDep, current_user: CurrentStudentUser, sheet_id: uuid.UUID
+) -> Any:
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    sheet = session.get(PracticeSheet, sheet_id)
+    if sheet is None or sheet.learner_id != learner.id:
+        raise HTTPException(status_code=404, detail="练习卷不存在")
+    return _practice_sheet_public(sheet)
 
 
 SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024

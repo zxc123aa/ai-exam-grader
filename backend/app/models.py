@@ -3082,6 +3082,70 @@ class LearnerProfilePublic(SQLModel):
     enrollments: list[LearnerEnrollmentPublic] = Field(default_factory=list)
 
 
+class PracticeSheet(SQLModel, table=True):
+    """按知识点生成的变式练习卷。
+
+    变式题由模型以学生的错题题干+参考答案为种子生成，落库持久化：
+    练习卷是学生的学习资产，刷新、换设备、打印都要能找回同一份。
+    """
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    learner_id: uuid.UUID = Field(
+        foreign_key="learnerprofile.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    student_user_id: uuid.UUID | None = Field(
+        default=None, foreign_key="user.id", nullable=True, ondelete="SET NULL"
+    )
+    subject: str = Field(default="", max_length=50)
+    knowledge_point: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=255)
+    # [{question_text, answer, analysis}]，顺序即题号
+    items: list[dict] = Field(
+        default_factory=list, sa_column=Column(JSONB, nullable=False)
+    )
+    seed_count: int = Field(default=0)
+    model: str = Field(default="", max_length=200)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class PracticeSheetItemPublic(SQLModel):
+    question_text: str
+    answer: str
+    analysis: str = ""
+
+
+class PracticeSheetCreate(SQLModel):
+    knowledge_point: str = Field(min_length=1, max_length=100)
+    count: int = Field(default=3, ge=1, le=5)
+
+
+class PracticeSheetPublic(SQLModel):
+    id: uuid.UUID
+    subject: str
+    knowledge_point: str
+    title: str
+    items: list[PracticeSheetItemPublic]
+    seed_count: int
+    created_at: datetime
+
+
+class PracticeSheetListItem(SQLModel):
+    id: uuid.UUID
+    subject: str
+    knowledge_point: str
+    title: str
+    item_count: int
+    created_at: datetime
+
+
+class PracticeSheetsPublic(SQLModel):
+    data: list[PracticeSheetListItem]
+    count: int
+
+
 class WrongQuestionReviewResult(StrEnum):
     AGAIN = "again"
     HARD = "hard"

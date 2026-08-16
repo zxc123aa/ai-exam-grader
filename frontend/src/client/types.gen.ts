@@ -3553,6 +3553,55 @@ export type StudentsUpdateMyWrongbookEntryData = {
 
 export type StudentsUpdateMyWrongbookEntryResponse = (WrongbookEntryDetail);
 
+export type PracticeSheetCreate = {
+    knowledge_point: string;
+    count?: number;
+};
+
+export type PracticeSheetItemPublic = {
+    question_text: string;
+    answer: string;
+    analysis?: string;
+};
+
+export type PracticeSheetListItem = {
+    id: string;
+    subject: string;
+    knowledge_point: string;
+    title: string;
+    item_count?: number;
+    created_at: string;
+};
+
+export type PracticeSheetPublic = {
+    id: string;
+    subject: string;
+    knowledge_point: string;
+    title: string;
+    items?: Array<PracticeSheetItemPublic>;
+    seed_count?: number;
+    created_at: string;
+};
+
+export type PracticeSheetsPublic = {
+    data?: Array<PracticeSheetListItem>;
+    count: number;
+};
+
+export type StudentsCreateMyPracticeSheetData = {
+    requestBody: PracticeSheetCreate;
+};
+
+export type StudentsCreateMyPracticeSheetResponse = (PracticeSheetPublic);
+
+export type StudentsReadMyPracticeSheetsResponse = (PracticeSheetsPublic);
+
+export type StudentsReadMyPracticeSheetData = {
+    sheetId: string;
+};
+
+export type StudentsReadMyPracticeSheetResponse = (PracticeSheetPublic);
+
 export type StudentsReadMyLearningAdviceData = {
     examId?: string;
 };
