@@ -3122,6 +3122,60 @@ class PracticeSheetCreate(SQLModel):
     count: int = Field(default=3, ge=1, le=5)
 
 
+class PracticeVerdict(StrEnum):
+    CORRECT = "correct"
+    PARTIAL = "partial"
+    WRONG = "wrong"
+
+
+class PracticeSheetAttempt(SQLModel, table=True):
+    """变式练习的一次作答判分记录。每卷每题只保留最新一次。"""
+
+    __table_args__ = (
+        UniqueConstraint("sheet_id", "item_index", name="uq_practicesheetattempt_item"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    sheet_id: uuid.UUID = Field(
+        foreign_key="practicesheet.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    learner_id: uuid.UUID = Field(
+        foreign_key="learnerprofile.id", nullable=False, ondelete="CASCADE", index=True
+    )
+    item_index: int = Field(ge=0)
+    stored_file_id: uuid.UUID | None = Field(
+        default=None, foreign_key="storedfile.id", nullable=True, ondelete="SET NULL"
+    )
+    verdict: PracticeVerdict = Field(
+        sa_column=Column(
+            SAEnum(
+                PracticeVerdict,
+                name="practiceverdict",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        )
+    )
+    score: float = Field(default=0.0)
+    comment: str = Field(default="", max_length=2000)
+    student_answer_text: str = Field(default="")
+    model: str = Field(default="", max_length=200)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class PracticeSheetAttemptPublic(SQLModel):
+    id: uuid.UUID
+    item_index: int
+    verdict: PracticeVerdict
+    score: float
+    comment: str
+    student_answer_text: str
+    created_at: datetime
+
+
 class PracticeSheetPublic(SQLModel):
     id: uuid.UUID
     subject: str
@@ -3129,6 +3183,7 @@ class PracticeSheetPublic(SQLModel):
     title: str
     items: list[PracticeSheetItemPublic]
     seed_count: int
+    attempts: list[PracticeSheetAttemptPublic] = Field(default_factory=list)
     created_at: datetime
 
 

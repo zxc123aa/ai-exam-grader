@@ -3,14 +3,17 @@ import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   ArrowLeft,
   BookOpenCheck,
+  Camera,
   ClipboardList,
   Printer,
   Sparkles,
 } from "lucide-react"
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import { z } from "zod"
 import {
+  type PracticeSheetAttemptPublic,
   type PracticeSheetPublic,
+  type PracticeVerdict,
   StudentsService,
   type WrongbookEntryListItem,
 } from "@/client"
@@ -19,6 +22,7 @@ import { Tag } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { fetchWrongbookEntryImageBlob } from "@/lib/submission-media"
+import { workflowApi } from "@/lib/workflow-api"
 
 const searchSchema = z.object({
   kps: z.string().optional().catch(undefined),
@@ -218,6 +222,7 @@ function VariantPracticeSection({
           sheet={sheet}
           studentName={studentName}
           className={className}
+          onGraded={() => activeQuery.refetch()}
         />
       )}
 
@@ -232,17 +237,99 @@ function VariantPracticeSection({
   )
 }
 
+/** 单题拍照提交作答：判分中禁用，完成后回调刷新卷面。 */
+function AttemptUploader({
+  sheetId,
+  itemIndex,
+  hasAttempt,
+  onDone,
+}: {
+  sheetId: string
+  itemIndex: number
+  hasAttempt: boolean
+  onDone: () => void
+}) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const upload = useMutation({
+    mutationFn: (file: File) => {
+      const body = new FormData()
+      body.set("image", file)
+      body.set("item_index", String(itemIndex))
+      return workflowApi<PracticeSheetAttemptPublic>(
+        `/students/me/practice-sheets/${sheetId}/attempts`,
+        { method: "POST", body },
+      )
+    },
+    onSuccess: onDone,
+  })
+  return (
+    <span className="inline-flex flex-wrap items-center gap-2">
+      <input
+        ref={inputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          if (file) upload.mutate(file)
+          event.target.value = ""
+        }}
+      />
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={upload.isPending}
+        onClick={() => inputRef.current?.click()}
+      >
+        <Camera className="size-4" />
+        {upload.isPending
+          ? "判分中…"
+          : hasAttempt
+            ? "重新拍照提交"
+            : "拍照提交作答"}
+      </Button>
+      {upload.isError && (
+        <span className="text-destructive text-xs">{String(upload.error)}</span>
+      )}
+    </span>
+  )
+}
+
+const VERDICT_META: Record<
+  PracticeVerdict,
+  { label: string; className: string }
+> = {
+  correct: {
+    label: "对了",
+    className: "text-emerald-600 dark:text-emerald-400",
+  },
+  partial: {
+    label: "部分正确",
+    className: "text-amber-600 dark:text-amber-400",
+  },
+  wrong: { label: "还不对", className: "text-red-600 dark:text-red-400" },
+}
+
 /** 变式练习卷的 A4 纸面：题目 + 作答区，答案解析单独起一页。 */
 function VariantSheetPaper({
   sheet,
   studentName,
   className,
+  onGraded,
 }: {
   sheet: PracticeSheetPublic
   studentName: string
   className?: string | null
+  onGraded: () => void
 }) {
   const items = sheet.items ?? []
+  const attemptByIndex = new Map(
+    (sheet.attempts ?? []).map((attempt) => [attempt.item_index, attempt]),
+  )
+  const correctCount = (sheet.attempts ?? []).filter(
+    (attempt) => attempt.verdict === "correct",
+  ).length
   const generatedAt = new Date(sheet.created_at).toLocaleString("zh-CN", {
     year: "numeric",
     month: "long",
@@ -275,6 +362,11 @@ function VariantSheetPaper({
         </span>
         <span className="ml-auto text-muted-foreground text-sm">
           共 {items.length} 题
+          {(sheet.attempts ?? []).length > 0 && (
+            <span className="ml-2 print:hidden">
+              · 已判 {sheet.attempts?.length} · 练对 {correctCount}
+            </span>
+          )}
         </span>
       </div>
       <p className="pb-5 text-muted-foreground text-xs leading-5">
@@ -282,20 +374,45 @@ function VariantSheetPaper({
       </p>
 
       <ol className="flex flex-col gap-8 border-t pt-6">
-        {items.map((item, index) => (
-          <li
-            key={`q-${index}`}
-            className="flex flex-col gap-3 break-inside-avoid"
-          >
-            <span className="font-semibold">第 {index + 1} 题</span>
-            <p className="whitespace-pre-wrap text-sm leading-7">
-              {item.question_text}
-            </p>
-            <div className="min-h-48 rounded-lg border border-dashed p-3">
-              <span className="text-muted-foreground text-xs">作答区</span>
-            </div>
-          </li>
-        ))}
+        {items.map((item, index) => {
+          const attempt = attemptByIndex.get(index)
+          const verdict = attempt ? VERDICT_META[attempt.verdict] : null
+          return (
+            <li
+              key={`q-${index}`}
+              className="flex flex-col gap-3 break-inside-avoid"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="font-semibold">第 {index + 1} 题</span>
+                {verdict && (
+                  <span className={`font-medium text-sm ${verdict.className}`}>
+                    {verdict.label}
+                  </span>
+                )}
+              </div>
+              <p className="whitespace-pre-wrap text-sm leading-7">
+                {item.question_text}
+              </p>
+              {/* 提交入口与判分反馈：屏幕专用，打印隐藏 */}
+              <div className="flex flex-col gap-2 print:hidden">
+                {attempt?.comment && (
+                  <p className="rounded-lg bg-muted px-3 py-2 text-muted-foreground text-xs leading-5">
+                    {attempt.comment}
+                  </p>
+                )}
+                <AttemptUploader
+                  sheetId={sheet.id}
+                  itemIndex={index}
+                  hasAttempt={Boolean(attempt)}
+                  onDone={onGraded}
+                />
+              </div>
+              <div className="min-h-48 rounded-lg border border-dashed p-3">
+                <span className="text-muted-foreground text-xs">作答区</span>
+              </div>
+            </li>
+          )
+        })}
       </ol>
 
       <section className="break-before-page">

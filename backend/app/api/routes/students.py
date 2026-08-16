@@ -30,11 +30,14 @@ from app.models import (
     LearningAdviceFocusPoint,
     LearningAdvicePublic,
     PracticeSheet,
+    PracticeSheetAttempt,
+    PracticeSheetAttemptPublic,
     PracticeSheetCreate,
     PracticeSheetItemPublic,
     PracticeSheetListItem,
     PracticeSheetPublic,
     PracticeSheetsPublic,
+    PracticeVerdict,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -59,10 +62,12 @@ from app.models import (
     WrongQuestionEntry,
     WrongQuestionEntryStatus,
     WrongQuestionReview,
+    WrongQuestionReviewResult,
     WrongQuestionSource,
     get_datetime_utc,
 )
 from app.services import learner_identity, wrongbook_review
+from app.services.file_storage import store_upload_file
 from app.services.object_storage import materialize_storage_key
 from app.services.system_config import get_grading_defaults
 from app.services.vision_grading import (
@@ -1019,7 +1024,14 @@ def read_my_learning_advice(
 PRACTICE_SHEET_MAX_SEEDS = 5
 
 
-def _practice_sheet_public(sheet: PracticeSheet) -> PracticeSheetPublic:
+def _practice_sheet_public(
+    session: Session, sheet: PracticeSheet
+) -> PracticeSheetPublic:
+    attempts = session.exec(
+        select(PracticeSheetAttempt)
+        .where(PracticeSheetAttempt.sheet_id == sheet.id)
+        .order_by(col(PracticeSheetAttempt.item_index))
+    ).all()
     return PracticeSheetPublic(
         id=sheet.id,
         subject=sheet.subject,
@@ -1027,6 +1039,18 @@ def _practice_sheet_public(sheet: PracticeSheet) -> PracticeSheetPublic:
         title=sheet.title,
         items=[PracticeSheetItemPublic(**item) for item in sheet.items],
         seed_count=sheet.seed_count,
+        attempts=[
+            PracticeSheetAttemptPublic(
+                id=attempt.id,
+                item_index=attempt.item_index,
+                verdict=attempt.verdict,
+                score=attempt.score,
+                comment=attempt.comment,
+                student_answer_text=attempt.student_answer_text,
+                created_at=attempt.created_at,
+            )
+            for attempt in attempts
+        ],
         created_at=sheet.created_at,
     )
 
@@ -1123,7 +1147,7 @@ def create_my_practice_sheet(
     session.add(sheet)
     session.commit()
     session.refresh(sheet)
-    return _practice_sheet_public(sheet)
+    return _practice_sheet_public(session, sheet)
 
 
 @router.get("/me/practice-sheets", response_model=PracticeSheetsPublic)
@@ -1160,7 +1184,159 @@ def read_my_practice_sheet(
     sheet = session.get(PracticeSheet, sheet_id)
     if sheet is None or sheet.learner_id != learner.id:
         raise HTTPException(status_code=404, detail="练习卷不存在")
-    return _practice_sheet_public(sheet)
+    return _practice_sheet_public(session, sheet)
+
+
+def _transcribe_practice_answer(image_bytes: bytes, defaults: dict[str, Any]) -> str:
+    """视觉模型读出照片里学生的手写作答。"""
+    image = base64.b64encode(image_bytes).decode("ascii")
+    prompt = (
+        "请读出这张照片里学生的手写作答内容，包括算式、选项、数值、单位和符号；"
+        "看不清的位置写「看不清」，不要脑补。"
+        '只返回 JSON，不要 Markdown：{"answer_text":"作答内容"}'
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["vision_provider"],
+            model=defaults["vision_model"],
+            fallback_models=[],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image}"},
+                        },
+                    ],
+                }
+            ],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"作答识别失败，请重试：{exc}"
+        ) from exc
+    return str(parsed.get("answer_text") or "").strip()
+
+
+_ATTEMPT_REVIEW_RESULT = {
+    PracticeVerdict.CORRECT: WrongQuestionReviewResult.GOOD,
+    PracticeVerdict.PARTIAL: WrongQuestionReviewResult.HARD,
+    PracticeVerdict.WRONG: WrongQuestionReviewResult.AGAIN,
+}
+
+
+@router.post(
+    "/me/practice-sheets/{sheet_id}/attempts",
+    response_model=PracticeSheetAttemptPublic,
+)
+async def create_my_practice_attempt(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    sheet_id: uuid.UUID,
+    item_index: Annotated[int, Form()],
+    image: Annotated[UploadFile, File()],
+) -> Any:
+    """拍照提交变式练习某题的作答：识别 → 判分 → 联动该知识点错题的复习调度。
+
+    判对说明原错题对应的知识点已会，推进复习间隔；判错打回重练。
+    每题只保留最新一次判分。
+    """
+    get_current_student_profile(session=session, current_user=current_user)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    sheet = session.get(PracticeSheet, sheet_id)
+    if sheet is None or sheet.learner_id != learner.id:
+        raise HTTPException(status_code=404, detail="练习卷不存在")
+    items = sheet.items or []
+    if item_index < 0 or item_index >= len(items):
+        raise HTTPException(status_code=422, detail="题号超出范围")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=422, detail="请先选择作答照片")
+    if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+
+    defaults = get_grading_defaults(session)
+    student_answer = _transcribe_practice_answer(image_bytes, defaults)
+    if not student_answer:
+        raise HTTPException(status_code=422, detail="没认出作答内容，请拍清楚一点再试")
+    item = items[item_index]
+    standard = str(item.get("answer") or "")
+    analysis = str(item.get("analysis") or "")
+    score, comment = _snap_grade_call(
+        question_text=str(item.get("question_text") or ""),
+        student_answer=student_answer,
+        standard_answer=f"{standard}\n解析：{analysis}" if analysis else standard,
+        max_score=1.0,
+        defaults=defaults,
+    )
+    verdict = (
+        PracticeVerdict.CORRECT
+        if score >= 0.99
+        else PracticeVerdict.WRONG
+        if score <= 0
+        else PracticeVerdict.PARTIAL
+    )
+
+    await image.seek(0)
+    stored = await store_upload_file(
+        session=session, current_user=current_user, file=image
+    )
+    attempt = session.exec(
+        select(PracticeSheetAttempt).where(
+            PracticeSheetAttempt.sheet_id == sheet.id,
+            PracticeSheetAttempt.item_index == item_index,
+        )
+    ).first()
+    if attempt is None:
+        attempt = PracticeSheetAttempt(sheet_id=sheet.id, learner_id=learner.id)
+    attempt.item_index = item_index
+    attempt.stored_file_id = stored.id
+    attempt.verdict = verdict
+    attempt.score = score
+    attempt.comment = comment
+    attempt.student_answer_text = student_answer
+    attempt.model = str(defaults["grading_model"])
+    session.add(attempt)
+    session.commit()
+    session.refresh(attempt)
+
+    # 联动复习调度：这个知识点的在册错题按 verdict 推进/打回
+    review_result = _ATTEMPT_REVIEW_RESULT[verdict]
+    seed_rows = session.exec(
+        select(WrongQuestionEntry, WrongQuestionSource)
+        .select_from(WrongQuestionEntry)
+        .join(
+            WrongQuestionSource,
+            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+        )
+        .where(
+            *_my_wrongbook_scope(learner),
+            col(WrongQuestionEntry.is_wrong).is_(True),
+        )
+    ).all()
+    for entry, source in seed_rows:
+        if sheet.knowledge_point not in (source.knowledge_point_names or []):
+            continue
+        wrongbook_review.record_review(
+            session,
+            entry=entry,
+            source=source,
+            learner=learner,
+            user_id=current_user.id,
+            result=review_result,
+        )
+
+    return PracticeSheetAttemptPublic(
+        id=attempt.id,
+        item_index=attempt.item_index,
+        verdict=attempt.verdict,
+        score=attempt.score,
+        comment=attempt.comment,
+        student_answer_text=attempt.student_answer_text,
+        created_at=attempt.created_at,
+    )
 
 
 SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024

@@ -3573,6 +3573,18 @@ export type PracticeSheetListItem = {
     created_at: string;
 };
 
+export type PracticeVerdict = 'correct' | 'partial' | 'wrong';
+
+export type PracticeSheetAttemptPublic = {
+    id: string;
+    item_index: number;
+    verdict: PracticeVerdict;
+    score: number;
+    comment: string;
+    student_answer_text: string;
+    created_at: string;
+};
+
 export type PracticeSheetPublic = {
     id: string;
     subject: string;
@@ -3580,6 +3592,7 @@ export type PracticeSheetPublic = {
     title: string;
     items?: Array<PracticeSheetItemPublic>;
     seed_count?: number;
+    attempts?: Array<PracticeSheetAttemptPublic>;
     created_at: string;
 };
 
