@@ -1230,6 +1230,30 @@ export const Body_login_login_access_tokenSchema = {
     title: 'Body_login-login_access_token'
 } as const;
 
+export const Body_students_snap_questionSchema = {
+    properties: {
+        image: {
+            type: 'string',
+            contentMediaType: 'application/octet-stream',
+            title: 'Image'
+        },
+        mode: {
+            type: 'string',
+            enum: ['solve', 'grade'],
+            title: 'Mode',
+            default: 'solve'
+        },
+        max_score: {
+            type: 'number',
+            title: 'Max Score',
+            default: 10
+        }
+    },
+    type: 'object',
+    required: ['image'],
+    title: 'Body_students-snap_question'
+} as const;
+
 export const CatalogItemPublicSchema = {
     properties: {
         item_type: {
@@ -8867,6 +8891,68 @@ export const SignupOrganizationPublicSchema = {
     type: 'object',
     required: ['id', 'code', 'name', 'organization_type'],
     title: 'SignupOrganizationPublic'
+} as const;
+
+export const SnapGradePublicSchema = {
+    properties: {
+        mode: {
+            type: 'string',
+            const: 'grade',
+            title: 'Mode',
+            default: 'grade'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        student_answer: {
+            type: 'string',
+            title: 'Student Answer'
+        },
+        score: {
+            type: 'number',
+            title: 'Score'
+        },
+        max_score: {
+            type: 'number',
+            title: 'Max Score'
+        },
+        comment: {
+            type: 'string',
+            title: 'Comment'
+        }
+    },
+    type: 'object',
+    required: ['question_text', 'student_answer', 'score', 'max_score', 'comment'],
+    title: 'SnapGradePublic',
+    description: '拍照批改结果：转录题目与作答，判分给点评。'
+} as const;
+
+export const SnapSolvePublicSchema = {
+    properties: {
+        mode: {
+            type: 'string',
+            const: 'solve',
+            title: 'Mode',
+            default: 'solve'
+        },
+        question_text: {
+            type: 'string',
+            title: 'Question Text'
+        },
+        answer: {
+            type: 'string',
+            title: 'Answer'
+        },
+        explanation: {
+            type: 'string',
+            title: 'Explanation'
+        }
+    },
+    type: 'object',
+    required: ['question_text', 'answer', 'explanation'],
+    title: 'SnapSolvePublic',
+    description: '拍题答疑结果：一次性问答，不落库。'
 } as const;
 
 export const StandardAnswerCreateSchema = {

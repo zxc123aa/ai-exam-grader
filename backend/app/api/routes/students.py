@@ -1,9 +1,10 @@
+import base64
 import json
 import uuid
 from collections import Counter
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy import case, func
 from sqlmodel import Session, col, select
@@ -31,6 +32,8 @@ from app.models import (
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
+    SnapGradePublic,
+    SnapSolvePublic,
     Student,
     StudentExamListItemPublic,
     StudentExamListPublic,
@@ -56,7 +59,11 @@ from app.models import (
 from app.services import learner_identity, wrongbook_review
 from app.services.object_storage import materialize_storage_key
 from app.services.system_config import get_grading_defaults
-from app.services.vision_grading import VisionGradingError, call_json_model
+from app.services.vision_grading import (
+    VisionGradingError,
+    call_json_model,
+    extract_answer_images,
+)
 
 router = APIRouter(prefix="/students", tags=["students"])
 
@@ -993,6 +1000,175 @@ def read_my_learning_advice(
         ],
         weekly_plan=advice["weekly_plan"],
         generated_at=get_datetime_utc(),
+    )
+
+
+SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _snap_transcribe(image_bytes: bytes, defaults: dict[str, Any]) -> str:
+    """视觉模型读出照片中的题目文本。"""
+    image = base64.b64encode(image_bytes).decode("ascii")
+    prompt = (
+        "请把照片里的题目完整读出来，包括题干、选项、公式和图中关键信息；"
+        "公式尽量用纯文本表达，看不清的位置写「看不清」。"
+        '只返回 JSON，不要 Markdown：{"question_text":"题目全文"}'
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["vision_provider"],
+            model=defaults["vision_model"],
+            fallback_models=[],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image}"},
+                        },
+                    ],
+                }
+            ],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"题目识别失败，请重试：{exc}"
+        ) from exc
+    return str(parsed.get("question_text") or "").strip()
+
+
+def _snap_standard_answer(
+    question_text: str, defaults: dict[str, Any]
+) -> tuple[str, str]:
+    """解题模型独立解出标准答案，供答疑展示或批改对照。返回 (answer, explanation)。"""
+    prompt = (
+        "你是一位耐心的中学老师。请独立解答下面的题目，不要臆测题目之外的条件；"
+        "题目信息不足时在 explanation 里说明缺少什么。"
+        "只返回 JSON，不要 Markdown："
+        '{"answer":"最终答案","explanation":"分步讲解，说人话，让学生看懂思路"}\n'
+        f"题目：{question_text}"
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"解答生成失败，请重试：{exc}") from exc
+    answer = str(parsed.get("answer") or "").strip()
+    explanation = str(parsed.get("explanation") or "").strip()
+    if not answer or not explanation:
+        raise HTTPException(status_code=502, detail="解答生成失败，请重试")
+    return answer, explanation
+
+
+def _snap_grade_call(
+    *,
+    question_text: str,
+    student_answer: str,
+    standard_answer: str,
+    max_score: float,
+    defaults: dict[str, Any],
+) -> tuple[float, str]:
+    """按评分细则风格判分，返回 (score, comment)。"""
+    prompt = (
+        "你是严谨的中文试卷阅卷教师。根据标准答案和满分给学生作答判分："
+        "结果正确但过程有瑕疵酌情扣少量分；结果错误只看过程中有价值的步骤给步骤分；"
+        "评语说人话，指出对在哪里、错在哪里、下次注意什么，不要空话。"
+        "只返回 JSON，不要 Markdown："
+        '{"score":0,"comment":"中文评语"}。score 必须在 0 到满分之间。\n'
+        f"题目：{question_text}\n"
+        f"学生作答：{student_answer}\n"
+        f"标准答案：{standard_answer}\n"
+        f"满分：{max_score}\n"
+        "评分细则：按答案正确程度给分，关键步骤缺失要扣分"
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"批改失败，请重试：{exc}") from exc
+    try:
+        score = float(parsed.get("score"))
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail="批改失败，请重试") from exc
+    score = min(max(score, 0.0), max_score)
+    comment = str(parsed.get("comment") or "").strip()
+    if not comment:
+        raise HTTPException(status_code=502, detail="批改失败，请重试")
+    return score, comment
+
+
+@router.post("/me/snap", response_model=SnapSolvePublic | SnapGradePublic)
+async def snap_question(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    image: Annotated[UploadFile, File()],
+    mode: Annotated[Literal["solve", "grade"], Form()] = "solve",
+    max_score: Annotated[float, Form()] = 10.0,
+) -> Any:
+    """拍题答疑 / 拍照批改。一次性问答，不写入任何学习记录。"""
+    if max_score <= 0 or max_score > 100:
+        raise HTTPException(status_code=422, detail="满分需在 0 到 100 之间")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=422, detail="请先选择题目照片")
+    if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+    defaults = get_grading_defaults(session)
+    if mode == "solve":
+        question_text = _snap_transcribe(image_bytes, defaults)
+        if not question_text:
+            raise HTTPException(
+                status_code=422, detail="没认出题目，请拍清楚一点再试"
+            )
+        answer, explanation = _snap_standard_answer(question_text, defaults)
+        return SnapSolvePublic(
+            question_text=question_text,
+            answer=answer,
+            explanation=explanation,
+        )
+    try:
+        extraction = extract_answer_images(
+            image_bytes_list=[image_bytes],
+            provider=defaults["vision_provider"],
+            model=defaults["vision_model"],
+            question_label="拍题",
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"题目识别失败，请重试：{exc}"
+        ) from exc
+    question_text = extraction.question_text.strip()
+    if not question_text:
+        raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
+    student_answer = extraction.student_answer.strip()
+    if not student_answer:
+        raise HTTPException(
+            status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
+        )
+    standard_answer, _explanation = _snap_standard_answer(question_text, defaults)
+    score, comment = _snap_grade_call(
+        question_text=question_text,
+        student_answer=student_answer,
+        standard_answer=standard_answer,
+        max_score=max_score,
+        defaults=defaults,
+    )
+    return SnapGradePublic(
+        question_text=question_text,
+        student_answer=student_answer,
+        score=score,
+        max_score=max_score,
+        comment=comment,
     )
 
 

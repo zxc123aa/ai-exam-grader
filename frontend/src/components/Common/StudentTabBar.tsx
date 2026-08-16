@@ -1,9 +1,16 @@
 import { Link as RouterLink } from "@tanstack/react-router"
-import { BookMarked, GraduationCap, Network, UserRound } from "lucide-react"
+import {
+  BookMarked,
+  Camera,
+  GraduationCap,
+  Network,
+  UserRound,
+} from "lucide-react"
 import { cn } from "@/lib/utils"
 
 const TABS = [
   { to: "/my/exams", label: "成绩", icon: GraduationCap, match: "/my/exams" },
+  { to: "/my/snap", label: "拍题", icon: Camera, match: "/my/snap" },
   {
     to: "/my/wrongbook",
     label: "错题本",
