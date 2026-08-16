@@ -50,20 +50,20 @@ services:
     environment:
       PORT: "3417"
       DEFAULT_PROVIDER: ${VISION_DEFAULT_PROVIDER:-pomoai}
-      DEFAULT_MODEL: ${VISION_DEFAULT_MODEL:-gemini-3.5-flash}
+      DEFAULT_MODEL: ${VISION_DEFAULT_MODEL:-gemini-3.7-flash}
       AVAILABLE_PROVIDERS: pomoai,fluxnode_gemini,fluxnode_grok,kimi
       PROVIDER_POMOAI_LABEL: PomoAI
       PROVIDER_POMOAI_BASE_URL: ${PROVIDER_POMOAI_BASE_URL:-https://www.pomoai.ai}
-      PROVIDER_POMOAI_MODELS: gemini-3.5-flash,gemini-3.6-flash,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5
+      PROVIDER_POMOAI_MODELS: gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash,gpt-5.6-sol,gpt-5.6-terra,gpt-5.6-luna,gpt-5.5
       PROVIDER_FLUXNODE_GEMINI_LABEL: FluxNode Gemini
       PROVIDER_FLUXNODE_GEMINI_BASE_URL: ${PROVIDER_FLUXNODE_GEMINI_BASE_URL:-https://fluxnode.org}
-      PROVIDER_FLUXNODE_GEMINI_MODELS: gemini-3.5-flash,gemini-3.6-flash
+      PROVIDER_FLUXNODE_GEMINI_MODELS: gemini-3.7-flash,gemini-3.6-flash,gemini-3.5-flash
       PROVIDER_FLUXNODE_GROK_LABEL: FluxNode Grok
       PROVIDER_FLUXNODE_GROK_BASE_URL: ${PROVIDER_FLUXNODE_GROK_BASE_URL:-https://fluxnode.org}
       PROVIDER_FLUXNODE_GROK_MODELS: grok-4.5
       PROVIDER_KIMI_LABEL: Kimi Coding
       PROVIDER_KIMI_BASE_URL: ${PROVIDER_KIMI_BASE_URL:-https://api.kimi.com/coding/v1}
-      PROVIDER_KIMI_MODELS: kimi-k2.7-code,kimi-k2.7-code-highspeed,kimi-k2.6,kimi-k2.5
+      PROVIDER_KIMI_MODELS: kimi-k3,kimi-k2.7-code,kimi-k2.7-code-highspeed,kimi-k2.6,kimi-k2.5
       MODEL_TIMEOUT_MS: ${VISION_TIMEOUT_SECONDS:-180}000
       MAX_CONCURRENT_OCR: ${VISION_MAX_CONCURRENCY:-4}
     healthcheck:
