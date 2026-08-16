@@ -98,7 +98,7 @@ class Settings(BaseSettings):
     SCAN_HTTP_URL: str = "http://localhost:8010/preprocess"
     SCAN_HTTP_TIMEOUT_SECONDS: int = 120
     VISION_DEFAULT_PROVIDER: str = "pomoai"
-    VISION_DEFAULT_MODEL: str = "gemini-3.5-flash"
+    VISION_DEFAULT_MODEL: str = "gemini-3.7-flash"
     GRADING_DEFAULT_PROVIDER: str = "pomoai"
     GRADING_DEFAULT_MODEL: str = "gpt-5.6-sol"
     VISION_FALLBACK_MODELS: str = "gemini-3.6-flash,gemini-3.5-flash"

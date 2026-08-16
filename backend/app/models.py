@@ -1178,7 +1178,7 @@ class QuestionRecognitionRun(SQLModel, table=True):
         foreign_key="user.id", nullable=False, ondelete="RESTRICT"
     )
     provider: str = Field(default="fluxnode_gemini", max_length=100)
-    model: str = Field(default="gemini-3.5-flash", max_length=200)
+    model: str = Field(default="gemini-3.7-flash", max_length=200)
     engine: str = Field(default="reference-node", max_length=100)
     status: WorkflowRunStatus = Field(
         default=WorkflowRunStatus.QUEUED,

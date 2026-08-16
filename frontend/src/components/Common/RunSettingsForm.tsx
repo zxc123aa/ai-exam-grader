@@ -11,9 +11,11 @@ export const PROVIDER_MODELS: Record<string, string[]> = {
     "gpt-5.6-luna",
     "gpt-5.5",
     "grok-4.5",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
     "gemini-3.5-flash",
   ],
-  fluxnode_gemini: ["gemini-3.5-flash"],
+  fluxnode_gemini: ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
   fluxnode_grok: ["grok-4.5"],
   kimi: [
     "kimi-k3",

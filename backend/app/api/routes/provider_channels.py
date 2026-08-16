@@ -127,7 +127,7 @@ def _validate_route_mapping(
         raise HTTPException(status_code=422, detail="该业务用途需要支持图片输入")
     if not model_allowed_for_purpose(purpose=purpose, canonical_model=canonical_model):
         detail = (
-            "纯视觉功能只允许使用 Gemini 3.6/3.5 Flash"
+            "纯视觉功能只允许使用 Gemini 3.7/3.6/3.5 Flash"
             if purpose in PURE_VISION_PURPOSES
             else "推理解题功能只允许使用 GPT-5.6 Sol、GPT-5.6 Terra 或 Kimi"
         )
@@ -874,7 +874,7 @@ def update_function_model_default(
         canonical_model=assignment_in.canonical_model,
     ):
         detail = (
-            "纯视觉功能只允许使用 Gemini 3.6/3.5 Flash"
+            "纯视觉功能只允许使用 Gemini 3.7/3.6/3.5 Flash"
             if purpose in PURE_VISION_PURPOSES
             else "推理解题功能只允许使用 GPT-5.6 Sol、GPT-5.6 Terra 或 Kimi"
         )

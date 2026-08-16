@@ -908,7 +908,7 @@ def update_system_config(
             canonical_model=model,
         ):
             detail = (
-                "纯视觉功能只允许使用 Gemini 3.6/3.5 Flash"
+                "纯视觉功能只允许使用 Gemini 3.7/3.6/3.5 Flash"
                 if prefix != "grading"
                 else "推理解题功能只允许使用 GPT-5.6 Sol、GPT-5.6 Terra 或 Kimi"
             )

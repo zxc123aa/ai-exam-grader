@@ -124,14 +124,15 @@ const FUNCTIONS = [
 type FunctionKind = (typeof FUNCTIONS)[number]["kind"]
 
 const MODEL_PREFERENCES: Record<FunctionKind, string[]> = {
-  vision: ["gemini-3.6-flash", "gemini-3.5-flash"],
+  vision: ["gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash"],
   reasoning: ["gpt-5.6-sol", "gpt-5.6-terra", "kimi-k2.7-code", "kimi-k3"],
 }
 
 function modelAllowed(kind: FunctionKind, model: string) {
   const normalized = model.toLowerCase()
   return kind === "vision"
-    ? normalized.startsWith("gemini-3.6-flash") ||
+    ? normalized.startsWith("gemini-3.7-flash") ||
+        normalized.startsWith("gemini-3.6-flash") ||
         normalized.startsWith("gemini-3.5-flash")
     : normalized.startsWith("gpt-5.6-sol") ||
         normalized.startsWith("gpt-5.6-terra") ||

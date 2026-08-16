@@ -80,7 +80,7 @@ def segment_page_with_gemini(
     *,
     image_bytes: bytes,
     provider: str = "fluxnode_gemini",
-    model: str = "gemini-3.5-flash",
+    model: str = "gemini-3.7-flash",
 ) -> tuple[list[dict], str, int, int]:
     """Use the reference layout prompt to locate complete question blocks."""
     source = Image.open(BytesIO(image_bytes)).convert("RGB")

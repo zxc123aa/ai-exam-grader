@@ -26,10 +26,14 @@ REASONING_PURPOSES = {
 
 MODEL_ROUTED_PURPOSES = PURE_VISION_PURPOSES | REASONING_PURPOSES
 
-VISUAL_MODEL_PREFIXES = ("gemini-3.6-flash", "gemini-3.5-flash")
+VISUAL_MODEL_PREFIXES = ("gemini-3.7-flash", "gemini-3.6-flash", "gemini-3.5-flash")
 REASONING_MODEL_PREFIXES = ("gpt-5.6-sol", "gpt-5.6-terra", "kimi-")
 
-VISION_DEFAULT_PREFERENCE = ("gemini-3.6-flash", "gemini-3.5-flash")
+VISION_DEFAULT_PREFERENCE = (
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+)
 REASONING_DEFAULT_PREFERENCE = (
     "gpt-5.6-sol",
     "gpt-5.6-terra",

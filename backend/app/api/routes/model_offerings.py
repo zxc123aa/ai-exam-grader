@@ -99,7 +99,7 @@ def _validate_target(
     if scope == SchoolModelScope.VISION and not model.startswith(VISUAL_MODEL_PREFIXES):
         raise HTTPException(
             status_code=422,
-            detail="卷面识别方案只允许使用 Gemini 3.6/3.5 Flash",
+            detail="卷面识别方案只允许使用 Gemini 3.7/3.6/3.5 Flash",
         )
     if scope != SchoolModelScope.VISION and not model.startswith(
         REASONING_MODEL_PREFIXES

@@ -60,7 +60,8 @@ const SCOPE_ROUTE_PURPOSES: Record<SchoolModelScope, Record<string, string>> = {
 function modelAllowedForScope(scope: SchoolModelScope, model: string) {
   const normalized = model.toLowerCase()
   return scope === "vision"
-    ? normalized.startsWith("gemini-3.6-flash") ||
+    ? normalized.startsWith("gemini-3.7-flash") ||
+        normalized.startsWith("gemini-3.6-flash") ||
         normalized.startsWith("gemini-3.5-flash")
     : normalized.startsWith("gpt-5.6-sol") ||
         normalized.startsWith("gpt-5.6-terra") ||
