@@ -1,5 +1,6 @@
 import base64
 import json
+import logging
 import statistics
 import time
 import uuid
@@ -178,6 +179,8 @@ from app.worker import (
     process_submission_processing_task,
     run_submission_processing_task,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(
     prefix="/exams",
@@ -1221,6 +1224,25 @@ def _cached_pdf_page_preview(
     return contents
 
 
+def _warm_pdf_page_preview_cache(stored_file: StoredFile) -> None:
+    """上传完成后预生成页面预览缓存，老师首次打开框选/批卷页不用等渲染。
+
+    预热失败只影响首次加载速度，绝不能让上传本身失败。
+    """
+    if stored_file.content_type != "application/pdf":
+        return
+    path = get_stored_file_path(stored_file)
+    try:
+        page_count = get_pdf_page_count(path)
+    except InvalidPdfError:
+        return
+    for page_number in range(1, page_count + 1):
+        try:
+            _cached_pdf_page_preview(stored_file, path, page_number)
+        except (InvalidPdfError, IndexError):
+            break
+
+
 def build_page_image_response(*, stored_file: StoredFile, page_number: int) -> Response:
     path = get_stored_file_path(stored_file)
     if not path.exists():
@@ -1818,6 +1840,15 @@ async def upload_exam_file(
                 session=session, documents=[exam_document], exc=exc
             )
             session.refresh(exam_document)
+    else:
+        try:
+            _warm_pdf_page_preview_cache(active_file)
+        except Exception:
+            logger.warning(
+                "page preview warm-up failed",
+                extra={"stored_file_id": str(active_file.id)},
+                exc_info=True,
+            )
     return build_exam_document_public(
         exam_document=exam_document, stored_file=active_file
     )
@@ -2677,6 +2708,15 @@ def upload_client_preprocessed_pages(
         session.commit()
         session.refresh(exam_document)
         session.refresh(processed_file)
+
+        try:
+            _warm_pdf_page_preview_cache(processed_file)
+        except Exception:
+            logger.warning(
+                "page preview warm-up failed",
+                extra={"stored_file_id": str(processed_file.id)},
+                exc_info=True,
+            )
 
         return build_exam_document_public(
             exam_document=exam_document,
