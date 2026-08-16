@@ -1,7 +1,8 @@
+from uuid import uuid4
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
-from uuid import uuid4
 
 from app.core.config import settings
 from app.models import (
