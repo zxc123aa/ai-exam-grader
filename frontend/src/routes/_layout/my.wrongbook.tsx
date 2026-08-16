@@ -591,37 +591,46 @@ function MasterySection() {
   }
   return (
     <div className="flex flex-col gap-3">
-      {rows.map((row) => (
-        <div
-          key={`${row.subject ?? ""}-${row.knowledge_point_name}`}
-          className="rounded-2xl bg-card p-4 shadow-card"
-        >
-          <div className="flex items-baseline gap-2">
-            <span className="font-medium">{row.knowledge_point_name}</span>
-            {row.subject && (
-              <span className="text-muted-foreground text-xs">
-                {row.subject}
-              </span>
-            )}
-            <span
-              className={cn(
-                "ml-auto font-semibold",
-                (row.wrong_rate ?? 0) >= 60
-                  ? "text-red-600 dark:text-red-400"
-                  : "text-amber-600 dark:text-amber-400",
+      {rows.map((row) => {
+        const enough = (row.attempts ?? 0) >= 3
+        return (
+          <div
+            key={`${row.subject ?? ""}-${row.knowledge_point_name}`}
+            className="rounded-2xl bg-card p-4 shadow-card"
+          >
+            <div className="flex items-baseline gap-2">
+              <span className="font-medium">{row.knowledge_point_name}</span>
+              {row.subject && (
+                <span className="text-muted-foreground text-xs">
+                  {row.subject}
+                </span>
               )}
-            >
-              错 {row.wrong_rate ?? 0}%
-            </span>
+              {enough ? (
+                <span
+                  className={cn(
+                    "ml-auto font-semibold",
+                    (row.wrong_rate ?? 0) >= 60
+                      ? "text-red-600 dark:text-red-400"
+                      : "text-amber-600 dark:text-amber-400",
+                  )}
+                >
+                  错 {row.wrong_rate ?? 0}%
+                </span>
+              ) : (
+                <span className="ml-auto text-muted-foreground text-xs">
+                  样本不足
+                </span>
+              )}
+            </div>
+            <p className="mt-1 text-muted-foreground text-xs">
+              做过 {row.attempts ?? 0} 题 · 错 {row.wrong_count ?? 0} 题
+              {row.last_reviewed_at
+                ? ` · 最近复习 ${formatDate(row.last_reviewed_at)}`
+                : " · 还没复习过"}
+            </p>
           </div>
-          <p className="mt-1 text-muted-foreground text-xs">
-            做过 {row.attempts ?? 0} 题 · 错 {row.wrong_count ?? 0} 题
-            {row.last_reviewed_at
-              ? ` · 最近复习 ${formatDate(row.last_reviewed_at)}`
-              : " · 还没复习过"}
-          </p>
-        </div>
-      ))}
+        )
+      })}
     </div>
   )
 }

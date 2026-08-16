@@ -28,6 +28,13 @@ function masteryOf(row: WrongbookMasteryItem): number {
   return Math.min(100, Math.max(0, 100 - (row.wrong_rate ?? 0)))
 }
 
+/** 每个知识点只做过 1-2 题时，错误率换算的掌握度没有统计意义，不显示百分比。 */
+const MIN_SAMPLE = 3
+
+function hasEnoughSamples(row: WrongbookMasteryItem): boolean {
+  return (row.attempts ?? 0) >= MIN_SAMPLE
+}
+
 type MasteryLevel = "solid" | "normal" | "weak"
 
 function levelOf(mastery: number): MasteryLevel {
@@ -183,13 +190,17 @@ function TrendSection({ trends }: { trends: KnowledgeTrendsPublic }) {
   )
 }
 
-/** 总览：掌握度分布环图 + 平均掌握度大数字。 */
+/** 总览：掌握度分布环图 + 平均掌握度大数字。样本不足的知识点不参与统计。 */
 function OverviewSection({ rows }: { rows: WrongbookMasteryItem[] }) {
+  const reliable = rows.filter(hasEnoughSamples)
   const counts: Record<MasteryLevel, number> = { solid: 0, normal: 0, weak: 0 }
-  for (const row of rows) counts[levelOf(masteryOf(row))] += 1
-  const average = Math.round(
-    rows.reduce((sum, row) => sum + masteryOf(row), 0) / rows.length,
-  )
+  for (const row of reliable) counts[levelOf(masteryOf(row))] += 1
+  const average = reliable.length
+    ? Math.round(
+        reliable.reduce((sum, row) => sum + masteryOf(row), 0) /
+          reliable.length,
+      )
+    : null
   const segments: DonutSegment[] = (
     ["solid", "normal", "weak"] as MasteryLevel[]
   ).map((level) => ({
@@ -203,12 +214,16 @@ function OverviewSection({ rows }: { rows: WrongbookMasteryItem[] }) {
       <DonutChart segments={segments} size={150} stroke={16} />
       <div>
         <p className="text-muted-foreground text-sm">平均掌握度</p>
-        <p className="mt-1 font-bold text-4xl tabular-nums tracking-tight">
-          {average}
-          <span className="ml-0.5 font-medium text-muted-foreground text-xl">
-            %
-          </span>
-        </p>
+        {average === null ? (
+          <p className="mt-1 font-bold text-2xl tracking-tight">数据积累中</p>
+        ) : (
+          <p className="mt-1 font-bold text-4xl tabular-nums tracking-tight">
+            {average}
+            <span className="ml-0.5 font-medium text-muted-foreground text-xl">
+              %
+            </span>
+          </p>
+        )}
         <p className="mt-2 text-muted-foreground text-sm">
           共 {rows.length} 个知识点
           {counts.weak > 0 && (
@@ -219,6 +234,15 @@ function OverviewSection({ rows }: { rows: WrongbookMasteryItem[] }) {
               </span>
             </>
           )}
+          {rows.length - reliable.length > 0 && (
+            <>
+              {"，"}
+              {rows.length - reliable.length} 个样本不足
+            </>
+          )}
+        </p>
+        <p className="mt-1 text-muted-foreground text-xs">
+          每个知识点至少做 {MIN_SAMPLE} 题才纳入掌握度统计
         </p>
       </div>
     </div>
@@ -246,6 +270,7 @@ function MatrixSection({ rows }: { rows: WrongbookMasteryItem[] }) {
           <ul className="flex flex-col divide-y">
             {items.map((row) => {
               const mastery = masteryOf(row)
+              const enough = hasEnoughSamples(row)
               const meta = LEVEL_META[levelOf(mastery)]
               const lastWrong = formatDate(row.last_wrong_at)
               return (
@@ -259,17 +284,23 @@ function MatrixSection({ rows }: { rows: WrongbookMasteryItem[] }) {
                       <span className="font-medium">
                         {row.knowledge_point_name}
                       </span>
-                      <Tag variant="neutral">{meta.label}</Tag>
-                      <span className="ml-auto font-semibold tabular-nums">
-                        {mastery}%
-                      </span>
+                      <Tag variant="neutral">
+                        {enough ? meta.label : "样本不足"}
+                      </Tag>
+                      {enough && (
+                        <span className="ml-auto font-semibold tabular-nums">
+                          {mastery}%
+                        </span>
+                      )}
                     </div>
-                    <ProgressBar
-                      value={mastery}
-                      tone={meta.tone}
-                      slim
-                      className="max-w-md"
-                    />
+                    {enough && (
+                      <ProgressBar
+                        value={mastery}
+                        tone={meta.tone}
+                        slim
+                        className="max-w-md"
+                      />
+                    )}
                     <p className="text-muted-foreground text-xs">
                       答题 {row.attempts ?? 0} · 错 {row.wrong_count ?? 0}
                       {lastWrong ? ` · 最近出错 ${lastWrong}` : ""}
@@ -285,11 +316,14 @@ function MatrixSection({ rows }: { rows: WrongbookMasteryItem[] }) {
   )
 }
 
-/** 最该补的 3 块：掌握度最低的知识点，一键生成对应错题卷。 */
+/** 最该补的 3 块：掌握度最低的知识点，一键生成对应错题卷。样本不足的不参评。 */
 function WeakSpotSection({ rows }: { rows: WrongbookMasteryItem[] }) {
   const weakest = [...rows]
+    .filter(hasEnoughSamples)
     .sort((a, b) => masteryOf(a) - masteryOf(b))
     .slice(0, 3)
+
+  if (weakest.length === 0) return null
 
   return (
     <section className="flex flex-col gap-3">

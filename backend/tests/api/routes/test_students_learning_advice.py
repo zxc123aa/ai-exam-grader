@@ -1,6 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
+from uuid import uuid4
 
 from app.core.config import settings
 from app.models import (
@@ -61,7 +62,12 @@ def _advice_context(client: TestClient, db: Session, name: str) -> dict:
         json={"result": "good"},
     )
     assert reviewed.status_code == 200, reviewed.text
-    return {"headers": headers, "student_user": student_user, "org": org}
+    return {
+        "headers": headers,
+        "student_user": student_user,
+        "org": org,
+        "exam": exam,
+    }
 
 
 def _fake_model(payload: dict, captured: list | None = None):
@@ -187,3 +193,41 @@ def test_learning_advice_requires_bound_student_role(
         f"{settings.API_V1_STR}/students/me/learning-advice", headers=unbound_headers
     )
     assert missing.status_code == 404
+
+
+def test_learning_advice_scoped_by_exam(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """传 exam_id 只统计该考试错题；指向别的考试时无数据且不调模型。"""
+    context = _advice_context(client, db, "建议丁")
+    exam = context["exam"]
+    captured: list = []
+    payload = {
+        "overall": "本场考试浮力错了1次。",
+        "focus_points": [
+            {"knowledge_point": "浮力", "times": 1, "advice": "先画受力分析图。"}
+        ],
+        "weekly_plan": ["今天重做浮力错题"],
+    }
+    monkeypatch.setattr(
+        "app.api.routes.students.call_json_model", _fake_model(payload, captured)
+    )
+
+    scoped = client.get(
+        f"{settings.API_V1_STR}/students/me/learning-advice",
+        headers=context["headers"],
+        params={"exam_id": str(exam.id)},
+    )
+    assert scoped.status_code == 200, scoped.text
+    assert scoped.json()["has_data"] is True
+    assert len(captured) == 1
+
+    other = client.get(
+        f"{settings.API_V1_STR}/students/me/learning-advice",
+        headers=context["headers"],
+        params={"exam_id": str(uuid4())},
+    )
+    assert other.status_code == 200, other.text
+    assert other.json()["has_data"] is False
+    # 该考试没有错题，不再调模型
+    assert len(captured) == 1

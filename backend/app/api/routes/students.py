@@ -815,9 +815,12 @@ def update_my_wrongbook_entry(
 
 
 def _learning_advice_stats(
-    session: Session, learner: LearnerProfile
+    session: Session, learner: LearnerProfile, exam_id: uuid.UUID | None = None
 ) -> dict[str, Any] | None:
-    """聚合错题本统计供学习建议模型参考；没有错题时返回 None。"""
+    """聚合错题本统计供学习建议模型参考；没有错题时返回 None。
+
+    传 exam_id 时只统计该考试的错题，用于单场成绩报告页的学习建议。
+    """
     rows = session.exec(
         select(WrongQuestionEntry, WrongQuestionSource, WrongQuestionReview)
         .select_from(WrongQuestionEntry)
@@ -832,6 +835,11 @@ def _learning_advice_stats(
         .where(
             *_my_wrongbook_scope(learner),
             col(WrongQuestionEntry.is_wrong).is_(True),
+            *(
+                [WrongQuestionSource.exam_id == exam_id]
+                if exam_id is not None
+                else []
+            ),
         )
     ).all()
     if not rows:
@@ -954,17 +962,20 @@ def _parse_learning_advice(parsed: dict[str, Any]) -> dict[str, Any] | None:
 
 @router.get("/me/learning-advice", response_model=LearningAdvicePublic)
 def read_my_learning_advice(
-    session: SessionDep, current_user: CurrentStudentUser
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    exam_id: uuid.UUID | None = None,
 ) -> Any:
     """基于错题本的针对性学习建议。
 
+    传 exam_id 时只看该考试的错题（单场成绩报告页），否则看全部错题本。
     暂不缓存——每次请求都重新统计并调用模型生成；若成本或耗时成为问题，
     可后续按「统计摘要哈希」加缓存复用结果。
     """
     # 学习建议面向在校学生：未绑定学校档案的账号返回 404
     get_current_student_profile(session=session, current_user=current_user)
     learner, _student = get_current_learner(session=session, current_user=current_user)
-    stats = _learning_advice_stats(session, learner)
+    stats = _learning_advice_stats(session, learner, exam_id=exam_id)
     if stats is None:
         return LearningAdvicePublic(has_data=False)
 

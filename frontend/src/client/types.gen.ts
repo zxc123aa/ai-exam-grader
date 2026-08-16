@@ -3553,6 +3553,10 @@ export type StudentsUpdateMyWrongbookEntryData = {
 
 export type StudentsUpdateMyWrongbookEntryResponse = (WrongbookEntryDetail);
 
+export type StudentsReadMyLearningAdviceData = {
+    examId?: string;
+};
+
 export type StudentsReadMyLearningAdviceResponse = (LearningAdvicePublic);
 
 export type StudentsSnapQuestionData = {

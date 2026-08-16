@@ -9,7 +9,6 @@ import { PageHead } from "@/components/Common/PageHead"
 import { ProgressBar, type ProgressTone } from "@/components/Common/ProgressBar"
 import { Tag } from "@/components/Common/Tag"
 import {
-  buildAdvice,
   buildSummaryLine,
   formatScore,
   type ReportQuestionItem,
@@ -34,6 +33,81 @@ export const Route = createFileRoute("/_layout/my/exams_/$examId")({
   component: MyExamReportPage,
   head: () => ({ meta: [{ title: "个人成绩报告 - 点凡阅卷" }] }),
 })
+
+/** 学习建议：调用后端按本场考试错题实时生成的建议（LLM），会话内只取一次。 */
+function LearningAdviceSection({ examId }: { examId: string }) {
+  const query = useQuery({
+    queryKey: ["my-exam-learning-advice", examId],
+    queryFn: () => StudentsService.readMyLearningAdvice({ examId }),
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: 1,
+  })
+
+  if (query.isPending) {
+    return (
+      <section className="border-t py-6">
+        <h4 className="mb-4 font-semibold text-sm">学习建议</h4>
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-4 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+      </section>
+    )
+  }
+
+  if (query.isError) {
+    return (
+      <section className="border-t py-6">
+        <h4 className="mb-4 font-semibold text-sm">学习建议</h4>
+        <p className="text-muted-foreground text-sm">
+          学习建议暂时生成失败，稍后可刷新重试。
+        </p>
+      </section>
+    )
+  }
+
+  const advice = query.data
+  if (!advice?.has_data) {
+    return (
+      <section className="border-t py-6">
+        <h4 className="mb-4 font-semibold text-sm">学习建议</h4>
+        <p className="text-muted-foreground text-sm leading-7">
+          本次考试没有错题，保持当前学习节奏即可。
+        </p>
+      </section>
+    )
+  }
+
+  return (
+    <section className="border-t py-6">
+      <h4 className="mb-4 font-semibold text-sm">学习建议</h4>
+      {advice.overall && (
+        <p className="text-muted-foreground text-sm leading-7">
+          {advice.overall}
+        </p>
+      )}
+      {(advice.focus_points ?? []).length > 0 && (
+        <ul className="mt-3 flex flex-col gap-2">
+          {(advice.focus_points ?? []).map((point) => (
+            <li key={point.knowledge_point} className="text-sm leading-7">
+              <span className="font-medium">{point.knowledge_point}</span>
+              <span className="text-muted-foreground">
+                （错 {point.times} 次）：{point.advice}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {(advice.weekly_plan ?? []).length > 0 && (
+        <ol className="mt-3 list-decimal pl-5 text-muted-foreground text-sm leading-7">
+          {(advice.weekly_plan ?? []).map((step) => (
+            <li key={step}>{step}</li>
+          ))}
+        </ol>
+      )}
+    </section>
+  )
+}
 
 function MyExamReportPage() {
   const { examId } = Route.useParams()
@@ -121,7 +195,6 @@ function MyExamReportPage() {
     { label: "零分题", count: zeroCount, tone: "pink" },
   ]
   const summaryLine = buildSummaryLine(questions, knowledgeByLabel)
-  const advice = buildAdvice(questions, knowledgeByLabel)
 
   return (
     <div className="flex flex-col gap-6">
@@ -227,10 +300,7 @@ function MyExamReportPage() {
         />
 
         {/* 学习建议 */}
-        <section className="border-t py-6">
-          <h4 className="mb-4 font-semibold text-sm">学习建议</h4>
-          <p className="text-muted-foreground text-sm leading-7">{advice}</p>
-        </section>
+        <LearningAdviceSection examId={examId} />
 
         {/* 逐题明细 */}
         <section className="border-t py-6">
