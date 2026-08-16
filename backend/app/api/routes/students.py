@@ -1058,7 +1058,9 @@ def _snap_standard_answer(
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
-        raise HTTPException(status_code=502, detail=f"解答生成失败，请重试：{exc}") from exc
+        raise HTTPException(
+            status_code=502, detail=f"解答生成失败，请重试：{exc}"
+        ) from exc
     answer = str(parsed.get("answer") or "").strip()
     explanation = str(parsed.get("explanation") or "").strip()
     if not answer or not explanation:
@@ -1128,9 +1130,7 @@ async def snap_question(
     if mode == "solve":
         question_text = _snap_transcribe(image_bytes, defaults)
         if not question_text:
-            raise HTTPException(
-                status_code=422, detail="没认出题目，请拍清楚一点再试"
-            )
+            raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
         answer, explanation = _snap_standard_answer(question_text, defaults)
         return SnapSolvePublic(
             question_text=question_text,

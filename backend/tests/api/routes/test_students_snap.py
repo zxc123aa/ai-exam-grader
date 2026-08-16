@@ -25,7 +25,9 @@ def _student_headers(client: TestClient, db: Session, name: str) -> dict[str, st
 
 
 def _teacher_headers(client: TestClient, db: Session, name: str) -> dict[str, str]:
-    org = Organization(name=f"拍题教师学校-{name}", code=f"snap-t-{random_lower_string()}")
+    org = Organization(
+        name=f"拍题教师学校-{name}", code=f"snap-t-{random_lower_string()}"
+    )
     db.add(org)
     db.commit()
     db.refresh(org)
@@ -66,9 +68,7 @@ def test_snap_solve_returns_answer_and_explanation(
         calls.append(kwargs)
         return payloads[len(calls) - 1], "mock-model", 1
 
-    monkeypatch.setattr(
-        "app.api.routes.students.call_json_model", fake_call_json_model
-    )
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
 
     response = _post_snap(client, headers, mode="solve")
     assert response.status_code == 200, response.text
@@ -112,9 +112,7 @@ def test_snap_grade_returns_score_and_comment(
         calls.append(kwargs)
         return payloads[len(calls) - 1], "mock-model", 1
 
-    monkeypatch.setattr(
-        "app.api.routes.students.call_json_model", fake_call_json_model
-    )
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
 
     response = _post_snap(client, headers, mode="grade", max_score=10)
     assert response.status_code == 200, response.text
