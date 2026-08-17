@@ -1356,9 +1356,9 @@ def _snap_extract_multi(
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = (
         "这张照片里有学生作答的试卷内容。请找出所有写了答案的题（最多 8 道），"
-        "每题给出：1) 压缩题干——保留判分需要的关键条件和设问，80 字以内；"
-        "2) 学生的手写作答原文。没写答案的题不要包含。"
-        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"压缩题干","student_answer":"学生作答原文"}]}'
+        "每题给出：1) 题干——保留判分需要的条件、设问，选择题必须保留全部选项内容，"
+        "150 字以内；2) 学生的手写作答原文。没写答案的题不要包含。"
+        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"题干（选择题含选项）","student_answer":"学生作答原文"}]}'
     )
     try:
         parsed, _used_model, _elapsed_ms = call_json_model(
