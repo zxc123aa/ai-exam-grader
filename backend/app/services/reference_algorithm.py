@@ -10,7 +10,12 @@ import numpy as np
 
 from app.core.config import settings
 from app.services.file_storage import get_stored_file_path
-from app.services.pdf_rendering import get_pdf_page_count, render_pdf_page_png
+from app.services.image_downscale import downscale_image_for_model
+from app.services.pdf_rendering import (
+    get_pdf_page_count,
+    render_pdf_page_jpeg,
+    render_pdf_page_png,
+)
 from app.services.question_text_normalization import normalize_reference_result_question
 
 
@@ -300,10 +305,14 @@ def _stored_file_page_image(*, stored_file: Any, page_number: int) -> tuple[byte
     if stored_file.content_type == "application/pdf":
         if page_number > get_pdf_page_count(path):
             raise RuntimeError("PDF 页码超出范围")
-        return render_pdf_page_png(path, page_number), "image/png"
+        # 喂模型用 JPEG：PNG 全页约 7.5MB，参考算法转发和模型读取都被它拖慢
+        return render_pdf_page_jpeg(path, page_number), "image/jpeg"
     if page_number != 1:
         raise RuntimeError("图片文件只有 1 页")
-    return path.read_bytes(), stored_file.content_type or "image/png"
+    raw = path.read_bytes()
+    if len(raw) > 800 * 1024:
+        return downscale_image_for_model(raw), "image/jpeg"
+    return raw, stored_file.content_type or "image/png"
 
 
 def process_stored_file_pages(
