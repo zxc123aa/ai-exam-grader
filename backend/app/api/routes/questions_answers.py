@@ -10,7 +10,7 @@ from decimal import Decimal
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
-from sqlmodel import col, select
+from sqlmodel import Session, col, select
 
 from app.api.deps import (
     CurrentUser,
@@ -527,6 +527,55 @@ def _create_region_from_snapshot(
     return region
 
 
+_QUESTION_SECTION_WORDS = (
+    "听力",
+    "选择",
+    "填空",
+    "判断",
+    "计算",
+    "操作",
+    "实验",
+    "解答",
+    "应用",
+    "阅读",
+    "写作",
+    "解决问题",
+)
+
+
+def _question_section_word(label: str) -> str | None:
+    """从题目标签里提取所属大题词（选择/填空/计算…），取不到返回 None。"""
+    for word in _QUESTION_SECTION_WORDS:
+        if word in label:
+            return word
+    return None
+
+
+def _disambiguate_question_keys(
+    session: Session, items: list[QuestionRecognitionItem]
+) -> None:
+    """大题重新编号导致的同号，按所属大题改 key（选择1/填空1）并落库。
+
+    只处理每组内大题词互不重复的情形；有取不到大题词或同大题同号的，
+    保持原样由调用方继续报重复错误。
+    """
+    groups: dict[str, list[QuestionRecognitionItem]] = {}
+    for item in items:
+        groups.setdefault(item.question_key.strip(), []).append(item)
+    for key, group in groups.items():
+        if len(group) < 2:
+            continue
+        prefixes = [_question_section_word(item.label) for item in group]
+        if any(prefix is None for prefix in prefixes):
+            continue
+        if len(set(prefixes)) != len(prefixes):
+            continue
+        for item, prefix in zip(group, prefixes, strict=True):
+            item.question_key = f"{prefix}{key}"
+            session.add(item)
+    session.flush()
+
+
 @router.post(
     "/{exam_id}/question-recognition-runs/{run_id}/confirm",
     response_model=QuestionRecognitionRunPublic,
@@ -562,7 +611,14 @@ def confirm_question_recognition_run(
     if any(not item.question_text.strip() for item in included):
         raise HTTPException(status_code=409, detail="所有保留题目都必须有题干")
     if len(keys) != len(set(keys)):
-        raise HTTPException(status_code=409, detail="题目标识重复，请修订或排除重复项")
+        # 中文试卷普遍按大题重新编号（一、选择题 1-10；二、填空题 1-13…），
+        # 同号撞上时用大题词自动消歧（选择1/填空1），消不了才要求老师手动修订。
+        _disambiguate_question_keys(session, included)
+        keys = [item.question_key.strip() for item in included]
+        if len(keys) != len(set(keys)):
+            raise HTTPException(
+                status_code=409, detail="题目标识重复，请修订或排除重复项"
+            )
 
     try:
         now = get_datetime_utc()

@@ -439,3 +439,100 @@ def test_question_recognition_run_uses_system_config(
         assert run_response.json()["model"] == "gemini-3.6-flash"
     finally:
         _clear_system_config(db)
+
+
+def test_confirm_disambiguates_section_numbering(
+    client: TestClient,
+    school_owner_token_headers: dict[str, str],
+) -> None:
+    """选择/填空各自从 1 编号：同号按大题词消歧为 选择1/填空1。"""
+    exam = client.post(
+        f"{settings.API_V1_STR}/exams/",
+        headers=school_owner_token_headers,
+        json={
+            "org_id": DEFAULT_ORG_ID,
+            "title": "Section numbering exam",
+            "subject": "数学",
+        },
+    ).json()
+    document_response = client.post(
+        f"{settings.API_V1_STR}/exams/{exam['id']}/files",
+        headers=school_owner_token_headers,
+        files={"file": ("paper.png", _png(), "image/png")},
+        data={"document_type": "blank_exam"},
+    )
+    document_id = document_response.json()["id"]
+    page_id = f"{document_id}:page:1"
+    block_a = f"{page_id}::q1"
+    block_b = f"{page_id}::q2"
+
+    imported = client.post(
+        f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs/from-marking",
+        headers=school_owner_token_headers,
+        json={
+            "document_ids": [document_id],
+            "covered_page_ids": [page_id],
+            "blocks": [
+                {
+                    "id": block_a,
+                    "pageId": page_id,
+                    "label": "选择题第1题",
+                    "questionNumber": "1",
+                    "xmin": 100,
+                    "ymin": 100,
+                    "xmax": 900,
+                    "ymax": 300,
+                },
+                {
+                    "id": block_b,
+                    "pageId": page_id,
+                    "label": "填空题第1题",
+                    "questionNumber": "1",
+                    "xmin": 100,
+                    "ymin": 320,
+                    "xmax": 900,
+                    "ymax": 500,
+                },
+            ],
+            "results": [
+                {
+                    "id": block_a,
+                    "blockId": block_a,
+                    "sourceBlockIds": [block_a],
+                    "sourceLabel": "选择题第1题",
+                    "questionNumber": "1",
+                    "question": "下列说法正确的是（ ）。",
+                    "studentAnswer": "",
+                    "confidence": 0.9,
+                },
+                {
+                    "id": block_b,
+                    "blockId": block_b,
+                    "sourceBlockIds": [block_b],
+                    "sourceLabel": "填空题第1题",
+                    "questionNumber": "1",
+                    "question": "2 的分数单位是（ ）。",
+                    "studentAnswer": "",
+                    "confidence": 0.9,
+                },
+            ],
+            "layouts": [{"pageId": page_id, "rotation": 0}],
+            "timing": {},
+        },
+    )
+    assert imported.status_code == 200, imported.text
+    run_id = imported.json()["id"]
+
+    confirmed = client.post(
+        f"{settings.API_V1_STR}/exams/{exam['id']}/question-recognition-runs/{run_id}/confirm",
+        headers=school_owner_token_headers,
+        json={},
+    )
+    assert confirmed.status_code == 200, confirmed.text
+
+    with Session(engine) as session:
+        questions = session.exec(
+            select(ExamQuestion).where(ExamQuestion.exam_id == exam["id"])
+        ).all()
+        keys = sorted(question.question_key for question in questions)
+        assert keys == ["填空1", "选择1"]
