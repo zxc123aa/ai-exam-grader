@@ -41,6 +41,7 @@ from app.models import (
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
+    SnapGradeItemPublic,
     SnapGradePublic,
     SnapSolvePublic,
     Student,
@@ -1343,19 +1344,21 @@ async def create_my_practice_attempt(
 SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
-def _snap_extract(image_bytes: bytes, defaults: dict[str, Any]) -> tuple[str, str]:
-    """拍照批改的聚焦识别：只读照片里写了答案的那一道题。
+def _snap_extract_multi(
+    image_bytes: bytes, defaults: dict[str, Any]
+) -> list[tuple[str, str]]:
+    """拍照批改的聚焦识别：读出照片里所有写了答案的题（最多 8 道）。
 
-    批卷管线的整页结构化提取用在单题拍照上会逼模型把整页十几道题全
-    转写出来，输出 token 量是耗时的主要来源（实测整页 80-130 秒）。
-    拍题场景只关心一道题，输出一收敛，耗时就下来。
+    批卷管线的整页结构化提取会逼模型把整页逐字转写，输出 token 是耗时大头
+    （实测整页 80-130 秒）。这里只保留压缩题干（判分够用的关键条件）和学生
+    作答，输出收敛了耗时就下来。
     """
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = (
-        "这张照片里有一道题，学生写了答案。请只识别这一道题"
-        "（照片里有多道题时，选学生作答最明显的那道，其余忽略）："
-        "1) 完整题干和选项（公式用纯文本）；2) 学生的手写作答原文，没有则为空。"
-        '只返回 JSON，不要 Markdown：{"question_text":"题干和选项","student_answer":"学生作答原文"}'
+        "这张照片里有学生作答的试卷内容。请找出所有写了答案的题（最多 8 道），"
+        "每题给出：1) 压缩题干——保留判分需要的关键条件和设问，80 字以内；"
+        "2) 学生的手写作答原文。没写答案的题不要包含。"
+        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"压缩题干","student_answer":"学生作答原文"}]}'
     )
     try:
         parsed, _used_model, _elapsed_ms = call_json_model(
@@ -1379,9 +1382,15 @@ def _snap_extract(image_bytes: bytes, defaults: dict[str, Any]) -> tuple[str, st
         raise HTTPException(
             status_code=502, detail=f"题目识别失败，请重试：{exc}"
         ) from exc
-    question_text = str(parsed.get("question_text") or "").strip()
-    student_answer = str(parsed.get("student_answer") or "").strip()
-    return question_text, student_answer
+    items: list[tuple[str, str]] = []
+    for raw in (parsed.get("items") or [])[:8]:
+        if not isinstance(raw, dict):
+            continue
+        question_text = str(raw.get("question_text") or "").strip()
+        student_answer = str(raw.get("student_answer") or "").strip()
+        if question_text:
+            items.append((question_text, student_answer))
+    return items
 
 
 def _snap_transcribe(image_bytes: bytes, defaults: dict[str, Any]) -> str:
@@ -1487,16 +1496,74 @@ def _snap_grade_call(
     return score, comment
 
 
+def _snap_solve_and_grade_all(
+    items: list[tuple[str, str]], max_score: float, defaults: dict[str, Any]
+) -> list[dict]:
+    """一次推理调用完成多题的独立解答+判分，返回每题 {score, comment}。
+
+    每题两个推理调用（解题+判分）串行太慢，合并成一次：模型先在心里独立
+    求解，再对照学生作答给分和评语。
+    """
+    payload = [
+        {"question_text": question, "student_answer": answer}
+        for question, answer in items
+    ]
+    prompt = (
+        "你是严谨的中文阅卷教师。对下面每道题：先独立求出正确答案，再对照学生作答判分。"
+        "结果正确但过程有瑕疵酌情扣少量分；结果错误只看有价值步骤给步骤分；"
+        "评语说人话，指出对在哪里、错在哪里，不要空话。"
+        "只返回 JSON，不要 Markdown："
+        '{"items":[{"score":0,"comment":"中文评语"}]}，items 顺序与输入一致，'
+        f"score 在 0 到 {max_score} 之间。\n"
+        f"题目与学生作答：{json.dumps(payload, ensure_ascii=False)}"
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["grading_provider"],
+            model=defaults["grading_model"],
+            fallback_models=[],
+            messages=[{"role": "user", "content": prompt}],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"批改失败，请重试：{exc}") from exc
+    results: list[dict] = []
+    raw_items = parsed.get("items") or []
+    for index, (question, answer) in enumerate(items):
+        raw = raw_items[index] if index < len(raw_items) else None
+        if not isinstance(raw, dict):
+            raise HTTPException(status_code=502, detail="批改返回内容不完整，请重试")
+        try:
+            score = float(raw.get("score"))
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(status_code=502, detail="批改失败，请重试") from exc
+        comment = str(raw.get("comment") or "").strip()
+        if not comment:
+            raise HTTPException(status_code=502, detail="批改失败，请重试")
+        results.append(
+            {
+                "question_text": question,
+                "student_answer": answer,
+                "score": min(max(score, 0.0), max_score),
+                "comment": comment,
+            }
+        )
+    return results
+
+
 @router.post("/me/snap", response_model=SnapSolvePublic | SnapGradePublic)
 async def snap_question(
     session: SessionDep,
-    current_user: CurrentStudentUser,
+    current_user: CurrentUser,
     image: Annotated[UploadFile, File()],
     mode: Annotated[Literal["solve", "grade"], Form()] = "solve",
     max_score: Annotated[float, Form()] = 10.0,
 ) -> Any:
-    """拍题答疑 / 拍照批改。一次性问答，不写入任何学习记录。"""
-    del current_user  # 仅做学生角色校验（依赖注入），不使用其数据
+    """拍题答疑 / 拍照批改。一次性问答，不写入任何学习记录。
+
+    所有登录角色可用（老师和管理员也要靠它试识别效果），学生之外的角色
+    只是没有「我的学习记录」入口，问答本身不涉及学生数据。
+    """
+    del current_user  # 仅做登录校验（依赖注入），不使用其数据
     if max_score <= 0 or max_score > 100:
         raise HTTPException(status_code=422, detail="满分需在 0 到 100 之间")
     image_bytes = await image.read()
@@ -1516,27 +1583,23 @@ async def snap_question(
             answer=answer,
             explanation=explanation,
         )
-    question_text, student_answer = _snap_extract(model_image_bytes, defaults)
-    if not question_text:
+    extracted = _snap_extract_multi(model_image_bytes, defaults)
+    if not extracted:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-    if not student_answer:
+    if not any(answer for _question, answer in extracted):
         raise HTTPException(
             status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
         )
-    standard_answer, _explanation = _snap_standard_answer(question_text, defaults)
-    score, comment = _snap_grade_call(
-        question_text=question_text,
-        student_answer=student_answer,
-        standard_answer=standard_answer,
-        max_score=max_score,
-        defaults=defaults,
-    )
+    extracted = [(question, answer) for question, answer in extracted if answer]
+    graded = _snap_solve_and_grade_all(extracted, max_score, defaults)
+    first = graded[0]
     return SnapGradePublic(
-        question_text=question_text,
-        student_answer=student_answer,
-        score=score,
+        question_text=first["question_text"],
+        student_answer=first["student_answer"],
+        score=first["score"],
         max_score=max_score,
-        comment=comment,
+        comment=first["comment"],
+        items=[SnapGradeItemPublic(**item, max_score=max_score) for item in graded],
     )
 
 

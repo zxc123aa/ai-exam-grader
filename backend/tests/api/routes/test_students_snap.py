@@ -87,18 +87,18 @@ def test_snap_grade_returns_score_and_comment(
 ) -> None:
     headers = _student_headers(client, db, "批改")
     monkeypatch.setattr(
-        "app.api.routes.students._snap_extract",
-        lambda *args, **kwargs: ("计算 3+4×2。", "3+4×2=14"),
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [("计算 3+4×2。", "3+4×2=14")],
     )
     calls: list[dict] = []
-    payloads = [
-        {"answer": "11", "explanation": "先乘后加：4×2=8，3+8=11。"},
-        {"score": 99, "comment": "运算顺序错了，应先算乘法。"},
-    ]
 
     def fake_call_json_model(**kwargs: object) -> tuple[dict, str, int]:
         calls.append(kwargs)
-        return payloads[len(calls) - 1], "mock-model", 1
+        return (
+            {"items": [{"score": 99, "comment": "运算顺序错了，应先算乘法。"}]},
+            "mock-model",
+            1,
+        )
 
     monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
 
@@ -112,9 +112,45 @@ def test_snap_grade_returns_score_and_comment(
     assert body["score"] == 10
     assert body["max_score"] == 10
     assert body["comment"] == "运算顺序错了，应先算乘法。"
-    # 两次调用：先独立解标准答案，再判分
-    assert len(calls) == 2
-    assert "标准答案" in str(calls[1]["messages"])
+    assert len(body["items"]) == 1
+    assert body["items"][0]["score"] == 10
+    # 一次调用：多题合并解题+判分
+    assert len(calls) == 1
+
+
+def test_snap_grade_multiple_questions(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """整页多题：每题一条判分结果。"""
+    headers = _student_headers(client, db, "多题")
+    monkeypatch.setattr(
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [
+            ("计算 3+4×2。", "3+4×2=14"),
+            ("计算 5×6。", "5×6=30"),
+        ],
+    )
+    monkeypatch.setattr(
+        "app.api.routes.students.call_json_model",
+        lambda **kwargs: (
+            {
+                "items": [
+                    {"score": 0, "comment": "先算乘法。"},
+                    {"score": 10, "comment": "正确。"},
+                ]
+            },
+            "mock-model",
+            1,
+        ),
+    )
+    response = _post_snap(client, headers, mode="grade", max_score=10)
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert len(body["items"]) == 2
+    assert body["items"][0]["score"] == 0
+    assert body["items"][1]["score"] == 10
+    # 顶层字段是第一题，兼容旧前端
+    assert body["score"] == 0
 
 
 def test_snap_grade_without_student_answer_returns_422(
@@ -122,18 +158,32 @@ def test_snap_grade_without_student_answer_returns_422(
 ) -> None:
     headers = _student_headers(client, db, "空作答")
     monkeypatch.setattr(
-        "app.api.routes.students._snap_extract",
-        lambda *args, **kwargs: ("计算 3+4×2。", ""),
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [("计算 3+4×2。", "")],
     )
     response = _post_snap(client, headers, mode="grade")
     assert response.status_code == 422, response.text
     assert "作答" in response.json()["detail"]
 
 
-def test_snap_teacher_forbidden(client: TestClient, db: Session) -> None:
+def test_snap_teacher_allowed(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍题答疑是无状态问答，教师/管理员也可用（试听识别效果）。"""
     headers = _teacher_headers(client, db, "教师")
+    calls: list[dict] = []
+    payloads = [
+        {"question_text": "1+1=?"},
+        {"answer": "2", "explanation": "加法。"},
+    ]
+
+    def fake_call_json_model(**kwargs: object) -> tuple[dict, str, int]:
+        calls.append(kwargs)
+        return payloads[len(calls) - 1], "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
     response = _post_snap(client, headers)
-    assert response.status_code == 403, response.text
+    assert response.status_code == 200, response.text
 
 
 def test_snap_oversized_image_returns_422(client: TestClient, db: Session) -> None:

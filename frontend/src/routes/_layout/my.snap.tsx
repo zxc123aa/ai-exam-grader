@@ -61,6 +61,35 @@ function ResultSection({
 }
 
 function SnapResultCard({ result }: { result: SnapResult }) {
+  // 批改模式：整页多题时逐题展示
+  if ("student_answer" in result && (result.items?.length ?? 0) > 1) {
+    return (
+      <div className="grid gap-4" data-testid="snap-result">
+        {result.items!.map((item, index) => (
+          <div
+            key={`snap-item-${index}`}
+            className="grid gap-4 rounded-[10px] border bg-card p-5"
+          >
+            <ResultSection title={`第 ${index + 1} 题`}>
+              {item.question_text}
+            </ResultSection>
+            <ResultSection title="你的作答">
+              {item.student_answer}
+            </ResultSection>
+            <div className="flex items-baseline gap-1.5 border-t pt-4">
+              <span className="font-bold text-3xl tracking-tight">
+                {formatScore(item.score)}
+              </span>
+              <span className="text-muted-foreground text-sm">
+                / {formatScore(item.max_score)} 分
+              </span>
+            </div>
+            <ResultSection title="点评">{item.comment}</ResultSection>
+          </div>
+        ))}
+      </div>
+    )
+  }
   return (
     <div
       className="grid gap-4 rounded-[10px] border bg-card p-5"

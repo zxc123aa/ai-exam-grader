@@ -3443,8 +3443,19 @@ class SnapSolvePublic(SQLModel):
     explanation: str
 
 
+class SnapGradeItemPublic(SQLModel):
+    question_text: str
+    student_answer: str
+    score: float
+    max_score: float
+    comment: str
+
+
 class SnapGradePublic(SQLModel):
-    """拍照批改结果：转录题目与作答，判分给点评。"""
+    """拍照批改结果：转录题目与作答，判分给点评。
+
+    整页多题时 items 装全部（每题一条）；顶层字段保留第一题，兼容旧前端。
+    """
 
     mode: Literal["grade"] = "grade"
     question_text: str
@@ -3452,6 +3463,7 @@ class SnapGradePublic(SQLModel):
     score: float
     max_score: float
     comment: str
+    items: list[SnapGradeItemPublic] = Field(default_factory=list)
 
 
 # 平台级系统配置（仅 platform_superuser 可写）：模型与批改默认值，

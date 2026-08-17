@@ -1745,6 +1745,14 @@ export type SignupOrganizationPublic = {
 /**
  * 拍照批改结果：转录题目与作答，判分给点评。
  */
+export type SnapGradeItemPublic = {
+    question_text: string;
+    student_answer: string;
+    score: number;
+    max_score: number;
+    comment: string;
+};
+
 export type SnapGradePublic = {
     mode?: "grade";
     question_text: string;
@@ -1752,6 +1760,7 @@ export type SnapGradePublic = {
     score: number;
     max_score: number;
     comment: string;
+    items?: Array<SnapGradeItemPublic>;
 };
 
 /**
