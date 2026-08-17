@@ -702,7 +702,7 @@ async function analyzeLayout(page, provider, model) {
   const orientation = await detectRotation(page, provider, model);
   const uprightImage = await rotateDataUrl(page.image, orientation.rotation);
   const prompt = `你是考试试卷版面分析器。输入图片已经转正，可能同时拍到左右两页或一张跨页展开的中文试卷。请只返回 JSON，不要 Markdown。
-任务：按印刷大题题号找出每一个需要 OCR 的完整题目块。一个块必须从题号和题干开始，包含该题全部选项、插图、填空、小问及考生手写答案，结束于下一道印刷大题题号之前。严禁把同一道题的题干、选项、小问或作答拆成多个块，也不要把试卷标题、姓名栏、密封线单独当题目块。questionNumber 必须读取图片中真实印刷大题题号，不能根据块次序猜测。
+任务：按印刷大题题号找出每一个需要 OCR 的完整题目块。一个块必须从题号和题干开始，包含该题全部选项、插图、填空、小问及考生手写答案，结束于下一道印刷大题题号之前。严禁把同一道题的题干、选项、小问或作答拆成多个块，也不要把试卷标题、姓名栏、密封线单独当题目块。questionNumber 必须读取图片中真实印刷大题题号，不能根据块次序猜测。注意不同大题（选择题、填空题、计算题等）会各自从 1 重新编号：题号相同但属于不同大题的是不同的题，分块时以“大题标题+题号”一起判断边界，不要因为题号相同就把它们当成同一道题。
 特别注意：①、②、③、(1)、(2)、(3) 这类是小问编号，不是大题题号，不能作为独立 region 的 questionNumber；它们必须并入最近的上级印刷大题，例如“15.”后面的①②③都属于第15题。
 若照片边界确实截断一道题，保留可见部分并在 kind 使用 continuation、continuationOf 写同一真实题号。左右两页分别按从上到下阅读，整张图按正常页序排列。每个矩形左右应覆盖所在纸页的完整文字列，并在不包含相邻题目的前提下保留约 2% 边缘。
 同时读取姓名、座号、班级，用 studentLabel 返回可读标识，用 studentKey 返回稳定短键（优先“姓名+座号”，看不清或不存在时为空）。不要把不同考生页面配在一起。
@@ -1016,7 +1016,7 @@ export function groupBlocksForOcr(blocks, options = {}) {
 async function recognizeBlockGroup(entries, provider, model) {
   const schema =
     '{"results":[{"blockId":"必须原样返回给定BLOCK_ID","mergeWithBlockId":"若与本批更早图片属于同一道题则填其BLOCK_ID，否则为空字符串","questionNumber":"题号","question":"完整题干和选项","studentAnswer":"考生回答原文","answerType":"选择题|填空题|计算题|实验题|未知","confidence":0到1,"notes":"图示、跨页、边界或辨认风险"}]}';
-  const prompt = `你是中文考试阅卷 OCR。下面会给出 ${entries.length} 张题目裁块，每张图前都有唯一 BLOCK_ID。请在一次回复中完成所有图片的识别，严格返回 ${schema}，不要 Markdown。\n规则：\n1. results 必须与图片一一对应，数量必须为 ${entries.length}，BLOCK_ID 必须原样返回，不得漏项、重复或改写。\n2. 相邻图片可能是不同题，也可能是同一道题的分页或跨栏续块。请根据题号、语义承接、句子边界和版面边缘自行判断；若当前图片明确续接本批更早图片，在 mergeWithBlockId 填较早图片的 BLOCK_ID。不能仅因题号相似就合并，不确定时保持分开并在 notes 提示复核。\n3. 每张图片仍必须单独返回一项。不同题目的文字绝不能互相合并；系统会依据 mergeWithBlockId 或 CONTINUATION_OF 在后处理阶段拼接同题。\n4. 以“候选题号”对应的题目为识别目标。裁块边缘即使露出上一题或下一题的文字，也不要放进当前 question 或 studentAnswer；在 notes 写明已排除相邻题内容。\n5. 区分印刷题目和考生手写内容，不要补写图中不存在的内容；看不清写“[无法辨认]”。必须保留目标题的完整题干、A/B/C/D 等全部可见选项、图示说明和手写计算过程。\n6. 目标题被裁块截断、缺少可见选项或出现无法辨认时，confidence 不得高于 0.6，并在 notes 说明。题号优先读取图片中的印刷题号，候选题号只用于校验。`;
+  const prompt = `你是中文考试阅卷 OCR。下面会给出 ${entries.length} 张题目裁块，每张图前都有唯一 BLOCK_ID。请在一次回复中完成所有图片的识别，严格返回 ${schema}，不要 Markdown。\n规则：\n1. results 必须与图片一一对应，数量必须为 ${entries.length}，BLOCK_ID 必须原样返回，不得漏项、重复或改写。\n2. 相邻图片可能是不同题，也可能是同一道题的分页或跨栏续块。请根据题号、语义承接、句子边界和版面边缘自行判断；若当前图片明确续接本批更早图片，在 mergeWithBlockId 填较早图片的 BLOCK_ID。不能仅因题号相似就合并，不确定时保持分开并在 notes 提示复核。特别注意：试卷的不同大题（如“一、选择题”“二、填空题”“三、计算题”）通常各自从 1 重新编号，判断两块是否同题前先看它们属于哪道大题；所属大题不同的两个相同题号是两道不同的题，绝不能合并或互填 mergeWithBlockId。拿不准合不合理时，宁可不合并。\n3. 每张图片仍必须单独返回一项。不同题目的文字绝不能互相合并；系统会依据 mergeWithBlockId 或 CONTINUATION_OF 在后处理阶段拼接同题。\n4. 以“候选题号”对应的题目为识别目标。裁块边缘即使露出上一题或下一题的文字，也不要放进当前 question 或 studentAnswer；在 notes 写明已排除相邻题内容。\n5. 区分印刷题目和考生手写内容，不要补写图中不存在的内容；看不清写“[无法辨认]”。必须保留目标题的完整题干、A/B/C/D 等全部可见选项、图示说明和手写计算过程。\n6. 目标题被裁块截断、缺少可见选项或出现无法辨认时，confidence 不得高于 0.6，并在 notes 说明。题号优先读取图片中的印刷题号，候选题号只用于校验。`;
   const content = [{ type: "text", text: prompt }];
   entries.forEach(({ block, ocrKey }, index) => {
     content.push({

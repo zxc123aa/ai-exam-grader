@@ -192,6 +192,27 @@ function makePageKey(documentId: string, pageNumber: number) {
   return `${documentId}:page:${pageNumber}`
 }
 
+/** 识别结果缓存在浏览器本地：翻页、刷新、误关都不丢，确认入库后清除。 */
+type RecognitionCachePayload = {
+  response: ReferenceRecognitionResponse | null
+  clearedPageKeys: string[]
+  recognizedPageKeys: string[]
+}
+
+function recognitionCacheKey(examId: string) {
+  return `marking-recognition:${examId}`
+}
+
+function loadRecognitionCache(examId: string): RecognitionCachePayload | null {
+  try {
+    const raw = localStorage.getItem(recognitionCacheKey(examId))
+    if (!raw) return null
+    return JSON.parse(raw) as RecognitionCachePayload
+  } catch {
+    return null
+  }
+}
+
 function formatPageLabel(pageId: string, documents: ExamDocumentPublic[]) {
   const [documentId, rawPage] = pageId.split(":page:")
   const documentIndex = documents.findIndex((item) => item.id === documentId)
@@ -507,13 +528,34 @@ export default function RegionMarkingCanvas({
     Record<string, ExamDocumentPublic>
   >({})
   const [recognitionResponse, setRecognitionResponse] =
-    useState<ReferenceRecognitionResponse | null>(null)
+    useState<ReferenceRecognitionResponse | null>(
+      () => loadRecognitionCache(examId)?.response ?? null,
+    )
   const [clearedRecognitionPageKeys, setClearedRecognitionPageKeys] = useState<
     Set<string>
-  >(() => new Set())
+  >(() => new Set(loadRecognitionCache(examId)?.clearedPageKeys ?? []))
   const [recognizedTargetPageKeys, setRecognizedTargetPageKeys] = useState<
     Set<string>
-  >(() => new Set())
+  >(() => new Set(loadRecognitionCache(examId)?.recognizedPageKeys ?? []))
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        recognitionCacheKey(examId),
+        JSON.stringify({
+          response: recognitionResponse,
+          clearedPageKeys: Array.from(clearedRecognitionPageKeys),
+          recognizedPageKeys: Array.from(recognizedTargetPageKeys),
+        } satisfies RecognitionCachePayload),
+      )
+    } catch {
+      // 存储满了等异常不影响页面使用
+    }
+  }, [
+    examId,
+    recognitionResponse,
+    clearedRecognitionPageKeys,
+    recognizedTargetPageKeys,
+  ])
   const [imageVersion, setImageVersion] = useState(0)
   const queryKey = ["exam-regions", examId]
   const effectiveDocuments = documents.map(
@@ -910,6 +952,8 @@ export default function RegionMarkingCanvas({
       )
     },
     onSuccess: (run) => {
+      // 已入库，本地缓存功成身退
+      localStorage.removeItem(recognitionCacheKey(examId))
       showSuccessToast("识别结果已保存，请确认题目后制作标准答案")
       navigate({
         to: "/exams/$examId/questions",
