@@ -16,6 +16,7 @@ import { z } from "zod"
 
 import { ExamsService } from "@/client"
 import { EmptyState } from "@/components/Common/EmptyState"
+import { MathText } from "@/components/Common/MathText"
 import { Tag } from "@/components/Common/Tag"
 import { ImportCenterDialog } from "@/components/Exams/ImportCenterDialog"
 import { Button } from "@/components/ui/button"
@@ -264,6 +265,14 @@ function QuestionItemRow({
 
           <div className="grid gap-2">
             <Label>印刷题目与选项</Label>
+            {item.question_text && (
+              <div className="rounded-md border bg-muted/30 px-4 py-3">
+                <MathText
+                  text={item.question_text}
+                  className="whitespace-pre-wrap text-sm leading-7"
+                />
+              </div>
+            )}
             <textarea
               className="border-input min-h-36 w-full rounded-md border bg-transparent px-3 py-2 text-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
               value={item.question_text}
@@ -279,9 +288,10 @@ function QuestionItemRow({
               <div className="text-xs font-medium text-amber-800 dark:text-amber-300">
                 卷面中的考生作答
               </div>
-              <div className="whitespace-pre-wrap text-sm">
-                {item.student_answer_text}
-              </div>
+              <MathText
+                text={item.student_answer_text}
+                className="whitespace-pre-wrap text-sm leading-7"
+              />
             </div>
           )}
           <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">

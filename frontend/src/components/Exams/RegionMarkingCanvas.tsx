@@ -22,6 +22,7 @@ import {
   ExamsService,
   OpenAPI,
 } from "@/client"
+import { MathText } from "@/components/Common/MathText"
 import { Tag } from "@/components/Common/Tag"
 import ExamFilesDialog, {
   DocumentCornerReviewDialog,
@@ -1584,16 +1585,16 @@ export default function RegionMarkingCanvas({
                     <div className="mb-1 text-xs text-muted-foreground">
                       题目
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {item.question || "未识别"}
+                    <p className="whitespace-pre-wrap text-sm leading-7">
+                      <MathText text={item.question || "未识别"} />
                     </p>
                   </div>
                   <div className="rounded-md bg-muted/40 p-3">
                     <div className="mb-1 text-xs text-muted-foreground">
                       学生答案
                     </div>
-                    <p className="whitespace-pre-wrap text-sm leading-6">
-                      {item.studentAnswer || "未作答"}
+                    <p className="whitespace-pre-wrap text-sm leading-7">
+                      <MathText text={item.studentAnswer || "未作答"} />
                     </p>
                   </div>
                 </article>
