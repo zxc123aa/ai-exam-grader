@@ -4,7 +4,6 @@ from sqlmodel import Session
 
 from app.core.config import settings
 from app.models import Organization, UserRole
-from app.services.vision_grading import VisionExtraction
 from tests.api.routes.test_students_wrongbook import _headers, _user
 from tests.utils.utils import random_lower_string
 
@@ -87,20 +86,9 @@ def test_snap_grade_returns_score_and_comment(
     client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     headers = _student_headers(client, db, "批改")
-    extraction = VisionExtraction(
-        question_text="计算 3+4×2。",
-        student_answer="3+4×2=14",
-        final_answer="14",
-        answer_type="计算题",
-        confidence=0.9,
-        notes=[],
-        provider="mock",
-        model="mock",
-        elapsed_ms=1,
-    )
     monkeypatch.setattr(
-        "app.api.routes.students.extract_answer_images",
-        lambda **kwargs: extraction,
+        "app.api.routes.students._snap_extract",
+        lambda *args, **kwargs: ("计算 3+4×2。", "3+4×2=14"),
     )
     calls: list[dict] = []
     payloads = [
@@ -133,20 +121,9 @@ def test_snap_grade_without_student_answer_returns_422(
     client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     headers = _student_headers(client, db, "空作答")
-    extraction = VisionExtraction(
-        question_text="计算 3+4×2。",
-        student_answer="",
-        final_answer="",
-        answer_type="计算题",
-        confidence=0.9,
-        notes=[],
-        provider="mock",
-        model="mock",
-        elapsed_ms=1,
-    )
     monkeypatch.setattr(
-        "app.api.routes.students.extract_answer_images",
-        lambda **kwargs: extraction,
+        "app.api.routes.students._snap_extract",
+        lambda *args, **kwargs: ("计算 3+4×2。", ""),
     )
     response = _post_snap(client, headers, mode="grade")
     assert response.status_code == 422, response.text

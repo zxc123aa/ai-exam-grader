@@ -304,7 +304,7 @@ function MySnapPage() {
       {snap.isPending && (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Sparkles className="size-4" />
-          正在看题，稍等几秒钟…
+          正在看题，照片大的话可能要一两分钟，请别关闭页面…
         </div>
       )}
       {result && !snap.isPending && <SnapResultCard result={result} />}

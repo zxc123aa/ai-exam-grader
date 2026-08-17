@@ -68,12 +68,12 @@ from app.models import (
 )
 from app.services import learner_identity, wrongbook_review
 from app.services.file_storage import store_upload_file
+from app.services.image_downscale import downscale_image_for_model
 from app.services.object_storage import materialize_storage_key
 from app.services.system_config import get_grading_defaults
 from app.services.vision_grading import (
     VisionGradingError,
     call_json_model,
-    extract_answer_images,
 )
 
 router = APIRouter(prefix="/students", tags=["students"])
@@ -1256,9 +1256,10 @@ async def create_my_practice_attempt(
         raise HTTPException(status_code=422, detail="请先选择作答照片")
     if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
         raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+    model_image_bytes = downscale_image_for_model(image_bytes)
 
     defaults = get_grading_defaults(session)
-    student_answer = _transcribe_practice_answer(image_bytes, defaults)
+    student_answer = _transcribe_practice_answer(model_image_bytes, defaults)
     if not student_answer:
         raise HTTPException(status_code=422, detail="没认出作答内容，请拍清楚一点再试")
     item = items[item_index]
@@ -1340,6 +1341,47 @@ async def create_my_practice_attempt(
 
 
 SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+
+def _snap_extract(image_bytes: bytes, defaults: dict[str, Any]) -> tuple[str, str]:
+    """拍照批改的聚焦识别：只读照片里写了答案的那一道题。
+
+    批卷管线的整页结构化提取用在单题拍照上会逼模型把整页十几道题全
+    转写出来，输出 token 量是耗时的主要来源（实测整页 80-130 秒）。
+    拍题场景只关心一道题，输出一收敛，耗时就下来。
+    """
+    image = base64.b64encode(image_bytes).decode("ascii")
+    prompt = (
+        "这张照片里有一道题，学生写了答案。请只识别这一道题"
+        "（照片里有多道题时，选学生作答最明显的那道，其余忽略）："
+        "1) 完整题干和选项（公式用纯文本）；2) 学生的手写作答原文，没有则为空。"
+        '只返回 JSON，不要 Markdown：{"question_text":"题干和选项","student_answer":"学生作答原文"}'
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["vision_provider"],
+            model=defaults["vision_model"],
+            fallback_models=[],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image}"},
+                        },
+                    ],
+                }
+            ],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"题目识别失败，请重试：{exc}"
+        ) from exc
+    question_text = str(parsed.get("question_text") or "").strip()
+    student_answer = str(parsed.get("student_answer") or "").strip()
+    return question_text, student_answer
 
 
 def _snap_transcribe(image_bytes: bytes, defaults: dict[str, Any]) -> str:
@@ -1462,9 +1504,10 @@ async def snap_question(
         raise HTTPException(status_code=422, detail="请先选择题目照片")
     if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
         raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+    model_image_bytes = downscale_image_for_model(image_bytes)
     defaults = get_grading_defaults(session)
     if mode == "solve":
-        question_text = _snap_transcribe(image_bytes, defaults)
+        question_text = _snap_transcribe(model_image_bytes, defaults)
         if not question_text:
             raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
         answer, explanation = _snap_standard_answer(question_text, defaults)
@@ -1473,21 +1516,9 @@ async def snap_question(
             answer=answer,
             explanation=explanation,
         )
-    try:
-        extraction = extract_answer_images(
-            image_bytes_list=[image_bytes],
-            provider=defaults["vision_provider"],
-            model=defaults["vision_model"],
-            question_label="拍题",
-        )
-    except VisionGradingError as exc:
-        raise HTTPException(
-            status_code=502, detail=f"题目识别失败，请重试：{exc}"
-        ) from exc
-    question_text = extraction.question_text.strip()
+    question_text, student_answer = _snap_extract(model_image_bytes, defaults)
     if not question_text:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-    student_answer = extraction.student_answer.strip()
     if not student_answer:
         raise HTTPException(
             status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
