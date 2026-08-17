@@ -33,6 +33,15 @@ const LAYOUT_REFINEMENT_ENABLED = String(process.env.LAYOUT_REFINEMENT_ENABLED |
 const LAYOUT_REFINEMENT_ENGINE = 'horizontal_projection_v2';
 const FIRST_QUESTION_ANCHOR_ENGINE = 'printed_question_anchor_v1';
 const LAYOUT_REFINEMENT_MIN_CONFIDENCE = Math.max(0.5, Math.min(0.95, Number(process.env.LAYOUT_REFINEMENT_MIN_CONFIDENCE || 0.68)));
+// 版面分割模型调用的输入压缩：长边超限才重编码，否则原样使用。
+// 分割输出是归一化坐标，裁切仍走全分辨率原图，压缩不影响下游清晰度。
+const LAYOUT_MODEL_MAX_SIDE = Math.max(768, Math.min(4096, Number(process.env.LAYOUT_MODEL_MAX_SIDE || 1600)));
+const LAYOUT_MODEL_JPEG_QUALITY = Math.max(40, Math.min(95, Number(process.env.LAYOUT_MODEL_JPEG_QUALITY || 85)));
+// 方向判断候选图压缩：900 长边占 2×2=4 tile，四张候选 16 tile；压到 768 内
+// 每张只占 1 tile（共 4 tile）。判断文字方向不需要更高分辨率。
+const ORIENTATION_MODEL_MAX_SIDE = Math.max(384, Math.min(1024, Number(process.env.ORIENTATION_MODEL_MAX_SIDE || 768)));
+// 尺寸达标但体积仍超过该阈值的图（如高噪 PNG）也重编码，与后端 downscale_image_for_model 的 SKIP_BYTES 对齐
+const LAYOUT_MODEL_SKIP_BYTES = 800 * 1024;
 const OCR_CROP_PAD_X = Math.max(0, Math.min(80, Number(process.env.OCR_CROP_PAD_X || 24)));
 const OCR_CROP_PAD_Y = Math.max(0, Math.min(40, Number(process.env.OCR_CROP_PAD_Y || 0)));
 const DOCUMENT_AFFINE_NORMALIZATION_ENABLED = String(process.env.DOCUMENT_AFFINE_NORMALIZATION_ENABLED || 'false').toLowerCase() !== 'false';
@@ -109,6 +118,13 @@ function pipelineMetadata({ tokenUsage = normalizeUsage(), tokenUsageRecorded = 
       enabled: LAYOUT_REFINEMENT_ENABLED,
       engine: LAYOUT_REFINEMENT_ENGINE,
       first_question_anchor_engine: FIRST_QUESTION_ANCHOR_ENGINE
+    },
+    layout_model_image: {
+      max_side: LAYOUT_MODEL_MAX_SIDE,
+      jpeg_quality: LAYOUT_MODEL_JPEG_QUALITY
+    },
+    orientation_model_image: {
+      max_side: ORIENTATION_MODEL_MAX_SIDE
     },
     ocr_crop_padding: {
       x: OCR_CROP_PAD_X,
@@ -1016,7 +1032,7 @@ async function detectRotation(page) {
   const candidates = await Promise.all(rotations.map(async rotation => {
     const buffer = await sharp(source)
       .rotate(rotation)
-      .resize({ width: 900, height: 900, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: ORIENTATION_MODEL_MAX_SIDE, height: ORIENTATION_MODEL_MAX_SIDE, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 82 })
       .toBuffer();
     return { rotation, image: `data:image/jpeg;base64,${buffer.toString('base64')}` };
@@ -1042,8 +1058,30 @@ function inferMissingPaperKeys(layouts) {
   });
 }
 
+// 版面分割模型输入压缩：只压缩发给模型的那份，uprightImage 保持全分辨率
+// 供 refineLayoutRegions 投影分析、锚点确认与后续 OCR 裁切使用。
+async function layoutModelImage(uprightImage) {
+  const source = imageBufferFromDataUrl(uprightImage);
+  const metadata = await sharp(source).metadata();
+  const longestSide = Math.max(metadata.width || 0, metadata.height || 0);
+  if (longestSide <= LAYOUT_MODEL_MAX_SIDE && source.length <= LAYOUT_MODEL_SKIP_BYTES) {
+    return uprightImage;
+  }
+  let pipeline = sharp(source);
+  if (longestSide > LAYOUT_MODEL_MAX_SIDE) {
+    pipeline = pipeline.resize({ width: LAYOUT_MODEL_MAX_SIDE, height: LAYOUT_MODEL_MAX_SIDE, fit: 'inside', withoutEnlargement: true });
+  }
+  const buffer = await pipeline.jpeg({ quality: LAYOUT_MODEL_JPEG_QUALITY }).toBuffer();
+  return `data:image/jpeg;base64,${buffer.toString('base64')}`;
+}
+
 async function analyzeLayout(page) {
-  const orientation = await detectRotation(page);
+  // 调用方声明图片已转正（assumeUpright）时跳过方向判断模型调用，
+  // 直接按 rotation=0 继续。后端只在预处理管线确认转正后才传该标记。
+  // 严格 === true：防止字符串 "false" 等非布尔值误触发跳过。
+  const orientation = page.assumeUpright === true
+    ? { rotation: 0, elapsedMs: 0, usage: normalizeUsage(), usageAvailable: false, skipped: 'assumeUpright' }
+    : await detectRotation(page);
   const rotatedImage = await rotateDataUrl(page.image, orientation.rotation);
   const affineNormalization = await normalizeDocumentImage(rotatedImage);
   const uprightImage = affineNormalization.image;
@@ -1055,7 +1093,8 @@ async function analyzeLayout(page) {
 同时读取姓名、座号、班级，用 studentLabel 返回可读标识，用 studentKey 返回稳定短键（优先“姓名+座号”，看不清或不存在时为空）。不要把不同考生页面配在一起。
 坐标基于当前已转正图片，归一化到 0-1000，字段顺序为 ymin,xmin,ymax,xmax。
 JSON格式：{"pageLabel":"...","studentLabel":"姓名/座号/班级的可读组合","studentKey":"跨页配对键或空字符串","paperPart":"前半/后半/第几页等","pageNumber":null,"regions":[{"id":"p1_q1","questionNumber":"1","label":"第1题","kind":"question_answer|continuation","readingOrder":1,"continuationOf":null,"ymin":0,"xmin":0,"ymax":1000,"xmax":500}]}。最多返回40个块，按阅读顺序排列。`;
-  const result = await callModel({ model: LAYOUT_MODEL, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: uprightImage } }] }] });
+  const modelImage = await layoutModelImage(uprightImage);
+  const result = await callModel({ model: LAYOUT_MODEL, messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: modelImage } }] }] });
   const parsed = parseJson(result.data.choices?.[0]?.message?.content || '');
   const rawRegions = Array.isArray(parsed.regions) ? parsed.regions.map(cleanRegion) : [];
   if (!rawRegions.length) rawRegions.push(cleanRegion({ label: '整页兜底', kind: 'question_answer', ymin: 0, xmin: 0, ymax: 1000, xmax: 1000 }, 0));
@@ -1088,6 +1127,7 @@ JSON格式：{"pageLabel":"...","studentLabel":"姓名/座号/班级的可读组
     pageId: page.id,
     fileName: page.fileName,
     rotation: orientation.rotation,
+    orientationSkipped: Boolean(orientation.skipped),
     coordinateSpace: 'upright',
     uprightImage,
     pageLabel: parsed.pageLabel || page.fileName,

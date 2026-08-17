@@ -143,6 +143,7 @@ def _process_pages(
                 "id": page["id"],
                 "fileName": page["fileName"],
                 "image": page["image"],
+                "assumeUpright": bool(page.get("assumeUpright")),
             }
             for page in pages
         ],
@@ -460,6 +461,10 @@ def process_stored_files(
                     "fileName": stored_file.original_filename,
                     "image": _image_data_url(contents),
                     "contents": contents,
+                    # 预处理管线确认转正后，参考服务可跳过方向判断模型调用
+                    "assumeUpright": bool(
+                        getattr(document, "preprocessing_status", None) == "completed"
+                    ),
                 }
             )
     return _process_pages(
