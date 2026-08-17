@@ -29,6 +29,8 @@ from app.services.submission_crops import (
     save_region_crop,
 )
 
+# dramatiq 默认给每条消息 10 分钟 time_limit，批改/识别这类整批任务远超它；
+# 长任务 actor 在声明处显式放宽（见各 time_limit 参数）。
 redis_broker = RedisBroker(url=settings.REDIS_URL)
 dramatiq.set_broker(redis_broker)
 
@@ -71,7 +73,7 @@ def _run_org_job_once(
         return True
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=7_200_000)
 def process_grading_run(run_id: str) -> None:
     from app.models import Exam, GradingRun, GradingRunStatus
     from app.services.grading_workflow import execute_grading_run
@@ -100,7 +102,7 @@ def run_wrongbook_snapshot(release_id: str) -> None:
         snapshot_release(session, uuid.UUID(release_id))
 
 
-@dramatiq.actor(max_retries=3, min_backoff=5_000)
+@dramatiq.actor(max_retries=3, min_backoff=5_000, time_limit=1_800_000)
 def process_wrongbook_snapshot(release_id: str) -> None:
     """成绩发布后把学生逐题结果快照进错题本。
 
@@ -126,7 +128,7 @@ def process_wrongbook_snapshot(release_id: str) -> None:
         process_wrongbook_snapshot.send_with_options(args=(release_id,), delay=5000)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=3_600_000)
 def process_recognition_run(run_id: str) -> None:
     from app.models import Exam, GradingRun, GradingRunStatus
     from app.services.recognition_workflow import execute_recognition_run
@@ -148,7 +150,7 @@ def process_recognition_run(run_id: str) -> None:
         process_recognition_run.send_with_options(args=(run_id,), delay=5000)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=3_600_000)
 def process_rubric_generation(task_id: str, exam_id: str) -> None:
     from app.models import Exam, ProcessingTask, ProcessingTaskStatus
     from app.services.rubric_workflow import execute_rubric_generation
@@ -175,7 +177,7 @@ def process_rubric_generation(task_id: str, exam_id: str) -> None:
         process_rubric_generation.send_with_options(args=(task_id, exam_id), delay=5000)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=3_600_000)
 def process_question_recognition_run(run_id: str) -> None:
     from app.models import Exam, QuestionRecognitionRun, WorkflowRunStatus
     from app.services.question_answer_workflow import execute_question_recognition
@@ -201,7 +203,7 @@ def process_question_recognition_run(run_id: str) -> None:
         process_question_recognition_run.send_with_options(args=(run_id,), delay=5000)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=3_600_000)
 def process_answer_preparation_run(run_id: str) -> None:
     from app.models import AnswerPreparationRun, Exam, WorkflowRunStatus
     from app.services.question_answer_workflow import execute_answer_preparation
@@ -367,12 +369,12 @@ def process_test_task(task_id: str) -> None:
     run_test_task(task_id)
 
 
-@dramatiq.actor
+@dramatiq.actor(time_limit=1_800_000)
 def process_submission_processing_task(task_id: str) -> None:
     run_submission_processing_task(task_id)
 
 
-@dramatiq.actor(max_retries=0)
+@dramatiq.actor(max_retries=0, time_limit=1_800_000)
 def process_exam_document_preprocessing(document_id: str) -> None:
     if not _run_once(
         SCAN_PREPROCESSING_LOCK_ID,
