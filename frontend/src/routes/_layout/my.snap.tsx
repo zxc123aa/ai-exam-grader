@@ -123,6 +123,11 @@ function SnapResultCard({ result }: { result: SnapResult }) {
   )
 }
 
+/** 连排选项拆行：「A.条形 B.柱形」→ 每个选项一行，题目更好读。 */
+function formatQuestionText(text: string): string {
+  return text.replace(/(?<!^)\s+([A-F])[.、]\s*/gm, "\n$1. ")
+}
+
 function MySnapPage() {
   const [mode, setMode] = useState<SnapMode>("solve")
   const [file, setFile] = useState<File | null>(null)
@@ -167,6 +172,7 @@ function MySnapPage() {
 
   // 答疑（solve）走流式：解答像打字一样逐段出来，不用干等
   const [streamText, setStreamText] = useState("")
+  const [questionExpanded, setQuestionExpanded] = useState(false)
   const [streamQuestion, setStreamQuestion] = useState("")
   const [streamError, setStreamError] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
@@ -289,7 +295,7 @@ function MySnapPage() {
             <img
               src={previewUrl}
               alt="题目照片预览"
-              className="max-h-72 w-fit rounded-[10px] border object-contain"
+              className="max-h-44 w-fit rounded-[10px] border object-contain"
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button
@@ -406,13 +412,33 @@ function MySnapPage() {
           data-testid="snap-stream-result"
         >
           {streamQuestion && (
-            <ResultSection title="题目">{streamQuestion}</ResultSection>
+            <ResultSection title="题目">
+              <span className="block">
+                <span
+                  className={`block whitespace-pre-wrap ${questionExpanded ? "" : "max-h-28 overflow-hidden"}`}
+                  style={
+                    questionExpanded
+                      ? undefined
+                      : {
+                          maskImage:
+                            "linear-gradient(to bottom, black 60%, transparent)",
+                        }
+                  }
+                >
+                  {formatQuestionText(streamQuestion)}
+                </span>
+                <button
+                  type="button"
+                  className="mt-1 text-primary text-xs hover:underline"
+                  onClick={() => setQuestionExpanded((value) => !value)}
+                >
+                  {questionExpanded ? "收起" : "展开全文"}
+                </button>
+              </span>
+            </ResultSection>
           )}
           <ResultSection title={streaming ? "解答（生成中…）" : "解答"}>
-            <MarkdownMath
-              text={streamText || "…"}
-              className="text-sm"
-            />
+            <MarkdownMath text={streamText || "…"} className="text-sm" />
           </ResultSection>
           {streamError && (
             <div className="flex items-center gap-2 text-destructive text-sm">
