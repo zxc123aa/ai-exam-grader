@@ -7,6 +7,13 @@ from app.models import Organization, UserRole
 from tests.api.routes.test_students_wrongbook import _headers, _user
 from tests.utils.utils import random_lower_string
 
+
+@pytest.fixture(autouse=True)
+def _isolated_snap_cache(tmp_path, monkeypatch: pytest.MonkeyPatch):
+    """snap 结果按图片哈希落盘缓存，测试间要隔离，否则串结果。"""
+    monkeypatch.setattr(settings, "STORAGE_CACHE_DIR", str(tmp_path))
+
+
 PNG_BYTES = (
     b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR\x00\x00\x00\x01\x00\x00\x00\x01"
     b"\x08\x02\x00\x00\x00\x90wS\xde\x00\x00\x00\x0cIDATx\x9cc```\x00\x00"

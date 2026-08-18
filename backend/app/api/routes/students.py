@@ -1,7 +1,9 @@
 import base64
+import hashlib
 import json
 import uuid
 from collections import Counter
+from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
@@ -1495,35 +1497,55 @@ async def snap_question(
     if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
         raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
     model_image_bytes = downscale_image_for_model(image_bytes)
+    # 同一张照片同一模式的结果落盘缓存：调用要约 1 分钟，弱网络下客户端
+    # 长连接可能中断，但服务端会继续算完；用户点「重试」时命中缓存秒回。
+    cache_key = hashlib.sha256(
+        model_image_bytes + f"|{mode}|{max_score}".encode()
+    ).hexdigest()
+    cache_dir = Path(settings.STORAGE_CACHE_DIR) / "snap"
+    cache_path = cache_dir / f"{cache_key}.json"
+    try:
+        cached = json.loads(cache_path.read_bytes())
+        if isinstance(cached, dict) and cached.get("mode") == mode:
+            return cached
+    except (OSError, ValueError):
+        pass
     defaults = get_grading_defaults(session)
     if mode == "solve":
         question_text = _snap_transcribe(model_image_bytes, defaults)
         if not question_text:
             raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
         answer, explanation = _snap_standard_answer(question_text, defaults)
-        return SnapSolvePublic(
+        result: dict[str, Any] = SnapSolvePublic(
             question_text=question_text,
             answer=answer,
             explanation=explanation,
-        )
-    extracted = _snap_extract_multi(model_image_bytes, defaults)
-    if not extracted:
-        raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-    if not any(answer for _question, answer in extracted):
-        raise HTTPException(
-            status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
-        )
-    extracted = [(question, answer) for question, answer in extracted if answer]
-    graded = _snap_solve_and_grade_all(extracted, max_score, defaults)
-    first = graded[0]
-    return SnapGradePublic(
-        question_text=first["question_text"],
-        student_answer=first["student_answer"],
-        score=first["score"],
-        max_score=max_score,
-        comment=first["comment"],
-        items=[SnapGradeItemPublic(**item, max_score=max_score) for item in graded],
-    )
+        ).model_dump()
+    else:
+        extracted = _snap_extract_multi(model_image_bytes, defaults)
+        if not extracted:
+            raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
+        if not any(answer for _question, answer in extracted):
+            raise HTTPException(
+                status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
+            )
+        extracted = [(question, answer) for question, answer in extracted if answer]
+        graded = _snap_solve_and_grade_all(extracted, max_score, defaults)
+        first = graded[0]
+        result = SnapGradePublic(
+            question_text=first["question_text"],
+            student_answer=first["student_answer"],
+            score=first["score"],
+            max_score=max_score,
+            comment=first["comment"],
+            items=[SnapGradeItemPublic(**item, max_score=max_score) for item in graded],
+        ).model_dump()
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(json.dumps(result, ensure_ascii=False).encode())
+    except OSError:
+        pass
+    return result
 
 
 @router.get("/me/wrongbook/entries/{entry_id}/image")
