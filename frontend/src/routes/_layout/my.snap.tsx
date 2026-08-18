@@ -13,10 +13,7 @@ import {
 import { useEffect, useRef, useState } from "react"
 import type { SnapGradePublic, SnapSolvePublic } from "@/client"
 import { OpenAPI } from "@/client"
-import {
-  MarkdownMath,
-  MarkdownMathSections,
-} from "@/components/Common/MarkdownMath"
+import { MarkdownMath } from "@/components/Common/MarkdownMath"
 import { PageHead } from "@/components/Common/PageHead"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -229,18 +226,21 @@ function MySnapPage() {
     },
   })
 
-  // 答疑（solve）走流式：解答像打字一样逐段出来，不用干等
-  const [streamText, setStreamText] = useState("")
-  const [questionExpanded, setQuestionExpanded] = useState(false)
-  const [streamQuestion, setStreamQuestion] = useState("")
+  // 答疑（solve）走流式：每题一张卡，解答逐段流进对应卡片
+  type StreamCard = {
+    question: string
+    answer: string
+    state: "waiting" | "streaming" | "done" | "error"
+    error?: string
+  }
+  const [streamCards, setStreamCards] = useState<StreamCard[]>([])
   const [streamError, setStreamError] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
 
   const submitSolveStream = async (fileToSubmit: File) => {
     setStreaming(true)
     setStreamError(null)
-    setStreamText("")
-    setStreamQuestion("")
+    setStreamCards([])
     setResult(null)
     try {
       const body = new FormData()
@@ -271,10 +271,42 @@ function MySnapPage() {
           const line = event.split("\n").find((l) => l.startsWith("data:"))
           if (!line) continue
           const data = JSON.parse(line.slice(5).trim())
-          if (data.type === "question") {
-            setStreamQuestion(data.text)
-          } else if (data.type === "delta") {
-            setStreamText((current) => current + data.text)
+          if (data.type === "questions") {
+            setStreamCards(
+              (data.items as string[]).map((question) => ({
+                question,
+                answer: "",
+                state: "waiting" as const,
+              })),
+            )
+          } else if (data.type === "answer-start") {
+            setStreamCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index ? { ...card, state: "streaming" } : card,
+              ),
+            )
+          } else if (data.type === "answer-delta") {
+            setStreamCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index
+                  ? { ...card, answer: card.answer + data.text }
+                  : card,
+              ),
+            )
+          } else if (data.type === "answer-done") {
+            setStreamCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index ? { ...card, state: "done" } : card,
+              ),
+            )
+          } else if (data.type === "answer-error") {
+            setStreamCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index
+                  ? { ...card, state: "error", error: data.text }
+                  : card,
+              ),
+            )
           } else if (data.type === "error") {
             throw new Error(data.text)
           }
@@ -464,66 +496,63 @@ function MySnapPage() {
           正在看题，照片大的话可能要一两分钟，请别关闭页面…
         </div>
       )}
-      {/* 流式答疑：识别出题目后逐段输出解答 */}
-      {(streaming || streamText || streamError) && (
-        <div
-          className="grid gap-4 rounded-[10px] border bg-card p-5"
-          data-testid="snap-stream-result"
-        >
-          {streamQuestion && (
-            <ResultSection title="题目">
-              <span className="block">
-                <span
-                  className={`block whitespace-pre-wrap ${questionExpanded ? "" : "max-h-28 overflow-hidden"}`}
-                  style={
-                    questionExpanded
-                      ? undefined
-                      : {
-                          maskImage:
-                            "linear-gradient(to bottom, black 60%, transparent)",
-                        }
-                  }
-                >
-                  {formatQuestionText(streamQuestion)}
+      {/* 流式答疑：每题一张卡，题目在上、解答逐段流进对应卡片 */}
+      {streamCards.length > 0 && (
+        <div className="grid gap-4" data-testid="snap-stream-result">
+          {streamCards.map((card, index) => (
+            <div
+              key={`stream-card-${index}`}
+              className="grid gap-4 rounded-[10px] border bg-card p-5"
+            >
+              <ResultSection title={`第 ${index + 1} 题`}>
+                <span className="whitespace-pre-wrap">
+                  {formatQuestionText(card.question)}
                 </span>
-                <button
-                  type="button"
-                  className="mt-1 text-primary text-xs hover:underline"
-                  onClick={() => setQuestionExpanded((value) => !value)}
-                >
-                  {questionExpanded ? "收起" : "展开全文"}
-                </button>
-              </span>
-            </ResultSection>
-          )}
-          <ResultSection title={streaming ? "解答（生成中…）" : "解答"}>
-            {streaming ? (
-              <MarkdownMath text={streamText || "…"} className="text-sm" />
-            ) : (
-              <MarkdownMathSections text={streamText} className="text-sm" />
-            )}
-          </ResultSection>
-          {streamError && (
-            <div className="flex items-center gap-2 text-destructive text-sm">
-              <CircleAlert className="size-4 shrink-0" />
-              <span className="flex-1">{streamError}</span>
-              {file && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => submitSolveStream(file)}
-                >
-                  <RefreshCw />
-                  重试
-                </Button>
+              </ResultSection>
+              <ResultSection
+                title={
+                  card.state === "streaming"
+                    ? "解答（生成中…）"
+                    : card.state === "waiting"
+                      ? "解答（排队中…）"
+                      : "解答"
+                }
+              >
+                {card.answer ? (
+                  <MarkdownMath text={card.answer} className="text-sm" />
+                ) : (
+                  <span className="text-muted-foreground">…</span>
+                )}
+              </ResultSection>
+              {card.state === "error" && (
+                <div className="flex items-center gap-2 text-destructive text-sm">
+                  <CircleAlert className="size-4 shrink-0" />
+                  {card.error || "生成失败"}
+                </div>
+              )}
+              {card.state === "done" && (
+                <SaveToWrongbookButton
+                  questionText={card.question}
+                  comment={`解答：${card.answer.slice(0, 1500)}`}
+                />
               )}
             </div>
-          )}
-          {!streaming && !streamError && streamText && (
-            <SaveToWrongbookButton
-              questionText={streamQuestion}
-              comment={`解答：${streamText.slice(0, 1500)}`}
-            />
+          ))}
+        </div>
+      )}
+      {streamError && (
+        <div className="flex items-center gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive text-sm">
+          <CircleAlert className="size-4 shrink-0" />
+          <span className="flex-1">{streamError}</span>
+          {file && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => submitSolveStream(file)}
+            >
+              <RefreshCw />
+              重试
+            </Button>
           )}
         </div>
       )}

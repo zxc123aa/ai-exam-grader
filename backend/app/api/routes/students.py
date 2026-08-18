@@ -1525,16 +1525,58 @@ def _snap_solve_and_grade_all(
     return results
 
 
+def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> list[str]:
+    """读出照片里的所有题目（最多 5 道），逐题返回完整题干。
+
+    答疑卡片按题组织，题目识别就按题拆好，解答才能一一对应。
+    """
+    image = base64.b64encode(image_bytes).decode("ascii")
+    prompt = (
+        "请读出这张照片里的题目。如果有多道题，逐道分开（最多 5 道，按卷面顺序）；"
+        "每道题给出完整题干，选择题保留全部选项。"
+        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"完整题干"}]}'
+    )
+    try:
+        parsed, _used_model, _elapsed_ms = call_json_model(
+            provider=defaults["vision_provider"],
+            model=defaults["vision_model"],
+            fallback_models=[],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/png;base64,{image}"},
+                        },
+                    ],
+                }
+            ],
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(
+            status_code=502, detail=f"题目识别失败，请重试：{exc}"
+        ) from exc
+    questions: list[str] = []
+    for raw in (parsed.get("items") or [])[:5]:
+        if isinstance(raw, dict):
+            text = str(raw.get("question_text") or "").strip()
+            if text:
+                questions.append(text)
+    return questions
+
+
 @router.post("/me/snap/stream")
 async def snap_question_stream(
     session: SessionDep,
     current_user: CurrentUser,
     image: Annotated[UploadFile, File()],
 ) -> Any:
-    """拍题答疑流式版：先推回识别出的题目，再逐段流式输出解答。
+    """拍题答疑流式版：先拆出全部题目，再逐题把解答流式写进对应卡片。
 
-    同步版等完整结果要约 40 秒，弱网络下连接还会被掐断；流式让解答
-    像打字一样出来，等待感消失，中断时用户也已经读到大部分内容。
+    每道题一张卡片：题目在上、解答逐段流出。弱网络中断时已流出的
+    内容仍在；重试由结果缓存兜底（见非流式 /snap）。
     """
     del current_user  # 仅做登录校验
     image_bytes = await image.read()
@@ -1544,8 +1586,8 @@ async def snap_question_stream(
         raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
     model_image_bytes = downscale_image_for_model(image_bytes)
     defaults = get_grading_defaults(session)
-    question_text = _snap_transcribe(model_image_bytes, defaults)
-    if not question_text:
+    questions = _snap_extract_questions(model_image_bytes, defaults)
+    if not questions:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
 
     provider = str(defaults["grading_provider"])
@@ -1558,53 +1600,67 @@ async def snap_question_stream(
     target = provider_gateway.resolve_channel_target(
         session, channel=channel, canonical_model=model, require_enabled=False
     )
-    prompt = (
-        "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
-        "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。\n"
-        f"题目：{question_text}"
-    )
-    payload = {
-        "model": target.upstream_model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": True,
-    }
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def stream_answer(question_text: str):
+        """逐段 yield 一道题的解答文本。"""
+        prompt = (
+            "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
+            "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。\n"
+            f"题目：{question_text}"
+        )
+        payload = {
+            "model": target.upstream_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+        }
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(180.0, connect=15.0)
+        ) as client:
+            async with client.stream(
+                "POST",
+                provider_gateway.endpoint(target),
+                headers={"Authorization": f"Bearer {target.api_key}"},
+                json=payload,
+            ) as response:
+                if response.status_code != 200:
+                    raise VisionGradingError(f"模型服务返回 {response.status_code}")
+                async for line in response.aiter_lines():
+                    if not line.startswith("data:"):
+                        continue
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data)
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue  # 末包只带 usage
+                        delta = choices[0].get("delta", {}).get("content")
+                    except ValueError:
+                        continue
+                    if delta:
+                        yield delta
 
     async def event_stream():
-        yield f"data: {json.dumps({'type': 'question', 'text': question_text}, ensure_ascii=False)}\n\n"
-        try:
-            async with httpx.AsyncClient(
-                timeout=httpx.Timeout(180.0, connect=15.0)
-            ) as client:
-                async with client.stream(
-                    "POST",
-                    provider_gateway.endpoint(target),
-                    headers={"Authorization": f"Bearer {target.api_key}"},
-                    json=payload,
-                ) as response:
-                    if response.status_code != 200:
-                        yield f"data: {json.dumps({'type': 'error', 'text': f'模型服务返回 {response.status_code}'}, ensure_ascii=False)}\n\n"
-                        return
-                    async for line in response.aiter_lines():
-                        if not line.startswith("data:"):
-                            continue
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data)
-                            choices = chunk.get("choices") or []
-                            if not choices:
-                                # 末包只带 usage，没有 choices
-                                continue
-                            delta = choices[0].get("delta", {}).get("content")
-                        except ValueError:
-                            continue
-                        if delta:
-                            yield f"data: {json.dumps({'type': 'delta', 'text': delta}, ensure_ascii=False)}\n\n"
-        except Exception as exc:
-            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)[:200]}, ensure_ascii=False)}\n\n"
-            return
-        yield 'data: {"type":"done"}\n\n'
+        yield sse({"type": "questions", "items": questions})
+        for index, question in enumerate(questions):
+            yield sse({"type": "answer-start", "index": index})
+            try:
+                async for delta in stream_answer(question):
+                    yield sse({"type": "answer-delta", "index": index, "text": delta})
+            except Exception as exc:
+                yield sse(
+                    {
+                        "type": "answer-error",
+                        "index": index,
+                        "text": str(exc)[:200],
+                    }
+                )
+            yield sse({"type": "answer-done", "index": index})
+        yield sse({"type": "done"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
