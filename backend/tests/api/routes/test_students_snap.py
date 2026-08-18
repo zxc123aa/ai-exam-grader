@@ -419,7 +419,7 @@ def test_snap_grade_stream_grades_item_by_item_and_saves_record(
     assert response.status_code == 200, response.text
     body = response.text
     assert '"type": "grade-questions"' in body or '"type":"grade-questions"' in body
-    assert body.count("grade-item\"") == 2  # 两题各一张结果卡
+    assert body.count('grade-item"') == 2  # 两题各一张结果卡
     assert "正确。" in body and "5-2=3" in body
 
     listed = client.get(
