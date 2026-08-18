@@ -117,7 +117,7 @@ function renderInline(text: string): ReactNode[] {
     if (inlineMath) return renderMath(inlineMath[1], false, index)
     const displayMath = part.match(/^\\\[([\s\S]*?)\\\]$/)
     if (displayMath) return renderMath(displayMath[1], true, index)
-    const boldParts = part.split(/\*\*([^*]+)\*\*/)
+    const boldParts = part.split(/\*\*([\s\S]+?)\*\*/)
     return (
       <Fragment key={index}>
         {boldParts.map((segment, i) => {
