@@ -1648,18 +1648,25 @@ async def snap_question_stream(
         yield sse({"type": "questions", "items": questions})
         for index, question in enumerate(questions):
             yield sse({"type": "answer-start", "index": index})
+            got_content = False
+            error_text: str | None = None
             try:
                 async for delta in stream_answer(question):
+                    got_content = True
                     yield sse({"type": "answer-delta", "index": index, "text": delta})
             except Exception as exc:
+                error_text = str(exc)[:200]
+            if got_content:
+                yield sse({"type": "answer-done", "index": index})
+            else:
+                # 断流或空响应不能标完成——否则前端展示一张空解答卡
                 yield sse(
                     {
                         "type": "answer-error",
                         "index": index,
-                        "text": str(exc)[:200],
+                        "text": error_text or "没有生成解答，请重试",
                     }
                 )
-            yield sse({"type": "answer-done", "index": index})
         yield sse({"type": "done"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")

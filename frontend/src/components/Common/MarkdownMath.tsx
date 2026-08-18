@@ -110,7 +110,7 @@ function renderMath(latex: string, displayMode: boolean, key: number) {
 }
 
 function renderInline(text: string): ReactNode[] {
-  // 先按公式分隔符切，再在每个文本段里处理 **加粗**
+  // 先按公式分隔符切，再在每个文本段里处理 **加粗** 和 `行内代码`
   const parts = text.split(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/)
   return parts.map((part, index) => {
     const inlineMath = part.match(/^\\\(([\s\S]*?)\\\)$/)
@@ -120,9 +120,22 @@ function renderInline(text: string): ReactNode[] {
     const boldParts = part.split(/\*\*([^*]+)\*\*/)
     return (
       <Fragment key={index}>
-        {boldParts.map((segment, i) =>
-          i % 2 === 1 ? <strong key={i}>{segment}</strong> : segment,
-        )}
+        {boldParts.map((segment, i) => {
+          if (i % 2 === 1) return <strong key={i}>{segment}</strong>
+          const codeParts = segment.split(/`([^`]+)`/)
+          return codeParts.map((piece, j) =>
+            j % 2 === 1 ? (
+              <code
+                key={`${i}-${j}`}
+                className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]"
+              >
+                {piece}
+              </code>
+            ) : (
+              piece
+            ),
+          )
+        })}
       </Fragment>
     )
   })
@@ -143,7 +156,9 @@ export function MarkdownMath({
   text: string
   className?: string
 }) {
-  const blocks = text.split(/\n{2,}/)
+  // ``` 围栏只是排版噪音（模型常用它包算式），剥掉留内容
+  const cleaned = text.replace(/```[a-zA-Z]*\n?/g, "").replace(/```/g, "")
+  const blocks = cleaned.split(/\n{2,}/)
   return (
     <div className={className}>
       {blocks.map((block, index) => {
