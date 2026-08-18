@@ -6,8 +6,9 @@ from collections import Counter
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, Header, HTTPException, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, StreamingResponse
 from sqlalchemy import case, func
 from sqlmodel import Session, col, select
 
@@ -41,6 +42,7 @@ from app.models import (
     PracticeSheetListItem,
     PracticeSheetPublic,
     PracticeSheetsPublic,
+    ProviderChannel,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -69,7 +71,7 @@ from app.models import (
     WrongQuestionSource,
     get_datetime_utc,
 )
-from app.services import learner_identity, wrongbook_review
+from app.services import learner_identity, provider_gateway, wrongbook_review
 from app.services.file_storage import store_upload_file
 from app.services.image_downscale import downscale_image_for_model
 from app.services.object_storage import materialize_storage_key
@@ -1473,6 +1475,90 @@ def _snap_solve_and_grade_all(
             }
         )
     return results
+
+
+@router.post("/me/snap/stream")
+async def snap_question_stream(
+    session: SessionDep,
+    current_user: CurrentUser,
+    image: Annotated[UploadFile, File()],
+) -> Any:
+    """拍题答疑流式版：先推回识别出的题目，再逐段流式输出解答。
+
+    同步版等完整结果要约 40 秒，弱网络下连接还会被掐断；流式让解答
+    像打字一样出来，等待感消失，中断时用户也已经读到大部分内容。
+    """
+    del current_user  # 仅做登录校验
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=422, detail="请先选择题目照片")
+    if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+    model_image_bytes = downscale_image_for_model(image_bytes)
+    defaults = get_grading_defaults(session)
+    question_text = _snap_transcribe(model_image_bytes, defaults)
+    if not question_text:
+        raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
+
+    provider = str(defaults["grading_provider"])
+    model = str(defaults["grading_model"])
+    channel = session.exec(
+        select(ProviderChannel).where(ProviderChannel.code == provider)
+    ).first()
+    if channel is None:
+        raise HTTPException(status_code=502, detail="模型渠道未配置")
+    target = provider_gateway.resolve_channel_target(
+        session, channel=channel, canonical_model=model, require_enabled=False
+    )
+    prompt = (
+        "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
+        "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。\n"
+        f"题目：{question_text}"
+    )
+    payload = {
+        "model": target.upstream_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+    }
+
+    async def event_stream():
+        yield f"data: {json.dumps({'type': 'question', 'text': question_text}, ensure_ascii=False)}\n\n"
+        try:
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(180.0, connect=15.0)
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    provider_gateway.endpoint(target),
+                    headers={"Authorization": f"Bearer {target.api_key}"},
+                    json=payload,
+                ) as response:
+                    if response.status_code != 200:
+                        yield f"data: {json.dumps({'type': 'error', 'text': f'模型服务返回 {response.status_code}'}, ensure_ascii=False)}\n\n"
+                        return
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get("choices") or []
+                            if not choices:
+                                # 末包只带 usage，没有 choices
+                                continue
+                            delta = choices[0].get("delta", {}).get("content")
+                        except ValueError:
+                            continue
+                        if delta:
+                            yield f"data: {json.dumps({'type': 'delta', 'text': delta}, ensure_ascii=False)}\n\n"
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'text': str(exc)[:200]}, ensure_ascii=False)}\n\n"
+            return
+        yield 'data: {"type":"done"}\n\n'
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
 @router.post("/me/snap", response_model=SnapSolvePublic | SnapGradePublic)

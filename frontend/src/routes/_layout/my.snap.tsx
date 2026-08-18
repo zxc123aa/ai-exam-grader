@@ -11,6 +11,7 @@ import {
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
 import type { SnapGradePublic, SnapSolvePublic } from "@/client"
+import { OpenAPI } from "@/client"
 import { PageHead } from "@/components/Common/PageHead"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -163,6 +164,65 @@ function MySnapPage() {
     },
   })
 
+  // 答疑（solve）走流式：解答像打字一样逐段出来，不用干等
+  const [streamText, setStreamText] = useState("")
+  const [streamQuestion, setStreamQuestion] = useState("")
+  const [streamError, setStreamError] = useState<string | null>(null)
+  const [streaming, setStreaming] = useState(false)
+
+  const submitSolveStream = async (fileToSubmit: File) => {
+    setStreaming(true)
+    setStreamError(null)
+    setStreamText("")
+    setStreamQuestion("")
+    setResult(null)
+    try {
+      const body = new FormData()
+      body.set("image", fileToSubmit)
+      const token = localStorage.getItem("access_token")
+      const response = await fetch(
+        `${OpenAPI.BASE || ""}/api/v1/students/me/snap/stream`,
+        {
+          method: "POST",
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+          body,
+        },
+      )
+      if (!response.ok || !response.body) {
+        const text = await response.text().catch(() => "")
+        throw new Error(text || `请求失败（${response.status}）`)
+      }
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ""
+      for (;;) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const events = buffer.split("\n\n")
+        buffer = events.pop() ?? ""
+        for (const event of events) {
+          const line = event.split("\n").find((l) => l.startsWith("data:"))
+          if (!line) continue
+          const data = JSON.parse(line.slice(5).trim())
+          if (data.type === "question") {
+            setStreamQuestion(data.text)
+          } else if (data.type === "delta") {
+            setStreamText((current) => current + data.text)
+          } else if (data.type === "error") {
+            throw new Error(data.text)
+          }
+        }
+      }
+    } catch (error) {
+      setStreamError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  const busy = snap.isPending || streaming
+
   const pickFile = (selected: File | null) => {
     if (!selected) return
     setFile(selected)
@@ -233,12 +293,14 @@ function MySnapPage() {
             <div className="flex flex-wrap items-center gap-2">
               <Button
                 data-testid="snap-submit"
-                disabled={snap.isPending}
+                disabled={busy}
                 onClick={() =>
-                  snap.mutate({ file: file as File, mode, maxScore })
+                  mode === "solve"
+                    ? submitSolveStream(file as File)
+                    : snap.mutate({ file: file as File, mode, maxScore })
                 }
               >
-                {snap.isPending ? (
+                {busy ? (
                   <>
                     <Loader2 className="animate-spin" />
                     正在看题…
@@ -249,7 +311,7 @@ function MySnapPage() {
               </Button>
               <Button
                 variant="ghost"
-                disabled={snap.isPending}
+                disabled={busy}
                 onClick={() =>
                   (touchDevice
                     ? cameraInputRef
@@ -334,6 +396,36 @@ function MySnapPage() {
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Sparkles className="size-4" />
           正在看题，照片大的话可能要一两分钟，请别关闭页面…
+        </div>
+      )}
+      {/* 流式答疑：识别出题目后逐段输出解答 */}
+      {(streaming || streamText || streamError) && (
+        <div
+          className="grid gap-4 rounded-[10px] border bg-card p-5"
+          data-testid="snap-stream-result"
+        >
+          {streamQuestion && (
+            <ResultSection title="题目">{streamQuestion}</ResultSection>
+          )}
+          <ResultSection title={streaming ? "解答（生成中…）" : "解答"}>
+            {streamText || "…"}
+          </ResultSection>
+          {streamError && (
+            <div className="flex items-center gap-2 text-destructive text-sm">
+              <CircleAlert className="size-4 shrink-0" />
+              <span className="flex-1">{streamError}</span>
+              {file && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => submitSolveStream(file)}
+                >
+                  <RefreshCw />
+                  重试
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
       {result && !snap.isPending && <SnapResultCard result={result} />}
