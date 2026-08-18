@@ -1526,14 +1526,14 @@ def _snap_solve_and_grade_all(
 
 
 def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> list[str]:
-    """读出照片里的所有题目（最多 5 道），逐题返回完整题干。
+    """读出照片里的所有题目，逐题返回完整题干。
 
     答疑卡片按题组织，题目识别就按题拆好，解答才能一一对应。
+    多题时解答逐题流式写入，用户看着卡片逐个点亮。
     """
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = (
-        "请读出这张照片里的题目。如果有多道题，逐道分开（最多 5 道，按卷面顺序）；"
-        "每道题给出完整题干，选择题保留全部选项。"
+        "请读出这张照片里的所有题目（按卷面顺序，一道不漏；选择题保留全部选项）。"
         '只返回 JSON，不要 Markdown：{"items":[{"question_text":"完整题干"}]}'
     )
     try:
@@ -1559,7 +1559,7 @@ def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> lis
             status_code=502, detail=f"题目识别失败，请重试：{exc}"
         ) from exc
     questions: list[str] = []
-    for raw in (parsed.get("items") or [])[:5]:
+    for raw in (parsed.get("items") or [])[:30]:
         if isinstance(raw, dict):
             text = str(raw.get("question_text") or "").strip()
             if text:

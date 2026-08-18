@@ -234,6 +234,8 @@ function MySnapPage() {
     error?: string
   }
   const [streamCards, setStreamCards] = useState<StreamCard[]>([])
+  const [cardView, setCardView] = useState<"all" | "single">("all")
+  const [cardIndex, setCardIndex] = useState(0)
   const [streamError, setStreamError] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
 
@@ -499,45 +501,98 @@ function MySnapPage() {
       {/* 流式答疑：每题一张卡，题目在上、解答逐段流进对应卡片 */}
       {streamCards.length > 0 && (
         <div className="grid gap-4" data-testid="snap-stream-result">
-          {streamCards.map((card, index) => (
-            <div
-              key={`stream-card-${index}`}
-              className="grid gap-4 rounded-[10px] border bg-card p-5"
-            >
-              <ResultSection title={`第 ${index + 1} 题`}>
-                <span className="whitespace-pre-wrap">
-                  {formatQuestionText(card.question)}
-                </span>
-              </ResultSection>
-              <ResultSection
-                title={
-                  card.state === "streaming"
-                    ? "解答（生成中…）"
-                    : card.state === "waiting"
-                      ? "解答（排队中…）"
-                      : "解答"
-                }
+          {streamCards.length > 1 && (
+            <div className="flex items-center gap-1 rounded-lg border p-0.5 text-xs">
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 ${cardView === "all" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                onClick={() => setCardView("all")}
               >
-                {card.answer ? (
-                  <MarkdownMath text={card.answer} className="text-sm" />
-                ) : (
-                  <span className="text-muted-foreground">…</span>
-                )}
-              </ResultSection>
-              {card.state === "error" && (
-                <div className="flex items-center gap-2 text-destructive text-sm">
-                  <CircleAlert className="size-4 shrink-0" />
-                  {card.error || "生成失败"}
-                </div>
-              )}
-              {card.state === "done" && (
-                <SaveToWrongbookButton
-                  questionText={card.question}
-                  comment={`解答：${card.answer.slice(0, 1500)}`}
-                />
+                全部展示
+              </button>
+              <button
+                type="button"
+                className={`rounded-md px-2.5 py-1 ${cardView === "single" ? "bg-primary text-primary-foreground" : "text-muted-foreground"}`}
+                onClick={() => setCardView("single")}
+              >
+                逐题切换
+              </button>
+              {cardView === "single" && (
+                <span className="ml-auto pr-2 text-muted-foreground tabular-nums">
+                  {Math.min(cardIndex + 1, streamCards.length)} /{" "}
+                  {streamCards.length}
+                </span>
               )}
             </div>
-          ))}
+          )}
+          {(cardView === "single"
+            ? [streamCards[Math.min(cardIndex, streamCards.length - 1)]]
+            : streamCards
+          ).map((card, viewIndex) => {
+            const index =
+              cardView === "single"
+                ? Math.min(cardIndex, streamCards.length - 1)
+                : viewIndex
+            return (
+              <div
+                key={`stream-card-${index}`}
+                className="grid gap-4 rounded-[10px] border bg-card p-5"
+              >
+                <ResultSection title={`第 ${index + 1} 题`}>
+                  <span className="whitespace-pre-wrap">
+                    {formatQuestionText(card.question)}
+                  </span>
+                </ResultSection>
+                <ResultSection
+                  title={
+                    card.state === "streaming"
+                      ? "解答（生成中…）"
+                      : card.state === "waiting"
+                        ? "解答（排队中…）"
+                        : "解答"
+                  }
+                >
+                  {card.answer ? (
+                    <MarkdownMath text={card.answer} className="text-sm" />
+                  ) : (
+                    <span className="text-muted-foreground">…</span>
+                  )}
+                </ResultSection>
+                {card.state === "error" && (
+                  <div className="flex items-center gap-2 text-destructive text-sm">
+                    <CircleAlert className="size-4 shrink-0" />
+                    {card.error || "生成失败"}
+                  </div>
+                )}
+                {card.state === "done" && (
+                  <SaveToWrongbookButton
+                    questionText={card.question}
+                    comment={`解答：${card.answer.slice(0, 1500)}`}
+                  />
+                )}
+              </div>
+            )
+          })}
+          {cardView === "single" && streamCards.length > 1 && (
+            <div className="flex items-center justify-between">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cardIndex === 0}
+                onClick={() => setCardIndex(cardIndex - 1)}
+              >
+                上一题
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={cardIndex >= streamCards.length - 1}
+                onClick={() => setCardIndex(cardIndex + 1)}
+              >
+                下一题
+              </Button>
+            </div>
+          )}
         </div>
       )}
       {streamError && (
