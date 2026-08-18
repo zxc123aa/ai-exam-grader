@@ -256,8 +256,14 @@ def _response_message(response: httpx.Response) -> str:
     return str(error or payload)[:500]
 
 
+# 上游 5xx 连续失败计数：中转常见单节点偶发 5xx（一半请求失败那种），
+# 一次失败就熔断 30s 会把整个备用链拉崩；连续两次才熔断。
+_provider_5xx_streak: dict[str, int] = {}
+
+
 def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
     if response.status_code < 400:
+        _provider_5xx_streak.pop(provider, None)
         return
     detail = _response_message(response)
     normalized = detail.lower()
@@ -277,8 +283,11 @@ def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
         _cool_down_provider(provider, 60, reason)
         raise VisionGradingError(reason)
     if response.status_code >= 500:
+        streak = _provider_5xx_streak.get(provider, 0) + 1
+        _provider_5xx_streak[provider] = streak
         reason = "模型服务暂时异常，系统将尝试备用通道"
-        _cool_down_provider(provider, 30, reason)
+        if streak >= 2:
+            _cool_down_provider(provider, 30, reason)
         raise VisionGradingError(reason)
     raise VisionGradingError(f"模型请求未被接受（HTTP {response.status_code}）")
 
@@ -522,7 +531,9 @@ def _call_model_with_route(
     if not candidates:
         raise VisionGradingError("没有可用的模型通道")
     last_error: Exception | None = None
-    for attempt, candidate in enumerate(candidates, start=1):
+    # 每个候选通道走两遍：中转单节点偶发 5xx/断连占一半时，单趟全挂会让用户
+    # 看到「模型服务暂时异常」；原地多给一轮，瞬时故障基本被吃掉。
+    for attempt, candidate in enumerate(candidates * 2, start=1):
         started = time.perf_counter()
         response: httpx.Response | None = None
         if billing_context:

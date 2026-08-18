@@ -257,8 +257,16 @@ function MySnapPage() {
         },
       )
       if (!response.ok || !response.body) {
-        const text = await response.text().catch(() => "")
-        throw new Error(text || `请求失败（${response.status}）`)
+        // 错误体是 {"detail":"..."} JSON，别把整包 JSON 拍用户脸上
+        let message = `请求失败（${response.status}）`
+        try {
+          const payload = (await response.json()) as { detail?: unknown }
+          if (typeof payload.detail === "string") message = payload.detail
+        } catch {
+          const text = await response.text().catch(() => "")
+          if (text) message = text
+        }
+        throw new Error(message)
       }
       const reader = response.body.getReader()
       const decoder = new TextDecoder()
