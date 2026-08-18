@@ -233,3 +233,157 @@ def test_snap_result_saved_to_wrongbook(client: TestClient, db: Session) -> None
     assert listed.status_code == 200
     labels = [item["question_label"] for item in listed.json()["data"]]
     assert "拍题" in labels
+
+
+def test_snap_records_saved_and_visible_only_to_owner(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍题结果留档成历史记录：列表+详情可查，他人不可见。"""
+    headers = _student_headers(client, db, "历史")
+    payloads = [
+        {"question_text": "1+1 等于几？"},
+        {"answer": "2", "explanation": "一加一等于二。"},
+    ]
+    calls: list[dict] = []
+
+    def fake_call_json_model(**kwargs: object) -> tuple[dict, str, int]:
+        calls.append(kwargs)
+        return payloads[len(calls) - 1], "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    response = _post_snap(client, headers, mode="solve")
+    assert response.status_code == 200, response.text
+
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records", headers=headers
+    )
+    assert listed.status_code == 200, listed.text
+    items = listed.json()
+    assert len(items) == 1
+    assert items[0]["mode"] == "solve"
+    assert "1+1" in items[0]["title"]
+
+    detail = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records/{items[0]['id']}",
+        headers=headers,
+    )
+    assert detail.status_code == 200, detail.text
+    assert detail.json()["payload"]["answer"] == "2"
+
+    other = _student_headers(client, db, "旁人")
+    forbidden = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records/{items[0]['id']}",
+        headers=other,
+    )
+    assert forbidden.status_code == 404
+    empty = client.get(f"{settings.API_V1_STR}/students/me/snap/records", headers=other)
+    assert empty.json() == []
+
+
+def test_snap_stream_saves_solved_answers_to_records(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """流式答疑结束后，完整流出的解答进拍题历史。"""
+    from app.models import (
+        ProviderChannel,
+        ProviderChannelKind,
+        ProviderChannelStatus,
+        ProviderProtocol,
+    )
+    from app.services.provider_gateway import RuntimeTarget
+
+    headers = _student_headers(client, db, "流式历史")
+    monkeypatch.setattr(
+        "app.api.routes.students._snap_extract_questions",
+        lambda *args, **kwargs: ["计算 3+4。"],
+    )
+    channel = ProviderChannel(
+        code="snap-stream-test",
+        display_name="流式测试渠道",
+        kind=ProviderChannelKind.AUTHORIZED_RELAY,
+        protocol=ProviderProtocol.OPENAI_CHAT,
+        base_url="https://relay.example/v1",
+        status=ProviderChannelStatus.ACTIVE,
+    )
+    db.add(channel)
+    db.commit()
+    db.refresh(channel)
+    target = RuntimeTarget(
+        provider="snap-stream-test",
+        canonical_model="test-solver",
+        upstream_model="upstream-solver",
+        base_url="https://relay.example/v1",
+        api_key="test-key",
+        protocol=ProviderProtocol.OPENAI_CHAT,
+        channel_id=channel.id,
+        route_policy_id=None,
+        route_version_id=None,
+        max_concurrency=8,
+        timeout_seconds=60,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.students.provider_gateway.resolve_channel_target",
+        lambda *args, **kwargs: target,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.students.get_grading_defaults",
+        lambda session: {
+            "grading_provider": "snap-stream-test",
+            "grading_model": "test-solver",
+            "vision_provider": "snap-stream-test",
+            "vision_model": "test-vision",
+            "fallback_models": [],
+        },
+    )
+
+    class _FakeStreamResponse:
+        status_code = 200
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def aiter_lines(self):
+            yield 'data: {"choices":[{"delta":{"content":"3+4="}}]}'
+            yield 'data: {"choices":[{"delta":{"content":"7"}}]}'
+            yield "data: [DONE]"
+
+    class _FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        def stream(self, *args, **kwargs):
+            return _FakeStreamResponse()
+
+    monkeypatch.setattr("app.api.routes.students.httpx.AsyncClient", _FakeClient)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/stream",
+        headers=headers,
+        files={"image": ("question.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 200, response.text
+    assert "3+4=" in response.text
+
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records", headers=headers
+    )
+    items = listed.json()
+    assert len(items) == 1
+    assert "3+4" in items[0]["title"]
+    detail = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records/{items[0]['id']}",
+        headers=headers,
+    )
+    payload = detail.json()["payload"]
+    assert payload["kind"] == "solve"
+    assert payload["items"] == [{"question": "计算 3+4。", "answer": "3+4=7"}]

@@ -3465,6 +3465,34 @@ class LearningAdvicePublic(SQLModel):
     generated_at: datetime | None = None
 
 
+class SnapRecord(SQLModel, table=True):
+    """拍题答疑/拍照批改的历史记录：纯文本结果快照，随账号删除清空。"""
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    user_id: uuid.UUID = Field(
+        foreign_key="user.id", nullable=False, index=True, ondelete="CASCADE"
+    )
+    mode: str = Field(max_length=20)  # solve | grade
+    title: str = Field(max_length=120)  # 列表标题：第一题题干截断
+    payload: dict = Field(default_factory=dict, sa_column=Column(JSONB, nullable=False))
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+        index=True,
+    )
+
+
+class SnapRecordListItem(SQLModel):
+    id: uuid.UUID
+    mode: str
+    title: str
+    created_at: datetime
+
+
+class SnapRecordDetail(SnapRecordListItem):
+    payload: dict
+
+
 class SnapSolvePublic(SQLModel):
     """拍题答疑结果：一次性问答，不落库。"""
 

@@ -1,6 +1,7 @@
 import base64
 import hashlib
 import json
+import logging
 import uuid
 from collections import Counter
 from pathlib import Path
@@ -48,6 +49,9 @@ from app.models import (
     ScoreReleaseStatus,
     SnapGradeItemPublic,
     SnapGradePublic,
+    SnapRecord,
+    SnapRecordDetail,
+    SnapRecordListItem,
     SnapSolvePublic,
     Student,
     StudentExamListItemPublic,
@@ -83,6 +87,8 @@ from app.services.vision_grading import (
 )
 
 router = APIRouter(prefix="/students", tags=["students"])
+
+logger = logging.getLogger(__name__)
 
 # 学生专属端点：教师/管理员访问一律 403
 CurrentStudentUser = Annotated[User, Depends(require_roles(UserRole.STUDENT))]
@@ -1525,6 +1531,26 @@ def _snap_solve_and_grade_all(
     return results
 
 
+def _save_snap_record(
+    session: Session,
+    user_id: uuid.UUID,
+    *,
+    mode: str,
+    payload: dict,
+    title_source: str,
+) -> None:
+    """拍题结果留档（best-effort）：供历史记录回看，写库失败不影响本次问答。"""
+    title = title_source.strip().replace("\n", " ")[:120] or "拍题记录"
+    try:
+        session.add(
+            SnapRecord(user_id=user_id, mode=mode, title=title, payload=payload)
+        )
+        session.commit()
+    except Exception:
+        session.rollback()
+        logger.exception("保存拍题历史失败")
+
+
 def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> list[str]:
     """读出照片里的所有题目，逐题返回完整题干。
 
@@ -1576,9 +1602,9 @@ async def snap_question_stream(
     """拍题答疑流式版：先拆出全部题目，再逐题把解答流式写进对应卡片。
 
     每道题一张卡片：题目在上、解答逐段流出。弱网络中断时已流出的
-    内容仍在；重试由结果缓存兜底（见非流式 /snap）。
+    内容仍在；重试由结果缓存兜底（见非流式 /snap）。完整流出的解答
+    会存入拍题历史（snaprecord），供学生回看。
     """
-    del current_user  # 仅做登录校验
     image_bytes = await image.read()
     if not image_bytes:
         raise HTTPException(status_code=422, detail="请先选择题目照片")
@@ -1666,17 +1692,19 @@ async def snap_question_stream(
 
     async def event_stream():
         yield sse({"type": "questions", "items": questions})
+        solved: list[dict] = []
         for index, question in enumerate(questions):
             yield sse({"type": "answer-start", "index": index})
-            got_content = False
+            text_parts: list[str] = []
             error_text: str | None = None
             try:
                 async for delta in stream_answer(question):
-                    got_content = True
+                    text_parts.append(delta)
                     yield sse({"type": "answer-delta", "index": index, "text": delta})
             except Exception as exc:
                 error_text = str(exc)[:200]
-            if got_content:
+            if text_parts:
+                solved.append({"question": question, "answer": "".join(text_parts)})
                 yield sse({"type": "answer-done", "index": index})
             else:
                 # 断流或空响应不能标完成——否则前端展示一张空解答卡
@@ -1687,6 +1715,14 @@ async def snap_question_stream(
                         "text": error_text or "没有生成解答，请重试",
                     }
                 )
+        if solved:
+            _save_snap_record(
+                session,
+                current_user.id,
+                mode="solve",
+                payload={"kind": "solve", "items": solved},
+                title_source=solved[0]["question"],
+            )
         yield sse({"type": "done"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
@@ -1700,12 +1736,11 @@ async def snap_question(
     mode: Annotated[Literal["solve", "grade"], Form()] = "solve",
     max_score: Annotated[float, Form()] = 10.0,
 ) -> Any:
-    """拍题答疑 / 拍照批改。一次性问答，不写入任何学习记录。
+    """拍题答疑 / 拍照批改。结果写入拍题历史（snaprecord）供回看。
 
     所有登录角色可用（老师和管理员也要靠它试识别效果），学生之外的角色
     只是没有「我的学习记录」入口，问答本身不涉及学生数据。
     """
-    del current_user  # 仅做登录校验（依赖注入），不使用其数据
     if max_score <= 0 or max_score > 100:
         raise HTTPException(status_code=422, detail="满分需在 0 到 100 之间")
     image_bytes = await image.read()
@@ -1762,7 +1797,53 @@ async def snap_question(
         cache_path.write_bytes(json.dumps(result, ensure_ascii=False).encode())
     except OSError:
         pass
+    # 命中缓存提前返回的路径不重复留档；这里只在真正算完时记一次
+    record_payload = (
+        {
+            "kind": "solve",
+            "question_text": result["question_text"],
+            "answer": result["answer"],
+            "explanation": result["explanation"],
+        }
+        if mode == "solve"
+        else {"kind": "grade", "result": result}
+    )
+    _save_snap_record(
+        session,
+        current_user.id,
+        mode=mode,
+        payload=record_payload,
+        title_source=str(result["question_text"]),
+    )
     return result
+
+
+@router.get("/me/snap/records", response_model=list[SnapRecordListItem])
+def list_my_snap_records(
+    session: SessionDep,
+    current_user: CurrentUser,
+    limit: int = 20,
+) -> Any:
+    """拍题历史列表，最近在前。"""
+    return session.exec(
+        select(SnapRecord)
+        .where(SnapRecord.user_id == current_user.id)
+        .order_by(col(SnapRecord.created_at).desc())
+        .limit(max(1, min(limit, 50)))
+    ).all()
+
+
+@router.get("/me/snap/records/{record_id}", response_model=SnapRecordDetail)
+def read_my_snap_record(
+    session: SessionDep,
+    current_user: CurrentUser,
+    record_id: uuid.UUID,
+) -> Any:
+    """拍题历史详情：只能看自己的记录。"""
+    record = session.get(SnapRecord, record_id)
+    if record is None or record.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    return record
 
 
 @router.get("/me/wrongbook/entries/{entry_id}/image")

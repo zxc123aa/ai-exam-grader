@@ -1,4 +1,4 @@
-import { useMutation } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
   BookMarked,
@@ -28,10 +28,22 @@ export const Route = createFileRoute("/_layout/my/snap")({
 type SnapMode = "solve" | "grade"
 type SnapResult = SnapSolvePublic | SnapGradePublic
 
-type SnapHistoryItem = {
-  id: number
-  result: SnapResult
+/** 服务端拍题历史（snaprecord）：列表项 + 详情载荷。 */
+type SnapRecordListItem = {
+  id: string
+  mode: string
+  title: string
+  created_at: string
 }
+type SnapRecordPayload =
+  | { kind: "solve"; items: { question: string; answer: string }[] }
+  | {
+      kind: "solve"
+      question_text: string
+      answer: string
+      explanation: string
+    }
+  | { kind: "grade"; result: SnapGradePublic }
 
 /** 手机/平板提供「拍照」直拍；桌面浏览器只给「上传图片」。 */
 function isTouchDevice(): boolean {
@@ -184,13 +196,65 @@ function formatQuestionText(text: string): string {
   return text.replace(/(?<!^)\s+([A-F])[.、]\s*/gm, "\n$1. ")
 }
 
+/** 历史记录详情：三种载荷——流式多题、单题答疑、拍照批改。 */
+function SnapRecordView({ payload }: { payload: SnapRecordPayload }) {
+  if (payload.kind === "grade") {
+    return <SnapResultCard result={payload.result} />
+  }
+  if ("items" in payload) {
+    return (
+      <div className="grid gap-4">
+        {payload.items.map((item, index) => (
+          <div
+            key={`record-item-${index}`}
+            className="grid gap-4 rounded-[10px] border bg-card p-5"
+          >
+            <ResultSection title={`第 ${index + 1} 题`}>
+              <span className="whitespace-pre-wrap">
+                {formatQuestionText(item.question)}
+              </span>
+            </ResultSection>
+            <ResultSection title="解答">
+              <MarkdownMath text={item.answer} className="text-sm" />
+            </ResultSection>
+          </div>
+        ))}
+      </div>
+    )
+  }
+  return (
+    <SnapResultCard
+      result={{
+        mode: "solve",
+        question_text: payload.question_text,
+        answer: payload.answer,
+        explanation: payload.explanation,
+      }}
+    />
+  )
+}
+
 function MySnapPage() {
   const [mode, setMode] = useState<SnapMode>("solve")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [maxScore, setMaxScore] = useState("10")
   const [result, setResult] = useState<SnapResult | null>(null)
-  const [history, setHistory] = useState<SnapHistoryItem[]>([])
+  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
+  const records = useQuery({
+    queryKey: ["snap-records"],
+    queryFn: () =>
+      workflowApi<SnapRecordListItem[]>("/students/me/snap/records"),
+  })
+  const recordDetail = useQuery({
+    queryKey: ["snap-record", selectedRecordId],
+    queryFn: () =>
+      workflowApi<{ payload: SnapRecordPayload }>(
+        `/students/me/snap/records/${selectedRecordId}`,
+      ),
+    enabled: Boolean(selectedRecordId),
+  })
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const albumInputRef = useRef<HTMLInputElement>(null)
   const touchDevice = isTouchDevice()
@@ -220,9 +284,7 @@ function MySnapPage() {
     },
     onSuccess: (data) => {
       setResult(data)
-      setHistory((items) =>
-        [{ id: Date.now(), result: data }, ...items].slice(0, 5),
-      )
+      queryClient.invalidateQueries({ queryKey: ["snap-records"] })
     },
   })
 
@@ -317,6 +379,9 @@ function MySnapPage() {
                   : card,
               ),
             )
+          } else if (data.type === "done") {
+            // 服务端已把本次解答留档，刷新历史列表
+            queryClient.invalidateQueries({ queryKey: ["snap-records"] })
           } else if (data.type === "error") {
             throw new Error(data.text)
           }
@@ -335,6 +400,7 @@ function MySnapPage() {
     if (!selected) return
     setFile(selected)
     setResult(null)
+    setSelectedRecordId(null)
     snap.reset()
   }
 
@@ -621,24 +687,53 @@ function MySnapPage() {
       )}
       {result && !snap.isPending && <SnapResultCard result={result} />}
 
-      {history.length > 0 && (
+      {selectedRecordId && recordDetail.data && (
+        <div className="grid gap-2" data-testid="snap-record-detail">
+          <div className="flex items-center justify-between">
+            <div className="font-medium text-muted-foreground text-xs">
+              历史记录
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedRecordId(null)}
+            >
+              收起
+            </Button>
+          </div>
+          <SnapRecordView payload={recordDetail.data.payload} />
+        </div>
+      )}
+
+      {(records.data?.length ?? 0) > 0 && (
         <div className="grid gap-2">
           <div className="flex items-center gap-1.5 font-medium text-muted-foreground text-xs">
             <History className="size-3.5" />
-            本次看过的题
+            历史记录
           </div>
           <div className="grid gap-2">
-            {history.map((item) => (
+            {records.data!.map((item) => (
               <button
                 key={item.id}
                 type="button"
-                className="truncate rounded-[10px] border bg-card px-4 py-2.5 text-left text-sm transition-colors hover:border-primary"
-                onClick={() => setResult(item.result)}
+                data-testid="snap-record-item"
+                className={`truncate rounded-[10px] border bg-card px-4 py-2.5 text-left text-sm transition-colors hover:border-primary ${selectedRecordId === item.id ? "border-primary" : ""}`}
+                onClick={() => {
+                  setResult(null)
+                  setStreamCards([])
+                  setSelectedRecordId(item.id)
+                }}
               >
                 <span className="mr-2 text-muted-foreground text-xs">
-                  {"student_answer" in item.result ? "批改" : "答疑"}
+                  {item.mode === "grade" ? "批改" : "答疑"} ·{" "}
+                  {new Date(item.created_at).toLocaleString("zh-CN", {
+                    month: "numeric",
+                    day: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
                 </span>
-                {item.result.question_text}
+                {item.title}
               </button>
             ))}
           </div>
