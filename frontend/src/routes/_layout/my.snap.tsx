@@ -12,6 +12,7 @@ import {
 import { useEffect, useRef, useState } from "react"
 import type { SnapGradePublic, SnapSolvePublic } from "@/client"
 import { OpenAPI } from "@/client"
+import { MarkdownMath } from "@/components/Common/MarkdownMath"
 import { PageHead } from "@/components/Common/PageHead"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -408,7 +409,10 @@ function MySnapPage() {
             <ResultSection title="题目">{streamQuestion}</ResultSection>
           )}
           <ResultSection title={streaming ? "解答（生成中…）" : "解答"}>
-            {streamText || "…"}
+            <MarkdownMath
+              text={streamText || "…"}
+              className="text-sm"
+            />
           </ResultSection>
           {streamError && (
             <div className="flex items-center gap-2 text-destructive text-sm">
