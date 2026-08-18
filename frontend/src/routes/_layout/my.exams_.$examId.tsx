@@ -94,6 +94,18 @@ function LearningAdviceSection({ examId }: { examId: string }) {
               <span className="text-muted-foreground">
                 （错 {point.times} 次）：{point.advice}
               </span>
+              <Link
+                to="/my/wrongbook-sheet"
+                search={{
+                  mode: "variants",
+                  kps: point.knowledge_point,
+                  range: "all",
+                  limit: 10,
+                }}
+                className="ml-2 whitespace-nowrap text-primary text-xs hover:underline"
+              >
+                出变式练习 →
+              </Link>
             </li>
           ))}
         </ul>

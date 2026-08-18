@@ -1,6 +1,7 @@
 import { useMutation } from "@tanstack/react-query"
 import { createFileRoute } from "@tanstack/react-router"
 import {
+  BookMarked,
   Camera,
   CircleAlert,
   History,
@@ -62,6 +63,47 @@ function ResultSection({
   )
 }
 
+/** 把拍到的题收进错题本：成功后记 state 置灰。 */
+function SaveToWrongbookButton({
+  questionText,
+  studentAnswer,
+  comment,
+}: {
+  questionText: string
+  studentAnswer?: string
+  comment?: string
+}) {
+  const [saved, setSaved] = useState(false)
+  const save = useMutation({
+    mutationFn: () =>
+      workflowApi("/students/me/wrongbook/entries/from-snap", {
+        method: "POST",
+        body: JSON.stringify({
+          question_text: questionText,
+          student_answer: studentAnswer ?? "",
+          comment: comment ?? "",
+        }),
+      }),
+    onSuccess: () => setSaved(true),
+  })
+  return (
+    <span className="inline-flex items-center gap-2">
+      <Button
+        variant="outline"
+        size="sm"
+        disabled={save.isPending || saved || !questionText.trim()}
+        onClick={() => save.mutate()}
+      >
+        <BookMarked className="size-4" />
+        {saved ? "已收进错题本" : save.isPending ? "保存中…" : "收进错题本"}
+      </Button>
+      {save.isError && (
+        <span className="text-destructive text-xs">保存失败，请重试</span>
+      )}
+    </span>
+  )
+}
+
 function SnapResultCard({ result }: { result: SnapResult }) {
   // 批改模式：整页多题时逐题展示
   if ("student_answer" in result && (result.items?.length ?? 0) > 1) {
@@ -87,6 +129,11 @@ function SnapResultCard({ result }: { result: SnapResult }) {
               </span>
             </div>
             <ResultSection title="点评">{item.comment}</ResultSection>
+            <SaveToWrongbookButton
+              questionText={item.question_text}
+              studentAnswer={item.student_answer}
+              comment={item.comment}
+            />
           </div>
         ))}
       </div>
@@ -112,11 +159,20 @@ function SnapResultCard({ result }: { result: SnapResult }) {
             </span>
           </div>
           <ResultSection title="点评">{result.comment}</ResultSection>
+          <SaveToWrongbookButton
+            questionText={result.question_text}
+            studentAnswer={result.student_answer}
+            comment={result.comment}
+          />
         </>
       ) : (
         <>
           <ResultSection title="参考答案">{result.answer}</ResultSection>
           <ResultSection title="讲解">{result.explanation}</ResultSection>
+          <SaveToWrongbookButton
+            questionText={result.question_text}
+            comment={`参考答案：${result.answer}`}
+          />
         </>
       )}
     </div>
@@ -455,6 +511,12 @@ function MySnapPage() {
                 </Button>
               )}
             </div>
+          )}
+          {!streaming && !streamError && streamText && (
+            <SaveToWrongbookButton
+              questionText={streamQuestion}
+              comment={`解答：${streamText.slice(0, 1500)}`}
+            />
           )}
         </div>
       )}

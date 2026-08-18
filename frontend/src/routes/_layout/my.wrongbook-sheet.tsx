@@ -28,6 +28,7 @@ const searchSchema = z.object({
   kps: z.string().optional().catch(undefined),
   range: z.enum(["30d", "90d", "all"]).catch("90d"),
   limit: z.coerce.number().int().min(1).max(50).catch(10),
+  mode: z.enum(["reprint", "variants"]).optional().catch(undefined),
 })
 
 export const Route = createFileRoute("/_layout/my/wrongbook-sheet")({
@@ -105,9 +106,11 @@ function scoringPointText(item: Record<string, unknown>): string {
 function VariantPracticeSection({
   studentName,
   className,
+  initialKnowledgePoint,
 }: {
   studentName: string
   className?: string | null
+  initialKnowledgePoint?: string
 }) {
   const masteryQuery = useQuery({
     queryKey: ["my-wrongbook-mastery"],
@@ -117,17 +120,22 @@ function VariantPracticeSection({
     queryKey: ["my-practice-sheets"],
     queryFn: () => StudentsService.readMyPracticeSheets(),
   })
-  const [knowledgePoint, setKnowledgePoint] = useState("")
+  const [knowledgePoint, setKnowledgePoint] = useState(
+    initialKnowledgePoint ?? "",
+  )
   const [count, setCount] = useState(3)
   const [activeId, setActiveId] = useState<string | null>(null)
 
-  const knowledgePoints = useMemo(
-    () =>
-      (masteryQuery.data?.data ?? [])
-        .filter((row) => (row.wrong_count ?? 0) > 0)
-        .map((row) => row.knowledge_point_name),
-    [masteryQuery.data],
-  )
+  const knowledgePoints = useMemo(() => {
+    const fromMastery = (masteryQuery.data?.data ?? [])
+      .filter((row) => (row.wrong_count ?? 0) > 0)
+      .map((row) => row.knowledge_point_name)
+    // 从学习建议带过来的知识点可能不在掌握度列表里，也要能选
+    if (initialKnowledgePoint && !fromMastery.includes(initialKnowledgePoint)) {
+      return [initialKnowledgePoint, ...fromMastery]
+    }
+    return fromMastery
+  }, [masteryQuery.data, initialKnowledgePoint])
 
   const create = useMutation({
     mutationFn: () =>
@@ -458,7 +466,9 @@ function VariantSheetPaper({
 
 function WrongbookSheetPage() {
   const search = Route.useSearch()
-  const [mode, setMode] = useState<"reprint" | "variants">("reprint")
+  const [mode, setMode] = useState<"reprint" | "variants">(
+    search.mode ?? "reprint",
+  )
   const kps = useMemo(
     () => (search.kps ?? "").split(",").filter(Boolean),
     [search.kps],
@@ -576,6 +586,7 @@ function WrongbookSheetPage() {
         <VariantPracticeSection
           studentName={studentName}
           className={className}
+          initialKnowledgePoint={kps[0]}
         />
       ) : selected.length === 0 ? (
         <EmptyState

@@ -3111,6 +3111,14 @@ class PracticeSheet(SQLModel, table=True):
     )
 
 
+class WrongbookSnapEntryCreate(SQLModel):
+    """拍题答疑/批改收进错题本的入参（手工来源，无考试关联）。"""
+
+    question_text: str = Field(min_length=1, max_length=20000)
+    student_answer: str = Field(default="", max_length=12000)
+    comment: str = Field(default="", max_length=2000)
+
+
 class PracticeSheetItemPublic(SQLModel):
     question_text: str
     answer: str

@@ -65,6 +65,7 @@ from app.models import (
     WrongbookMasteryPublic,
     WrongbookReviewCreate,
     WrongbookReviewPublic,
+    WrongbookSnapEntryCreate,
     WrongQuestionEntry,
     WrongQuestionEntryStatus,
     WrongQuestionReview,
@@ -810,6 +811,53 @@ def read_my_wrongbook_entry(
 ) -> Any:
     learner, _student = get_current_learner(session=session, current_user=current_user)
     entry, source = _owned_entry(session, learner=learner, entry_id=entry_id)
+    return _entry_detail(entry, source)
+
+
+@router.post(
+    "/me/wrongbook/entries/from-snap",
+    response_model=WrongbookEntryDetail,
+)
+def create_my_wrongbook_entry_from_snap(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    entry_in: WrongbookSnapEntryCreate,
+) -> Any:
+    """把拍题答疑/拍照批改的题收进错题本。
+
+    手工来源，不关联任何考试或发布记录：source/entry 的外部键全留空，
+    题面文本自带。复习调度、知识图谱对这些条目照常生效。
+    """
+    student = get_current_student_profile(session=session, current_user=current_user)
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    now = get_datetime_utc()
+    source = WrongQuestionSource(
+        exam_title="拍题答疑",
+        question_label="拍题",
+        question_text=entry_in.question_text,
+        scoring_points=[],
+        knowledge_point_names=[],
+        released_at=now,
+    )
+    session.add(source)
+    session.flush()
+    entry = WrongQuestionEntry(
+        source_id=source.id,
+        learner_id=learner.id,
+        student_id=student.id,
+        student_user_id=current_user.id,
+        student_name=student.name,
+        question_label="拍题",
+        score=0.0,
+        is_wrong=True,
+        student_answer_text=entry_in.student_answer or None,
+        teacher_comment=entry_in.comment or None,
+        score_source="manual",
+        released_at=now,
+    )
+    session.add(entry)
+    session.commit()
+    session.refresh(entry)
     return _entry_detail(entry, source)
 
 

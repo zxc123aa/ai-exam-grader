@@ -205,3 +205,33 @@ def test_snap_invalid_mode_returns_422(client: TestClient, db: Session) -> None:
     headers = _student_headers(client, db, "坏模式")
     response = _post_snap(client, headers, mode="chat")
     assert response.status_code == 422, response.text
+
+
+def test_snap_result_saved_to_wrongbook(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍题内容可收进错题本，并出现在错题列表里。"""
+    from tests.api.routes.test_students_learning_advice import _advice_context
+
+    context = _advice_context(client, db, "收错题")
+    created = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/from-snap",
+        headers=context["headers"],
+        json={
+            "question_text": "计算 3+4×2。",
+            "student_answer": "3+4×2=14",
+            "comment": "运算顺序错了，应先算乘法。",
+        },
+    )
+    assert created.status_code == 200, created.text
+    body = created.json()
+    assert body["question_text"] == "计算 3+4×2。"
+    assert body["exam_title"] == "拍题答疑"
+
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries",
+        headers=context["headers"],
+    )
+    assert listed.status_code == 200
+    labels = [item["question_label"] for item in listed.json()["data"]]
+    assert "拍题" in labels
