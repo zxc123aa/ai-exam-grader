@@ -196,34 +196,12 @@ function formatQuestionText(text: string): string {
   return text.replace(/(?<!^)\s+([A-F])[.、]\s*/gm, "\n$1. ")
 }
 
-/** 拍题流式接口共用的 SSE 读取：发图片、逐事件回调。 */
-async function readSnapStream(
-  path: string,
-  file: File,
-  fields: Record<string, string>,
+/** SSE 事件流读取：逐事件回调。 */
+async function consumeSse(
+  response: Response,
   onEvent: (data: { type: string; [key: string]: unknown }) => void,
 ): Promise<void> {
-  const body = new FormData()
-  body.set("image", file)
-  for (const [key, value] of Object.entries(fields)) body.set(key, value)
-  const token = localStorage.getItem("access_token")
-  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
-    method: "POST",
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body,
-  })
-  if (!response.ok || !response.body) {
-    // 错误体是 {"detail":"..."} JSON，别把整包 JSON 拍用户脸上
-    let message = `请求失败（${response.status}）`
-    try {
-      const payload = (await response.json()) as { detail?: unknown }
-      if (typeof payload.detail === "string") message = payload.detail
-    } catch {
-      const text = await response.text().catch(() => "")
-      if (text) message = text
-    }
-    throw new Error(message)
-  }
+  if (!response.body) throw new Error("响应为空")
   const reader = response.body.getReader()
   const decoder = new TextDecoder()
   let buffer = ""
@@ -239,6 +217,56 @@ async function readSnapStream(
       onEvent(JSON.parse(line.slice(5).trim()))
     }
   }
+}
+
+/** 非 200 响应体是 {"detail":"..."} JSON，别把整包 JSON 拍用户脸上。 */
+async function errorMessage(response: Response): Promise<string> {
+  try {
+    const payload = (await response.json()) as { detail?: unknown }
+    if (typeof payload.detail === "string") return payload.detail
+  } catch {
+    /* fallthrough */
+  }
+  return `请求失败（${response.status}）`
+}
+
+/** 拍题流式接口（表单传图）：发图片、逐事件回调。 */
+async function readSnapStream(
+  path: string,
+  file: File,
+  fields: Record<string, string>,
+  onEvent: (data: { type: string; [key: string]: unknown }) => void,
+): Promise<void> {
+  const body = new FormData()
+  body.set("image", file)
+  for (const [key, value] of Object.entries(fields)) body.set(key, value)
+  const token = localStorage.getItem("access_token")
+  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  })
+  if (!response.ok) throw new Error(await errorMessage(response))
+  await consumeSse(response, onEvent)
+}
+
+/** 单题重试流式接口（JSON 传题干）：事件流与整页一致。 */
+async function readSnapStreamJson(
+  path: string,
+  payload: Record<string, unknown>,
+  onEvent: (data: { type: string; [key: string]: unknown }) => void,
+): Promise<void> {
+  const token = localStorage.getItem("access_token")
+  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  })
+  if (!response.ok) throw new Error(await errorMessage(response))
+  await consumeSse(response, onEvent)
 }
 
 /** 历史记录详情：三种载荷——流式多题、单题答疑、拍照批改。 */
@@ -462,6 +490,96 @@ function MySnapPage() {
   }
 
   const busy = streaming
+
+  // 单题重试：整页里某张卡失败时只重做这一题，不动其他卡
+  const retrySolveOne = async (index: number) => {
+    const card = streamCards[index]
+    if (!card) return
+    setStreamCards((cards) =>
+      cards.map((c, i) =>
+        i === index
+          ? { ...c, state: "streaming", answer: "", error: undefined }
+          : c,
+      ),
+    )
+    try {
+      await readSnapStreamJson(
+        "/students/me/snap/solve-one/stream",
+        { question_text: card.question },
+        (data) => {
+          if (data.type === "answer-delta") {
+            setStreamCards((cards) =>
+              cards.map((c, i) =>
+                i === index
+                  ? { ...c, answer: c.answer + (data.text as string) }
+                  : c,
+              ),
+            )
+          } else if (data.type === "done") {
+            setStreamCards((cards) =>
+              cards.map((c, i) => (i === index ? { ...c, state: "done" } : c)),
+            )
+          } else if (data.type === "error") {
+            throw new Error(data.text as string)
+          }
+        },
+      )
+    } catch (error) {
+      setStreamCards((cards) =>
+        cards.map((c, i) =>
+          i === index
+            ? {
+                ...c,
+                state: "error",
+                error: error instanceof Error ? error.message : String(error),
+              }
+            : c,
+        ),
+      )
+    }
+  }
+
+  const retryGradeOne = async (index: number) => {
+    const card = gradeCards[index]
+    if (!card) return
+    setGradeCards((cards) =>
+      cards.map((c, i) =>
+        i === index ? { ...c, state: "waiting", error: undefined } : c,
+      ),
+    )
+    try {
+      const item = await workflowApi<{ score: number; comment: string }>(
+        "/students/me/snap/grade-one",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            question_text: card.question,
+            student_answer: card.studentAnswer,
+            max_score: Number(maxScore) || 10,
+          }),
+        },
+      )
+      setGradeCards((cards) =>
+        cards.map((c, i) =>
+          i === index
+            ? { ...c, score: item.score, comment: item.comment, state: "done" }
+            : c,
+        ),
+      )
+    } catch (error) {
+      setGradeCards((cards) =>
+        cards.map((c, i) =>
+          i === index
+            ? {
+                ...c,
+                state: "error",
+                error: error instanceof Error ? error.message : String(error),
+              }
+            : c,
+        ),
+      )
+    }
+  }
 
   const pickFile = (selected: File | null) => {
     if (!selected) return
@@ -704,7 +822,16 @@ function MySnapPage() {
                 {card.state === "error" && (
                   <div className="flex items-center gap-2 text-destructive text-sm">
                     <CircleAlert className="size-4 shrink-0" />
-                    {card.error || "生成失败"}
+                    <span className="flex-1">{card.error || "生成失败"}</span>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid="snap-retry-one"
+                      onClick={() => retrySolveOne(index)}
+                    >
+                      <RefreshCw />
+                      重试本题
+                    </Button>
                   </div>
                 )}
                 {card.state === "done" && (
@@ -772,9 +899,20 @@ function MySnapPage() {
                   />
                 </>
               ) : card.state === "error" ? (
-                <div className="flex items-center gap-2 text-destructive text-sm">
+                <div className="flex items-center gap-2 border-t pt-4 text-destructive text-sm">
                   <CircleAlert className="size-4 shrink-0" />
-                  {card.error || "这道题批改失败"}
+                  <span className="flex-1">
+                    {card.error || "这道题批改失败"}
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid="snap-retry-one"
+                    onClick={() => retryGradeOne(index)}
+                  >
+                    <RefreshCw />
+                    重试本题
+                  </Button>
                 </div>
               ) : (
                 <div className="flex items-center gap-2 border-t pt-4 text-muted-foreground text-sm">

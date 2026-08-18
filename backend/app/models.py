@@ -3493,6 +3493,20 @@ class SnapRecordDetail(SnapRecordListItem):
     payload: dict
 
 
+class SnapSolveOneRequest(SQLModel):
+    """单题解答重试：只需要题干（整页重拍时题目识别已成功）。"""
+
+    question_text: str = Field(min_length=1, max_length=20000)
+
+
+class SnapGradeOneRequest(SQLModel):
+    """单题批改重试：题干+作答都是整页时已识别好的。"""
+
+    question_text: str = Field(min_length=1, max_length=20000)
+    student_answer: str = Field(default="", max_length=20000)
+    max_score: float = Field(default=10.0, gt=0, le=100)
+
+
 class SnapSolvePublic(SQLModel):
     """拍题答疑结果：一次性问答，不落库。"""
 

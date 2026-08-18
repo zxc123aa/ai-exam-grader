@@ -49,10 +49,12 @@ from app.models import (
     ScoreReleaseItem,
     ScoreReleaseStatus,
     SnapGradeItemPublic,
+    SnapGradeOneRequest,
     SnapGradePublic,
     SnapRecord,
     SnapRecordDetail,
     SnapRecordListItem,
+    SnapSolveOneRequest,
     SnapSolvePublic,
     Student,
     StudentExamListItemPublic,
@@ -1594,6 +1596,79 @@ def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> lis
     return questions
 
 
+async def _stream_answer_deltas(target: Any, question_text: str):
+    """逐段 yield 一道题的解答文本。
+
+    中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 3 趟）；
+    一旦流出内容就不重试，半截答案直接保留，避免重复段落。
+    """
+    prompt = (
+        "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
+        "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。"
+        "所有公式必须用 \\(...\\) 包裹（行内）或 \\[...\\] 单独成行，"
+        "不要裸写 \\frac 这类 LaTeX 命令。\n"
+        f"题目：{question_text}"
+    )
+    payload = {
+        "model": target.upstream_model,
+        "messages": [{"role": "user", "content": prompt}],
+        "stream": True,
+    }
+    last_error: Exception | None = None
+    for _attempt in range(3):
+        emitted = False
+        try:
+            # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
+            async with httpx.AsyncClient(
+                timeout=httpx.Timeout(60.0, connect=10.0)
+            ) as client:
+                async with client.stream(
+                    "POST",
+                    provider_gateway.endpoint(target),
+                    headers={"Authorization": f"Bearer {target.api_key}"},
+                    json=payload,
+                ) as response:
+                    if response.status_code != 200:
+                        raise VisionGradingError(f"模型服务返回 {response.status_code}")
+                    async for line in response.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        data = line[5:].strip()
+                        if data == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data)
+                            choices = chunk.get("choices") or []
+                            if not choices:
+                                continue  # 末包只带 usage
+                            delta = choices[0].get("delta", {}).get("content")
+                        except ValueError:
+                            continue
+                        if delta:
+                            emitted = True
+                            yield delta
+            return
+        except Exception as exc:
+            last_error = exc
+            if emitted:
+                return
+    raise VisionGradingError(str(last_error)[:200] if last_error else "生成失败")
+
+
+def _snap_solve_target(session: Session, defaults: dict[str, Any]) -> Any:
+    """解答模型的运行时目标（整页流式和单题重试共用）。"""
+    provider = str(defaults["grading_provider"])
+    model = str(defaults["grading_model"])
+    channel = session.exec(
+        select(ProviderChannel).where(ProviderChannel.code == provider)
+    ).first()
+    if channel is None:
+        raise HTTPException(status_code=502, detail="模型渠道未配置")
+    return provider_gateway.resolve_channel_target(
+        session, channel=channel, canonical_model=model, require_enabled=False
+    )
+
+
 @router.post("/me/snap/stream")
 async def snap_question_stream(
     session: SessionDep,
@@ -1617,79 +1692,14 @@ async def snap_question_stream(
     if not questions:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
 
-    provider = str(defaults["grading_provider"])
-    model = str(defaults["grading_model"])
-    channel = session.exec(
-        select(ProviderChannel).where(ProviderChannel.code == provider)
-    ).first()
-    if channel is None:
-        raise HTTPException(status_code=502, detail="模型渠道未配置")
-    target = provider_gateway.resolve_channel_target(
-        session, channel=channel, canonical_model=model, require_enabled=False
-    )
+    target = _snap_solve_target(session, defaults)
 
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream_answer(question_text: str):
-        """逐段 yield 一道题的解答文本。
-
-        中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 3 趟）；
-        一旦流出内容就不重试，半截答案直接保留，避免重复段落。
-        """
-        prompt = (
-            "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
-            "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。"
-            "所有公式必须用 \\(...\\) 包裹（行内）或 \\[...\\] 单独成行，"
-            "不要裸写 \\frac 这类 LaTeX 命令。\n"
-            f"题目：{question_text}"
-        )
-        payload = {
-            "model": target.upstream_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": True,
-        }
-        last_error: Exception | None = None
-        for _attempt in range(3):
-            emitted = False
-            try:
-                # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
-                async with httpx.AsyncClient(
-                    timeout=httpx.Timeout(60.0, connect=10.0)
-                ) as client:
-                    async with client.stream(
-                        "POST",
-                        provider_gateway.endpoint(target),
-                        headers={"Authorization": f"Bearer {target.api_key}"},
-                        json=payload,
-                    ) as response:
-                        if response.status_code != 200:
-                            raise VisionGradingError(
-                                f"模型服务返回 {response.status_code}"
-                            )
-                        async for line in response.aiter_lines():
-                            if not line.startswith("data:"):
-                                continue
-                            data = line[5:].strip()
-                            if data == "[DONE]":
-                                break
-                            try:
-                                chunk = json.loads(data)
-                                choices = chunk.get("choices") or []
-                                if not choices:
-                                    continue  # 末包只带 usage
-                                delta = choices[0].get("delta", {}).get("content")
-                            except ValueError:
-                                continue
-                            if delta:
-                                emitted = True
-                                yield delta
-                return
-            except Exception as exc:
-                last_error = exc
-                if emitted:
-                    return
-        raise VisionGradingError(str(last_error)[:200] if last_error else "生成失败")
+        async for delta in _stream_answer_deltas(target, question_text):
+            yield delta
 
     async def event_stream():
         yield sse({"type": "questions", "items": questions})
@@ -1854,6 +1864,63 @@ async def snap_grade_stream(
         yield sse({"type": "done"})
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/me/snap/solve-one/stream")
+async def snap_solve_one_stream(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: SnapSolveOneRequest,
+) -> Any:
+    """单题解答重试：整页里某道题失败后，只重新解答这一题。
+
+    事件流与整页流式一致（answer-delta / done / error），前端复用同一套渲染。
+    """
+    del current_user  # 仅做登录校验
+    question = body.question_text.strip()
+    defaults = get_grading_defaults(session)
+    target = _snap_solve_target(session, defaults)
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        try:
+            async for delta in _stream_answer_deltas(target, question):
+                yield sse({"type": "answer-delta", "text": delta})
+        except Exception as exc:
+            yield sse({"type": "error", "text": str(exc)[:200]})
+            return
+        yield sse({"type": "done"})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+@router.post("/me/snap/grade-one", response_model=SnapGradeItemPublic)
+def snap_grade_one(
+    session: SessionDep,
+    current_user: CurrentUser,
+    body: SnapGradeOneRequest,
+) -> Any:
+    """单题批改重试：整页里某道题判分失败后，只重判这一题。"""
+    del current_user  # 仅做登录校验
+    defaults = get_grading_defaults(session)
+    try:
+        item = _snap_grade_one(
+            question_text=body.question_text.strip(),
+            student_answer=body.student_answer,
+            max_score=body.max_score,
+            defaults=defaults,
+        )
+    except VisionGradingError as exc:
+        raise HTTPException(status_code=502, detail=f"批改失败，请重试：{exc}") from exc
+    return SnapGradeItemPublic(
+        question_text=item["question_text"],
+        student_answer=item["student_answer"],
+        score=item["score"],
+        max_score=body.max_score,
+        comment=item["comment"],
+    )
 
 
 @router.post("/me/snap", response_model=SnapSolvePublic | SnapGradePublic)

@@ -436,3 +436,127 @@ def test_snap_grade_stream_grades_item_by_item_and_saves_record(
     assert payload["kind"] == "grade"
     assert len(payload["result"]["items"]) == 2
     assert payload["result"]["items"][0]["score"] == 10
+
+
+def _fake_stream_target(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """给单题流式接口配一个假渠道+假目标，别碰真实上游。"""
+    from app.models import (
+        ProviderChannel,
+        ProviderChannelKind,
+        ProviderChannelStatus,
+        ProviderProtocol,
+    )
+    from app.services.provider_gateway import RuntimeTarget
+
+    channel = ProviderChannel(
+        code=f"snap-one-{random_lower_string()[:8]}",
+        display_name="单题测试渠道",
+        kind=ProviderChannelKind.AUTHORIZED_RELAY,
+        protocol=ProviderProtocol.OPENAI_CHAT,
+        base_url="https://relay.example/v1",
+        status=ProviderChannelStatus.ACTIVE,
+    )
+    db.add(channel)
+    db.commit()
+    db.refresh(channel)
+    target = RuntimeTarget(
+        provider=channel.code,
+        canonical_model="test-solver",
+        upstream_model="upstream-solver",
+        base_url="https://relay.example/v1",
+        api_key="test-key",
+        protocol=ProviderProtocol.OPENAI_CHAT,
+        channel_id=channel.id,
+        route_policy_id=None,
+        route_version_id=None,
+        max_concurrency=8,
+        timeout_seconds=60,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.students.provider_gateway.resolve_channel_target",
+        lambda *args, **kwargs: target,
+    )
+    monkeypatch.setattr(
+        "app.api.routes.students.get_grading_defaults",
+        lambda session: {
+            "grading_provider": channel.code,
+            "grading_model": "test-solver",
+            "vision_provider": channel.code,
+            "vision_model": "test-vision",
+            "fallback_models": [],
+            "vision_fallback_models": [],
+        },
+    )
+
+
+class _FakeStreamResponse:
+    status_code = 200
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    async def aiter_lines(self):
+        yield 'data: {"choices":[{"delta":{"content":"答案是 7"}}]}'
+        yield "data: [DONE]"
+
+
+class _FakeClient:
+    def __init__(self, *args, **kwargs):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, *args):
+        return False
+
+    def stream(self, *args, **kwargs):
+        return _FakeStreamResponse()
+
+
+def test_snap_solve_one_stream_retries_single_question(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """单题解答重试：流式返回这一题的解答。"""
+    headers = _student_headers(client, db, "单题解答")
+    _fake_stream_target(db, monkeypatch)
+    monkeypatch.setattr("app.api.routes.students.httpx.AsyncClient", _FakeClient)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/solve-one/stream",
+        headers=headers,
+        json={"question_text": "计算 3+4。"},
+    )
+    assert response.status_code == 200, response.text
+    assert "答案是 7" in response.text
+    assert '"done"' in response.text
+
+
+def test_snap_grade_one_regrades_single_question(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """单题批改重试：只重判这一题，返回分数和评语。"""
+    headers = _student_headers(client, db, "单题批改")
+
+    def fake_call_json_model(**_kwargs: object):
+        return {"score": 6, "comment": "过程对了一半。"}, "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/grade-one",
+        headers=headers,
+        json={
+            "question_text": "计算 3+4×2。",
+            "student_answer": "3+4×2=14",
+            "max_score": 10,
+        },
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["score"] == 6
+    assert body["max_score"] == 10
+    assert body["comment"] == "过程对了一半。"
