@@ -207,9 +207,7 @@ def test_snap_invalid_mode_returns_422(client: TestClient, db: Session) -> None:
     assert response.status_code == 422, response.text
 
 
-def test_snap_result_saved_to_wrongbook(
-    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_snap_result_saved_to_wrongbook(client: TestClient, db: Session) -> None:
     """拍题内容可收进错题本，并出现在错题列表里。"""
     from tests.api.routes.test_students_learning_advice import _advice_context
 
