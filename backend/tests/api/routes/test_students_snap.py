@@ -387,3 +387,52 @@ def test_snap_stream_saves_solved_answers_to_records(
     payload = detail.json()["payload"]
     assert payload["kind"] == "solve"
     assert payload["items"] == [{"question": "计算 3+4。", "answer": "3+4=7"}]
+
+
+def test_snap_grade_stream_grades_item_by_item_and_saves_record(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍照批改流式版：逐题出分，失败题不拖垮整页，结果进拍题历史。"""
+    headers = _student_headers(client, db, "流式批改")
+    monkeypatch.setattr(
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [("计算 3+4。", "7"), ("计算 5-2。", "2")],
+    )
+    grade_calls: list[str] = []
+
+    def fake_call_json_model(**kwargs: object):
+        messages = kwargs["messages"]
+        prompt = str(messages[0]["content"])  # type: ignore[index]
+        grade_calls.append(prompt)
+        if "3+4" in prompt:
+            return {"score": 10, "comment": "正确。"}, "mock-model", 1
+        return {"score": 0, "comment": "5-2=3，不是 2。"}, "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/grade/stream",
+        headers=headers,
+        files={"image": ("question.png", PNG_BYTES, "image/png")},
+        data={"max_score": "10"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert '"type": "grade-questions"' in body or '"type":"grade-questions"' in body
+    assert body.count("grade-item\"") == 2  # 两题各一张结果卡
+    assert "正确。" in body and "5-2=3" in body
+
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records", headers=headers
+    )
+    items = listed.json()
+    assert len(items) == 1
+    assert items[0]["mode"] == "grade"
+    detail = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records/{items[0]['id']}",
+        headers=headers,
+    )
+    payload = detail.json()["payload"]
+    assert payload["kind"] == "grade"
+    assert len(payload["result"]["items"]) == 2
+    assert payload["result"]["items"][0]["score"] == 10

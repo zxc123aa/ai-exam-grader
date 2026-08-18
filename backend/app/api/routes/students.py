@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import uuid
+from asyncio import to_thread
 from collections import Counter
 from pathlib import Path
 from typing import Annotated, Any, Literal
@@ -1722,6 +1723,133 @@ async def snap_question_stream(
                 mode="solve",
                 payload={"kind": "solve", "items": solved},
                 title_source=solved[0]["question"],
+            )
+        yield sse({"type": "done"})
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _snap_grade_one(
+    *,
+    question_text: str,
+    student_answer: str,
+    max_score: float,
+    defaults: dict[str, Any],
+) -> dict:
+    """单题「独立解答+判分」：流式批改的每题单元，判完立即推给前端。"""
+    prompt = (
+        "你是严谨的中文阅卷教师。先独立求出正确答案，再对照学生作答判分。"
+        "结果正确但过程有瑕疵酌情扣少量分；结果错误只看有价值步骤给步骤分；"
+        "评语说人话，指出对在哪里、错在哪里，不要空话。"
+        "只返回 JSON，不要 Markdown："
+        '{"score":0,"comment":"中文评语"}，'
+        f"score 在 0 到 {max_score} 之间。\n"
+        f"题目：{question_text}\n学生作答：{student_answer}"
+    )
+    parsed, _used_model, _elapsed_ms = call_json_model(
+        provider=defaults["grading_provider"],
+        model=defaults["grading_model"],
+        fallback_models=[],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    try:
+        score = float(parsed.get("score"))
+    except (TypeError, ValueError) as exc:
+        raise VisionGradingError("批改失败，请重试") from exc
+    comment = str(parsed.get("comment") or "").strip()
+    if not comment:
+        raise VisionGradingError("批改失败，请重试")
+    return {
+        "question_text": question_text,
+        "student_answer": student_answer,
+        "score": min(max(score, 0.0), max_score),
+        "comment": comment,
+    }
+
+
+@router.post("/me/snap/grade/stream")
+async def snap_grade_stream(
+    session: SessionDep,
+    current_user: CurrentUser,
+    image: Annotated[UploadFile, File()],
+    max_score: Annotated[float, Form()] = 10.0,
+) -> Any:
+    """拍照批改流式版：整页先读出题目和作答，再逐题判分、判完一题推一题。
+
+    非流式 /snap 批改整页要干等近一分钟；这里识别完先亮出全部题目卡片，
+    每题判完立即填入分数和评语。判完的题目存入拍题历史（snaprecord）。
+    """
+    if max_score <= 0 or max_score > 100:
+        raise HTTPException(status_code=422, detail="满分需在 0 到 100 之间")
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=422, detail="请先选择题目照片")
+    if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
+    model_image_bytes = downscale_image_for_model(image_bytes)
+    defaults = get_grading_defaults(session)
+    extracted = _snap_extract_multi(model_image_bytes, defaults)
+    if not extracted:
+        raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
+    if not any(answer for _question, answer in extracted):
+        raise HTTPException(
+            status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
+        )
+    items = [(question, answer) for question, answer in extracted if answer]
+
+    def sse(payload: dict) -> str:
+        return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
+
+    async def event_stream():
+        yield sse(
+            {
+                "type": "grade-questions",
+                "items": [
+                    {"question_text": question, "student_answer": answer}
+                    for question, answer in items
+                ],
+            }
+        )
+        graded: list[dict] = []
+        for index, (question, answer) in enumerate(items):
+            try:
+                item = await to_thread(
+                    _snap_grade_one,
+                    question_text=question,
+                    student_answer=answer,
+                    max_score=max_score,
+                    defaults=defaults,
+                )
+            except Exception as exc:
+                # 单题失败不拖垮整页：这张卡标错误，其余题继续
+                yield sse(
+                    {
+                        "type": "grade-item-error",
+                        "index": index,
+                        "text": str(exc)[:200],
+                    }
+                )
+                continue
+            graded.append(item)
+            yield sse({"type": "grade-item", "index": index, "item": item})
+        if graded:
+            first = graded[0]
+            result = SnapGradePublic(
+                question_text=first["question_text"],
+                student_answer=first["student_answer"],
+                score=first["score"],
+                max_score=max_score,
+                comment=first["comment"],
+                items=[
+                    SnapGradeItemPublic(**item, max_score=max_score) for item in graded
+                ],
+            ).model_dump(mode="json")
+            _save_snap_record(
+                session,
+                current_user.id,
+                mode="grade",
+                payload={"kind": "grade", "result": result},
+                title_source=first["question_text"],
             )
         yield sse({"type": "done"})
 

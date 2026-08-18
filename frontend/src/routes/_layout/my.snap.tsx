@@ -196,6 +196,51 @@ function formatQuestionText(text: string): string {
   return text.replace(/(?<!^)\s+([A-F])[.、]\s*/gm, "\n$1. ")
 }
 
+/** 拍题流式接口共用的 SSE 读取：发图片、逐事件回调。 */
+async function readSnapStream(
+  path: string,
+  file: File,
+  fields: Record<string, string>,
+  onEvent: (data: { type: string; [key: string]: unknown }) => void,
+): Promise<void> {
+  const body = new FormData()
+  body.set("image", file)
+  for (const [key, value] of Object.entries(fields)) body.set(key, value)
+  const token = localStorage.getItem("access_token")
+  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
+    method: "POST",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  })
+  if (!response.ok || !response.body) {
+    // 错误体是 {"detail":"..."} JSON，别把整包 JSON 拍用户脸上
+    let message = `请求失败（${response.status}）`
+    try {
+      const payload = (await response.json()) as { detail?: unknown }
+      if (typeof payload.detail === "string") message = payload.detail
+    } catch {
+      const text = await response.text().catch(() => "")
+      if (text) message = text
+    }
+    throw new Error(message)
+  }
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ""
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    const events = buffer.split("\n\n")
+    buffer = events.pop() ?? ""
+    for (const event of events) {
+      const line = event.split("\n").find((l) => l.startsWith("data:"))
+      if (!line) continue
+      onEvent(JSON.parse(line.slice(5).trim()))
+    }
+  }
+}
+
 /** 历史记录详情：三种载荷——流式多题、单题答疑、拍照批改。 */
 function SnapRecordView({ payload }: { payload: SnapRecordPayload }) {
   if (payload.kind === "grade") {
@@ -239,7 +284,6 @@ function MySnapPage() {
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [maxScore, setMaxScore] = useState("10")
-  const [result, setResult] = useState<SnapResult | null>(null)
   const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const queryClient = useQueryClient()
   const records = useQuery({
@@ -269,25 +313,6 @@ function MySnapPage() {
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  const snap = useMutation({
-    mutationFn: (input: { file: File; mode: SnapMode; maxScore: string }) => {
-      const body = new FormData()
-      body.set("image", input.file)
-      body.set("mode", input.mode)
-      if (input.mode === "grade") {
-        body.set("max_score", input.maxScore || "10")
-      }
-      return workflowApi<SnapResult>("/students/me/snap", {
-        method: "POST",
-        body,
-      })
-    },
-    onSuccess: (data) => {
-      setResult(data)
-      queryClient.invalidateQueries({ queryKey: ["snap-records"] })
-    },
-  })
-
   // 答疑（solve）走流式：每题一张卡，解答逐段流进对应卡片
   type StreamCard = {
     question: string
@@ -295,7 +320,17 @@ function MySnapPage() {
     state: "waiting" | "streaming" | "done" | "error"
     error?: string
   }
+  /** 批改（grade）流式卡：判完一题填一题的分数和评语。 */
+  type GradeCard = {
+    question: string
+    studentAnswer: string
+    score: number | null
+    comment: string
+    state: "waiting" | "done" | "error"
+    error?: string
+  }
   const [streamCards, setStreamCards] = useState<StreamCard[]>([])
+  const [gradeCards, setGradeCards] = useState<GradeCard[]>([])
   const [cardView, setCardView] = useState<"all" | "single">("all")
   const [cardIndex, setCardIndex] = useState(0)
   const [streamError, setStreamError] = useState<string | null>(null)
@@ -305,44 +340,13 @@ function MySnapPage() {
     setStreaming(true)
     setStreamError(null)
     setStreamCards([])
-    setResult(null)
+    setGradeCards([])
     try {
-      const body = new FormData()
-      body.set("image", fileToSubmit)
-      const token = localStorage.getItem("access_token")
-      const response = await fetch(
-        `${OpenAPI.BASE || ""}/api/v1/students/me/snap/stream`,
-        {
-          method: "POST",
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-          body,
-        },
-      )
-      if (!response.ok || !response.body) {
-        // 错误体是 {"detail":"..."} JSON，别把整包 JSON 拍用户脸上
-        let message = `请求失败（${response.status}）`
-        try {
-          const payload = (await response.json()) as { detail?: unknown }
-          if (typeof payload.detail === "string") message = payload.detail
-        } catch {
-          const text = await response.text().catch(() => "")
-          if (text) message = text
-        }
-        throw new Error(message)
-      }
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ""
-      for (;;) {
-        const { done, value } = await reader.read()
-        if (done) break
-        buffer += decoder.decode(value, { stream: true })
-        const events = buffer.split("\n\n")
-        buffer = events.pop() ?? ""
-        for (const event of events) {
-          const line = event.split("\n").find((l) => l.startsWith("data:"))
-          if (!line) continue
-          const data = JSON.parse(line.slice(5).trim())
+      await readSnapStream(
+        "/students/me/snap/stream",
+        fileToSubmit,
+        {},
+        (data) => {
           if (data.type === "questions") {
             setStreamCards(
               (data.items as string[]).map((question) => ({
@@ -361,7 +365,7 @@ function MySnapPage() {
             setStreamCards((cards) =>
               cards.map((card, i) =>
                 i === data.index
-                  ? { ...card, answer: card.answer + data.text }
+                  ? { ...card, answer: card.answer + (data.text as string) }
                   : card,
               ),
             )
@@ -375,7 +379,7 @@ function MySnapPage() {
             setStreamCards((cards) =>
               cards.map((card, i) =>
                 i === data.index
-                  ? { ...card, state: "error", error: data.text }
+                  ? { ...card, state: "error", error: data.text as string }
                   : card,
               ),
             )
@@ -383,10 +387,10 @@ function MySnapPage() {
             // 服务端已把本次解答留档，刷新历史列表
             queryClient.invalidateQueries({ queryKey: ["snap-records"] })
           } else if (data.type === "error") {
-            throw new Error(data.text)
+            throw new Error(data.text as string)
           }
-        }
-      }
+        },
+      )
     } catch (error) {
       setStreamError(error instanceof Error ? error.message : String(error))
     } finally {
@@ -394,20 +398,85 @@ function MySnapPage() {
     }
   }
 
-  const busy = snap.isPending || streaming
+  // 批改（grade）也走流式：识别完先亮出全部题目卡，逐题判完逐题填分
+  const submitGradeStream = async (fileToSubmit: File) => {
+    setStreaming(true)
+    setStreamError(null)
+    setStreamCards([])
+    setGradeCards([])
+    try {
+      await readSnapStream(
+        "/students/me/snap/grade/stream",
+        fileToSubmit,
+        { max_score: maxScore || "10" },
+        (data) => {
+          if (data.type === "grade-questions") {
+            setGradeCards(
+              (
+                data.items as {
+                  question_text: string
+                  student_answer: string
+                }[]
+              ).map((item) => ({
+                question: item.question_text,
+                studentAnswer: item.student_answer,
+                score: null,
+                comment: "",
+                state: "waiting" as const,
+              })),
+            )
+          } else if (data.type === "grade-item") {
+            const item = data.item as { score: number; comment: string }
+            setGradeCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index
+                  ? {
+                      ...card,
+                      score: item.score,
+                      comment: item.comment,
+                      state: "done",
+                    }
+                  : card,
+              ),
+            )
+          } else if (data.type === "grade-item-error") {
+            setGradeCards((cards) =>
+              cards.map((card, i) =>
+                i === data.index
+                  ? { ...card, state: "error", error: data.text as string }
+                  : card,
+              ),
+            )
+          } else if (data.type === "done") {
+            queryClient.invalidateQueries({ queryKey: ["snap-records"] })
+          } else if (data.type === "error") {
+            throw new Error(data.text as string)
+          }
+        },
+      )
+    } catch (error) {
+      setStreamError(error instanceof Error ? error.message : String(error))
+    } finally {
+      setStreaming(false)
+    }
+  }
+
+  const busy = streaming
 
   const pickFile = (selected: File | null) => {
     if (!selected) return
     setFile(selected)
-    setResult(null)
     setSelectedRecordId(null)
-    snap.reset()
+    setStreamCards([])
+    setGradeCards([])
+    setStreamError(null)
   }
 
   const switchMode = (next: string) => {
     setMode(next as SnapMode)
-    setResult(null)
-    snap.reset()
+    setStreamCards([])
+    setGradeCards([])
+    setStreamError(null)
   }
 
   return (
@@ -471,7 +540,7 @@ function MySnapPage() {
                 onClick={() =>
                   mode === "solve"
                     ? submitSolveStream(file as File)
-                    : snap.mutate({ file: file as File, mode, maxScore })
+                    : submitGradeStream(file as File)
                 }
               >
                 {busy ? (
@@ -528,7 +597,7 @@ function MySnapPage() {
         )}
         {mode === "grade" && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">这道题满分</span>
+            <span className="text-muted-foreground">每道题满分</span>
             <Input
               data-testid="snap-max-score"
               type="number"
@@ -541,22 +610,22 @@ function MySnapPage() {
             <span className="text-muted-foreground">分</span>
           </div>
         )}
-        {snap.isError && (
+        {streamError && (
           <div
             className="flex items-center gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive text-sm"
             data-testid="snap-error"
           >
             <CircleAlert className="size-4 shrink-0" />
-            <span className="flex-1">
-              {snap.error instanceof Error
-                ? snap.error.message
-                : "识别失败，请重试"}
-            </span>
+            <span className="flex-1">{streamError}</span>
             {file && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => snap.mutate({ file, mode, maxScore })}
+                onClick={() =>
+                  mode === "solve"
+                    ? submitSolveStream(file)
+                    : submitGradeStream(file)
+                }
               >
                 <RefreshCw />
                 重试
@@ -566,7 +635,7 @@ function MySnapPage() {
         )}
       </div>
 
-      {snap.isPending && (
+      {streaming && streamCards.length === 0 && gradeCards.length === 0 && (
         <div className="flex items-center gap-2 text-muted-foreground text-sm">
           <Sparkles className="size-4" />
           正在看题，照片大的话可能要一两分钟，请别关闭页面…
@@ -669,23 +738,54 @@ function MySnapPage() {
           )}
         </div>
       )}
-      {streamError && (
-        <div className="flex items-center gap-2 rounded-[10px] border border-destructive/30 bg-destructive/5 px-3 py-2 text-destructive text-sm">
-          <CircleAlert className="size-4 shrink-0" />
-          <span className="flex-1">{streamError}</span>
-          {file && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => submitSolveStream(file)}
+      {/* 流式批改：识别完先亮全部题目卡，逐题判完逐题填分 */}
+      {gradeCards.length > 0 && (
+        <div className="grid gap-4" data-testid="snap-grade-stream-result">
+          {gradeCards.map((card, index) => (
+            <div
+              key={`grade-card-${index}`}
+              className="grid gap-4 rounded-[10px] border bg-card p-5"
             >
-              <RefreshCw />
-              重试
-            </Button>
-          )}
+              <ResultSection title={`第 ${index + 1} 题`}>
+                <span className="whitespace-pre-wrap">
+                  {formatQuestionText(card.question)}
+                </span>
+              </ResultSection>
+              <ResultSection title="你的作答">
+                {card.studentAnswer}
+              </ResultSection>
+              {card.state === "done" && card.score !== null ? (
+                <>
+                  <div className="flex items-baseline gap-1.5 border-t pt-4">
+                    <span className="font-bold text-3xl tracking-tight">
+                      {formatScore(card.score)}
+                    </span>
+                    <span className="text-muted-foreground text-sm">
+                      / {maxScore || "10"} 分
+                    </span>
+                  </div>
+                  <ResultSection title="点评">{card.comment}</ResultSection>
+                  <SaveToWrongbookButton
+                    questionText={card.question}
+                    studentAnswer={card.studentAnswer}
+                    comment={card.comment}
+                  />
+                </>
+              ) : card.state === "error" ? (
+                <div className="flex items-center gap-2 text-destructive text-sm">
+                  <CircleAlert className="size-4 shrink-0" />
+                  {card.error || "这道题批改失败"}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 border-t pt-4 text-muted-foreground text-sm">
+                  <Loader2 className="size-4 animate-spin" />
+                  批改中…
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
-      {result && !snap.isPending && <SnapResultCard result={result} />}
 
       {selectedRecordId && recordDetail.data && (
         <div className="grid gap-2" data-testid="snap-record-detail">
@@ -719,8 +819,8 @@ function MySnapPage() {
                 data-testid="snap-record-item"
                 className={`truncate rounded-[10px] border bg-card px-4 py-2.5 text-left text-sm transition-colors hover:border-primary ${selectedRecordId === item.id ? "border-primary" : ""}`}
                 onClick={() => {
-                  setResult(null)
                   setStreamCards([])
+                  setGradeCards([])
                   setSelectedRecordId(item.id)
                 }}
               >
