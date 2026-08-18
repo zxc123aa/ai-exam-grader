@@ -221,17 +221,21 @@ def _candidate_targets(
     return list(dict.fromkeys(targets))
 
 
-def _provider_cooldown_reason(provider: str) -> str | None:
+def _provider_cooldown_reason(provider: str, model: str | None = None) -> str | None:
     now = time.monotonic()
+    # 同时查服务商级（鉴权/额度问题）和模型级（中转单节点 5xx）熔断
+    keys = (provider, f"{provider}:{model}") if model else (provider,)
     with _PROVIDER_COOLDOWNS_LOCK:
-        blocked = _PROVIDER_COOLDOWNS.get(provider)
-        if not blocked:
-            return None
-        expires_at, reason = blocked
-        if expires_at <= now:
-            _PROVIDER_COOLDOWNS.pop(provider, None)
-            return None
-        return reason
+        for key in keys:
+            blocked = _PROVIDER_COOLDOWNS.get(key)
+            if not blocked:
+                continue
+            expires_at, reason = blocked
+            if expires_at <= now:
+                _PROVIDER_COOLDOWNS.pop(key, None)
+                continue
+            return reason
+        return None
 
 
 def _cool_down_provider(provider: str, seconds: int, reason: str) -> None:
@@ -261,9 +265,11 @@ def _response_message(response: httpx.Response) -> str:
 _provider_5xx_streak: dict[str, int] = {}
 
 
-def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
+def _raise_for_model_response(
+    response: httpx.Response, provider: str, model: str
+) -> None:
     if response.status_code < 400:
-        _provider_5xx_streak.pop(provider, None)
+        _provider_5xx_streak.pop(f"{provider}:{model}", None)
         return
     detail = _response_message(response)
     normalized = detail.lower()
@@ -283,11 +289,14 @@ def _raise_for_model_response(response: httpx.Response, provider: str) -> None:
         _cool_down_provider(provider, 60, reason)
         raise VisionGradingError(reason)
     if response.status_code >= 500:
-        streak = _provider_5xx_streak.get(provider, 0) + 1
-        _provider_5xx_streak[provider] = streak
+        # 5xx 多是中转单个节点/单个模型路由坏了（坏节点对多模态请求直接 500），
+        # 熔断只锁这个 服务商:模型，别误伤同服务商的其他模型。
+        key = f"{provider}:{model}"
+        streak = _provider_5xx_streak.get(key, 0) + 1
+        _provider_5xx_streak[key] = streak
         reason = "模型服务暂时异常，系统将尝试备用通道"
         if streak >= 2:
-            _cool_down_provider(provider, 30, reason)
+            _cool_down_provider(key, 30, reason)
         raise VisionGradingError(reason)
     raise VisionGradingError(f"模型请求未被接受（HTTP {response.status_code}）")
 
@@ -551,7 +560,9 @@ def _call_model_with_route(
                 )
             ):
                 raise VisionGradingError("该模型通道未返回可计费用量，已自动停用")
-            cooldown_reason = _provider_cooldown_reason(candidate.provider)
+            cooldown_reason = _provider_cooldown_reason(
+                candidate.provider, candidate.model
+            )
             if cooldown_reason:
                 raise VisionGradingError(cooldown_reason)
             if billing_context:
@@ -583,7 +594,7 @@ def _call_model_with_route(
                     if candidate.dynamic
                     else _post_legacy_model(candidate, messages=messages)
                 )
-            _raise_for_model_response(response, candidate.provider)
+            _raise_for_model_response(response, candidate.provider, candidate.model)
             payload = response.json()
             if not isinstance(payload, dict):
                 raise VisionGradingError("模型未返回有效对象")
