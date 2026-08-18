@@ -1409,7 +1409,7 @@ def _snap_standard_answer(
         "你是一位耐心的中学老师。请独立解答下面的题目，不要臆测题目之外的条件；"
         "题目信息不足时在 explanation 里说明缺少什么。"
         "只返回 JSON，不要 Markdown："
-        '{"answer":"最终答案","explanation":"分步讲解，说人话，让学生看懂思路"}\n'
+        '{"answer":"最终答案","explanation":"分步讲解，说人话，让学生看懂思路；公式一律用 \\(...\\) 包裹，不要裸写 LaTeX 命令"}\n'
         f"题目：{question_text}"
     )
     try:
@@ -1612,7 +1612,9 @@ async def snap_question_stream(
         """
         prompt = (
             "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
-            "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。\n"
+            "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。"
+            "所有公式必须用 \\(...\\) 包裹（行内）或 \\[...\\] 单独成行，"
+            "不要裸写 \\frac 这类 LaTeX 命令。\n"
             f"题目：{question_text}"
         )
         payload = {

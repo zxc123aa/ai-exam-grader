@@ -110,32 +110,48 @@ function renderMath(latex: string, displayMode: boolean, key: number) {
   )
 }
 
+/**
+ * 模型偶尔输出不带 \(...\) 定界符的裸 LaTeX（如 3:4=\frac{3}{4}）。
+ * 识别「含已知数学命令的片段」：命令白名单（\frac \div \sqrt 等）触发，
+ * 前后允许数学字符，遇到中文/标点即断；`*` 不放行进字符集，避免吃掉 **加粗**。
+ */
+const MATH_CHARS = "A-Za-z0-9{}()^_=+\\-/:.,%|<>°\\\\ "
+const BARE_MATH_SPLIT = new RegExp(
+  `([${MATH_CHARS}]*\\\\(?:frac|dfrac|sqrt|div|times|cdot|pm|mp|leq|geq|neq|approx|equiv|sin|cos|tan|log|ln|exp|sum|prod|int|lim|alpha|beta|gamma|delta|theta|lambda|mu|pi|sigma|phi|omega|Delta|Omega|angle|triangle|perp|parallel|circ|text|overline|underline|vec|binom|quad|qquad|left|right|infty|partial|Rightarrow|rightarrow|Leftarrow|leftarrow|Leftrightarrow|leftrightarrow|ldots|cdots)[${MATH_CHARS}]*)`,
+)
+
 function renderInline(text: string): ReactNode[] {
-  // 先按公式分隔符切，再在每个文本段里处理 **加粗** 和 `行内代码`
+  // 先按公式分隔符切，再在每个文本段里处理裸公式、**加粗** 和 `行内代码`
   const parts = text.split(/(\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\])/)
   return parts.map((part, index) => {
     const inlineMath = part.match(/^\\\(([\s\S]*?)\\\)$/)
     if (inlineMath) return renderMath(inlineMath[1], false, index)
     const displayMath = part.match(/^\\\[([\s\S]*?)\\\]$/)
     if (displayMath) return renderMath(displayMath[1], true, index)
-    const boldParts = part.split(/\*\*([\s\S]+?)\*\*/)
+    const mathishParts = part.split(BARE_MATH_SPLIT)
     return (
       <Fragment key={index}>
-        {boldParts.map((segment, i) => {
-          if (i % 2 === 1) return <strong key={i}>{segment}</strong>
-          const codeParts = segment.split(/`([^`]+)`/)
-          return codeParts.map((piece, j) =>
-            j % 2 === 1 ? (
-              <code
-                key={`${i}-${j}`}
-                className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]"
-              >
-                {piece}
-              </code>
-            ) : (
-              piece
-            ),
-          )
+        {mathishParts.map((sub, k) => {
+          if (k % 2 === 1) {
+            return renderMath(sub.trim(), false, index * 1000 + k)
+          }
+          const boldParts = sub.split(/\*\*([\s\S]+?)\*\*/)
+          return boldParts.map((segment, i) => {
+            if (i % 2 === 1) return <strong key={`${k}-${i}`}>{segment}</strong>
+            const codeParts = segment.split(/`([^`]+)`/)
+            return codeParts.map((piece, j) =>
+              j % 2 === 1 ? (
+                <code
+                  key={`${k}-${i}-${j}`}
+                  className="rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]"
+                >
+                  {piece}
+                </code>
+              ) : (
+                piece
+              ),
+            )
+          })
         })}
       </Fragment>
     )
