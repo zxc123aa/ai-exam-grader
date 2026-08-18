@@ -144,6 +144,13 @@ function VariantPracticeSection({
     queryKey: ["my-practice-sheet", activeId],
     queryFn: () => StudentsService.readMyPracticeSheet({ sheetId: activeId! }),
     enabled: Boolean(activeId),
+    // 判分是后台任务：有 pending 作答时每 4 秒轮询，判完自动停
+    refetchInterval: (query) => {
+      const attempts = query.state.data?.attempts ?? []
+      return attempts.some((attempt) => attempt.status === "pending")
+        ? 4000
+        : false
+    },
   })
 
   const sheet = activeQuery.data
@@ -376,7 +383,10 @@ function VariantSheetPaper({
       <ol className="flex flex-col gap-8 border-t pt-6">
         {items.map((item, index) => {
           const attempt = attemptByIndex.get(index)
-          const verdict = attempt ? VERDICT_META[attempt.verdict] : null
+          const graded =
+            attempt?.status === "graded" && attempt.verdict ? attempt : null
+          const verdict = graded?.verdict ? VERDICT_META[graded.verdict] : null
+          const judging = attempt?.status === "pending"
           return (
             <li
               key={`q-${index}`}
@@ -388,6 +398,9 @@ function VariantSheetPaper({
                   <span className={`font-medium text-sm ${verdict.className}`}>
                     {verdict.label}
                   </span>
+                )}
+                {judging && (
+                  <span className="text-muted-foreground text-sm">判分中…</span>
                 )}
               </div>
               <p className="whitespace-pre-wrap text-sm leading-7">

@@ -15,6 +15,7 @@ from app.api.deps import (
     get_user_from_authorization_header,
     require_roles,
 )
+from app.core.config import settings
 from app.models import (
     ClassGroup,
     Exam,
@@ -29,6 +30,7 @@ from app.models import (
     LearnerProfilePublic,
     LearningAdviceFocusPoint,
     LearningAdvicePublic,
+    PracticeAttemptStatus,
     PracticeSheet,
     PracticeSheetAttempt,
     PracticeSheetAttemptPublic,
@@ -37,7 +39,6 @@ from app.models import (
     PracticeSheetListItem,
     PracticeSheetPublic,
     PracticeSheetsPublic,
-    PracticeVerdict,
     ScoreRelease,
     ScoreReleaseItem,
     ScoreReleaseStatus,
@@ -63,7 +64,6 @@ from app.models import (
     WrongQuestionEntry,
     WrongQuestionEntryStatus,
     WrongQuestionReview,
-    WrongQuestionReviewResult,
     WrongQuestionSource,
     get_datetime_utc,
 )
@@ -1044,6 +1044,7 @@ def _practice_sheet_public(
             PracticeSheetAttemptPublic(
                 id=attempt.id,
                 item_index=attempt.item_index,
+                status=attempt.status,
                 verdict=attempt.verdict,
                 score=attempt.score,
                 comment=attempt.comment,
@@ -1188,46 +1189,6 @@ def read_my_practice_sheet(
     return _practice_sheet_public(session, sheet)
 
 
-def _transcribe_practice_answer(image_bytes: bytes, defaults: dict[str, Any]) -> str:
-    """视觉模型读出照片里学生的手写作答。"""
-    image = base64.b64encode(image_bytes).decode("ascii")
-    prompt = (
-        "请读出这张照片里学生的手写作答内容，包括算式、选项、数值、单位和符号；"
-        "看不清的位置写「看不清」，不要脑补。"
-        '只返回 JSON，不要 Markdown：{"answer_text":"作答内容"}'
-    )
-    try:
-        parsed, _used_model, _elapsed_ms = call_json_model(
-            provider=defaults["vision_provider"],
-            model=defaults["vision_model"],
-            fallback_models=[],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:image/png;base64,{image}"},
-                        },
-                    ],
-                }
-            ],
-        )
-    except VisionGradingError as exc:
-        raise HTTPException(
-            status_code=502, detail=f"作答识别失败，请重试：{exc}"
-        ) from exc
-    return str(parsed.get("answer_text") or "").strip()
-
-
-_ATTEMPT_REVIEW_RESULT = {
-    PracticeVerdict.CORRECT: WrongQuestionReviewResult.GOOD,
-    PracticeVerdict.PARTIAL: WrongQuestionReviewResult.HARD,
-    PracticeVerdict.WRONG: WrongQuestionReviewResult.AGAIN,
-}
-
-
 @router.post(
     "/me/practice-sheets/{sheet_id}/attempts",
     response_model=PracticeSheetAttemptPublic,
@@ -1239,10 +1200,11 @@ async def create_my_practice_attempt(
     item_index: Annotated[int, Form()],
     image: Annotated[UploadFile, File()],
 ) -> Any:
-    """拍照提交变式练习某题的作答：识别 → 判分 → 联动该知识点错题的复习调度。
+    """拍照提交变式练习某题的作答：立即返回 pending，后台判分。
 
-    判对说明原错题对应的知识点已会，推进复习间隔；判错打回重练。
-    每题只保留最新一次判分。
+    识别+判分要两次模型调用（1-2 分钟），同步等待在弱网络下长连接必断，
+    前端拿不到结果。改为提交即返回，前端轮询 sheet 详情拿 verdict。
+    判对推进该知识点在册错题的复习间隔，判错打回重练。每题只保留最新一次。
     """
     get_current_student_profile(session=session, current_user=current_user)
     learner, _student = get_current_learner(session=session, current_user=current_user)
@@ -1257,29 +1219,6 @@ async def create_my_practice_attempt(
         raise HTTPException(status_code=422, detail="请先选择作答照片")
     if len(image_bytes) > SNAP_MAX_IMAGE_BYTES:
         raise HTTPException(status_code=422, detail="图片超过 10MB，请压缩后再上传")
-    model_image_bytes = downscale_image_for_model(image_bytes)
-
-    defaults = get_grading_defaults(session)
-    student_answer = _transcribe_practice_answer(model_image_bytes, defaults)
-    if not student_answer:
-        raise HTTPException(status_code=422, detail="没认出作答内容，请拍清楚一点再试")
-    item = items[item_index]
-    standard = str(item.get("answer") or "")
-    analysis = str(item.get("analysis") or "")
-    score, comment = _snap_grade_call(
-        question_text=str(item.get("question_text") or ""),
-        student_answer=student_answer,
-        standard_answer=f"{standard}\n解析：{analysis}" if analysis else standard,
-        max_score=1.0,
-        defaults=defaults,
-    )
-    verdict = (
-        PracticeVerdict.CORRECT
-        if score >= 0.99
-        else PracticeVerdict.WRONG
-        if score <= 0
-        else PracticeVerdict.PARTIAL
-    )
 
     await image.seek(0)
     stored = await store_upload_file(
@@ -1295,44 +1234,28 @@ async def create_my_practice_attempt(
         attempt = PracticeSheetAttempt(sheet_id=sheet.id, learner_id=learner.id)
     attempt.item_index = item_index
     attempt.stored_file_id = stored.id
-    attempt.verdict = verdict
-    attempt.score = score
-    attempt.comment = comment
-    attempt.student_answer_text = student_answer
-    attempt.model = str(defaults["grading_model"])
+    attempt.status = PracticeAttemptStatus.PENDING
+    attempt.verdict = None
+    attempt.comment = ""
+    attempt.student_answer_text = ""
     session.add(attempt)
     session.commit()
     session.refresh(attempt)
 
-    # 联动复习调度：这个知识点的在册错题按 verdict 推进/打回
-    review_result = _ATTEMPT_REVIEW_RESULT[verdict]
-    seed_rows = session.exec(
-        select(WrongQuestionEntry, WrongQuestionSource)
-        .select_from(WrongQuestionEntry)
-        .join(
-            WrongQuestionSource,
-            WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
-        )
-        .where(
-            *_my_wrongbook_scope(learner),
-            col(WrongQuestionEntry.is_wrong).is_(True),
-        )
-    ).all()
-    for entry, source in seed_rows:
-        if sheet.knowledge_point not in (source.knowledge_point_names or []):
-            continue
-        wrongbook_review.record_review(
-            session,
-            entry=entry,
-            source=source,
-            learner=learner,
-            user_id=current_user.id,
-            result=review_result,
-        )
+    if settings.ENVIRONMENT == "local":
+        from app.services.practice_grading import run_practice_attempt
+
+        run_practice_attempt(str(attempt.id))
+        session.refresh(attempt)
+    else:
+        from app.worker import process_practice_attempt
+
+        process_practice_attempt.send(str(attempt.id))
 
     return PracticeSheetAttemptPublic(
         id=attempt.id,
         item_index=attempt.item_index,
+        status=attempt.status,
         verdict=attempt.verdict,
         score=attempt.score,
         comment=attempt.comment,

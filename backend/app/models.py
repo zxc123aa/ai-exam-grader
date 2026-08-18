@@ -3128,8 +3128,18 @@ class PracticeVerdict(StrEnum):
     WRONG = "wrong"
 
 
+class PracticeAttemptStatus(StrEnum):
+    PENDING = "pending"
+    GRADED = "graded"
+    FAILED = "failed"
+
+
 class PracticeSheetAttempt(SQLModel, table=True):
-    """变式练习的一次作答判分记录。每卷每题只保留最新一次。"""
+    """变式练习的一次作答判分记录。每卷每题只保留最新一次。
+
+    判分走异步任务：提交即返回（pending），worker 判完写 verdict。
+    同步等两次模型调用要 1-2 分钟，弱网络下长连接必断。
+    """
 
     __table_args__ = (
         UniqueConstraint("sheet_id", "item_index", name="uq_practicesheetattempt_item"),
@@ -3146,15 +3156,27 @@ class PracticeSheetAttempt(SQLModel, table=True):
     stored_file_id: uuid.UUID | None = Field(
         default=None, foreign_key="storedfile.id", nullable=True, ondelete="SET NULL"
     )
-    verdict: PracticeVerdict = Field(
+    status: PracticeAttemptStatus = Field(
+        default=PracticeAttemptStatus.PENDING,
+        sa_column=Column(
+            SAEnum(
+                PracticeAttemptStatus,
+                name="practiceattemptstatus",
+                values_callable=lambda enum: [item.value for item in enum],
+            ),
+            nullable=False,
+        ),
+    )
+    verdict: PracticeVerdict | None = Field(
+        default=None,
         sa_column=Column(
             SAEnum(
                 PracticeVerdict,
                 name="practiceverdict",
                 values_callable=lambda enum: [item.value for item in enum],
             ),
-            nullable=False,
-        )
+            nullable=True,
+        ),
     )
     score: float = Field(default=0.0)
     comment: str = Field(default="", max_length=2000)
@@ -3169,7 +3191,8 @@ class PracticeSheetAttempt(SQLModel, table=True):
 class PracticeSheetAttemptPublic(SQLModel):
     id: uuid.UUID
     item_index: int
-    verdict: PracticeVerdict
+    status: PracticeAttemptStatus
+    verdict: PracticeVerdict | None
     score: float
     comment: str
     student_answer_text: str

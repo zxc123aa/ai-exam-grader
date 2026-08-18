@@ -85,7 +85,7 @@ def test_practice_attempt_correct_advances_review(
     )
     sheet_id = created.json()["id"]
 
-    monkeypatch.setattr("app.api.routes.students.call_json_model", _grade_fake(1.0))
+    monkeypatch.setattr("app.services.practice_grading.call_json_model", _grade_fake(1.0))
     response = _submit(client, context["headers"], sheet_id)
     assert response.status_code == 200, response.text
     body = response.json()
@@ -111,7 +111,7 @@ def test_practice_attempt_wrong_pulls_back_review(
 ) -> None:
     context = _advice_context(client, db, "判分乙")
     sheet_id = _make_sheet(client, context["headers"], monkeypatch)["id"]
-    monkeypatch.setattr("app.api.routes.students.call_json_model", _grade_fake(0.0))
+    monkeypatch.setattr("app.services.practice_grading.call_json_model", _grade_fake(0.0))
     response = _submit(client, context["headers"], sheet_id)
     assert response.status_code == 200, response.text
     assert response.json()["verdict"] == "wrong"
@@ -128,7 +128,7 @@ def test_practice_attempt_validates_input(
 ) -> None:
     context = _advice_context(client, db, "判分丙")
     sheet_id = _make_sheet(client, context["headers"], monkeypatch)["id"]
-    monkeypatch.setattr("app.api.routes.students.call_json_model", _grade_fake(1.0))
+    monkeypatch.setattr("app.services.practice_grading.call_json_model", _grade_fake(1.0))
     # 题号越界
     out_of_range = _submit(client, context["headers"], sheet_id, item_index=9)
     assert out_of_range.status_code == 422
@@ -143,10 +143,10 @@ def test_practice_attempt_replaces_previous(
 ) -> None:
     context = _advice_context(client, db, "判分戊")
     sheet_id = _make_sheet(client, context["headers"], monkeypatch)["id"]
-    monkeypatch.setattr("app.api.routes.students.call_json_model", _grade_fake(0.0))
+    monkeypatch.setattr("app.services.practice_grading.call_json_model", _grade_fake(0.0))
     first = _submit(client, context["headers"], sheet_id)
     assert first.json()["verdict"] == "wrong"
-    monkeypatch.setattr("app.api.routes.students.call_json_model", _grade_fake(1.0))
+    monkeypatch.setattr("app.services.practice_grading.call_json_model", _grade_fake(1.0))
     second = _submit(client, context["headers"], sheet_id)
     assert second.json()["verdict"] == "correct"
     detail = client.get(

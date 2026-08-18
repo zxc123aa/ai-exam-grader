@@ -3587,7 +3587,8 @@ export type PracticeVerdict = 'correct' | 'partial' | 'wrong';
 export type PracticeSheetAttemptPublic = {
     id: string;
     item_index: number;
-    verdict: PracticeVerdict;
+    status: 'pending' | 'graded' | 'failed';
+    verdict: PracticeVerdict | null;
     score: number;
     comment: string;
     student_answer_text: string;

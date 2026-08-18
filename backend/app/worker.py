@@ -102,6 +102,14 @@ def run_wrongbook_snapshot(release_id: str) -> None:
         snapshot_release(session, uuid.UUID(release_id))
 
 
+@dramatiq.actor(max_retries=2, min_backoff=5_000, time_limit=600_000)
+def process_practice_attempt(attempt_id: str) -> None:
+    """变式练习作答判分：识别+判分两次模型调用，同步等要 1-2 分钟。"""
+    from app.services.practice_grading import run_practice_attempt
+
+    run_practice_attempt(attempt_id)
+
+
 @dramatiq.actor(max_retries=3, min_backoff=5_000, time_limit=1_800_000)
 def process_wrongbook_snapshot(release_id: str) -> None:
     """成绩发布后把学生逐题结果快照进错题本。
