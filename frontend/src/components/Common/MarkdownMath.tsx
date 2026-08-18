@@ -104,6 +104,7 @@ function renderMath(latex: string, displayMode: boolean, key: number) {
       key={key}
       className={displayMode ? "my-2 block overflow-x-auto" : undefined}
       // KaTeX 输出是自身生成的安全 HTML
+      // biome-ignore lint/security/noDangerouslySetInnerHtml: KaTeX 自生成 HTML，无用户输入注入
       dangerouslySetInnerHTML={{ __html: html }}
     />
   )
@@ -141,6 +142,55 @@ function renderInline(text: string): ReactNode[] {
   })
 }
 
+/** 表格行拆单元格：去掉首尾 | 再按 | 切。 */
+function parseTableRow(line: string): string[] {
+  const stripped = line.replace(/^\|/, "").replace(/\|$/, "")
+  return stripped.split("|").map((cell) => cell.trim())
+}
+
+/**  markdown 表格块：每行以 | 开头，且第二行是 |---| 分隔行。 */
+function isTableBlock(lines: string[]): boolean {
+  return (
+    lines.length >= 2 &&
+    lines.every((line) => line.startsWith("|")) &&
+    /^\|[\s:|-]+\|$/.test(lines[1])
+  )
+}
+
+function renderTable(lines: string[], key: number) {
+  const rows = lines.filter((_, i) => i !== 1).map(parseTableRow)
+  const [head, ...body] = rows
+  return (
+    <div key={key} className="my-2 overflow-x-auto">
+      <table className="w-full border-collapse text-sm">
+        <thead>
+          <tr>
+            {head.map((cell, ci) => (
+              <th
+                key={ci}
+                className="whitespace-nowrap border-b px-2 py-1.5 text-left font-medium"
+              >
+                {renderInline(cell)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((row, ri) => (
+            <tr key={ri} className="border-b border-border/50 last:border-0">
+              {row.map((cell, ci) => (
+                <td key={ci} className="px-2 py-1.5 align-top">
+                  {renderInline(cell)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function blockClass(marker: string): string {
   if (marker === "###") return "mt-3 font-semibold text-sm"
   if (marker === "##") return "mt-3 font-semibold text-[15px]"
@@ -164,6 +214,11 @@ export function MarkdownMath({
       {blocks.map((block, index) => {
         const trimmed = block.trim()
         if (!trimmed) return null
+        const lines = trimmed
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+        if (isTableBlock(lines)) return renderTable(lines, index)
         const header = trimmed.match(/^(#{1,6})\s+(.*)$/s)
         if (header) {
           return (
