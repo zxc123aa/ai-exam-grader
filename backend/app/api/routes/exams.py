@@ -3039,13 +3039,23 @@ def recognize_exam_document_page_with_reference_algorithm(
     document_id: uuid.UUID,
     page_number: int,
 ) -> dict:
-    document, _stored_file = get_exam_document_for_user(
+    document, stored_file = get_exam_document_for_user(
         session=session,
         current_user=current_user,
         exam_id=exam_id,
         document_id=document_id,
         require_write=True,
     )
+    # 结果按 文件+页 落盘缓存：识别要约 1 分钟，弱网络下客户端长连接可能
+    # 中断，重试时命中缓存秒回，不会白等第二轮模型调用。文件内容不可变。
+    cache_dir = Path(settings.STORAGE_CACHE_DIR) / "reference-recognition"
+    cache_path = cache_dir / f"{stored_file.id}-p{page_number}.json"
+    try:
+        cached = json.loads(cache_path.read_bytes())
+        if isinstance(cached, dict) and cached.get("results") is not None:
+            return cached
+    except (OSError, ValueError):
+        pass
     documents = session.exec(
         select(ExamDocument, StoredFile)
         .join(StoredFile, ExamDocument.stored_file_id == StoredFile.id)
@@ -3061,7 +3071,7 @@ def recognize_exam_document_page_with_reference_algorithm(
     try:
         exam = session.get(Exam, exam_id)
         defaults = get_grading_defaults(session, exam.org_id if exam else None)
-        return process_stored_file_page_context(
+        result = process_stored_file_page_context(
             documents=list(documents),
             target_document_id=document.id,
             target_page_number=page_number,
@@ -3074,6 +3084,12 @@ def recognize_exam_document_page_with_reference_algorithm(
             status_code=502,
             detail=f"参考算法当前页识别失败：{exc}",
         ) from exc
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(json.dumps(result, ensure_ascii=False).encode())
+    except OSError:
+        pass
+    return result
 
 
 @router.post("/{exam_id}/submissions", response_model=StudentSubmissionPublic)

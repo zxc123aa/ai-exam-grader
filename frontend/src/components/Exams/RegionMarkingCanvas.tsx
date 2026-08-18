@@ -485,16 +485,25 @@ async function recognizeReferenceDocumentPage(
   documentId: string,
   pageNumber: number,
 ): Promise<ReferenceRecognitionResponse> {
+  // 识别要约 1 分钟，弱网络下连接可能被中间层掐断；服务端按 文件+页 缓存
+  // 结果，断线后重试一次通常秒回缓存，不会白等第二轮模型调用。
   const token = localStorage.getItem("access_token")
-  const response = await fetch(
-    `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${documentId}/pages/${pageNumber}/reference-recognition`,
-    {
-      method: "POST",
-      headers: {
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  const call = () =>
+    fetch(
+      `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${documentId}/pages/${pageNumber}/reference-recognition`,
+      {
+        method: "POST",
+        headers: {
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
       },
-    },
-  )
+    )
+  let response: Response
+  try {
+    response = await call()
+  } catch {
+    response = await call()
+  }
   if (!response.ok) throw new Error(await response.text())
   return response.json()
 }
