@@ -1605,7 +1605,11 @@ async def snap_question_stream(
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream_answer(question_text: str):
-        """逐段 yield 一道题的解答文本。"""
+        """逐段 yield 一道题的解答文本。
+
+        中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 3 趟）；
+        一旦流出内容就不重试，半截答案直接保留，避免重复段落。
+        """
         prompt = (
             "你是一位耐心的中学老师。请独立解答下面的题目，先给最终答案，"
             "再分步讲解思路，说人话让学生看懂。直接输出 Markdown 文本，不要 JSON。\n"
@@ -1616,33 +1620,47 @@ async def snap_question_stream(
             "messages": [{"role": "user", "content": prompt}],
             "stream": True,
         }
-        async with httpx.AsyncClient(
-            timeout=httpx.Timeout(180.0, connect=15.0)
-        ) as client:
-            async with client.stream(
-                "POST",
-                provider_gateway.endpoint(target),
-                headers={"Authorization": f"Bearer {target.api_key}"},
-                json=payload,
-            ) as response:
-                if response.status_code != 200:
-                    raise VisionGradingError(f"模型服务返回 {response.status_code}")
-                async for line in response.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if data == "[DONE]":
-                        break
-                    try:
-                        chunk = json.loads(data)
-                        choices = chunk.get("choices") or []
-                        if not choices:
-                            continue  # 末包只带 usage
-                        delta = choices[0].get("delta", {}).get("content")
-                    except ValueError:
-                        continue
-                    if delta:
-                        yield delta
+        last_error: Exception | None = None
+        for _attempt in range(3):
+            emitted = False
+            try:
+                # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(60.0, connect=10.0)
+                ) as client:
+                    async with client.stream(
+                        "POST",
+                        provider_gateway.endpoint(target),
+                        headers={"Authorization": f"Bearer {target.api_key}"},
+                        json=payload,
+                    ) as response:
+                        if response.status_code != 200:
+                            raise VisionGradingError(
+                                f"模型服务返回 {response.status_code}"
+                            )
+                        async for line in response.aiter_lines():
+                            if not line.startswith("data:"):
+                                continue
+                            data = line[5:].strip()
+                            if data == "[DONE]":
+                                break
+                            try:
+                                chunk = json.loads(data)
+                                choices = chunk.get("choices") or []
+                                if not choices:
+                                    continue  # 末包只带 usage
+                                delta = choices[0].get("delta", {}).get("content")
+                            except ValueError:
+                                continue
+                            if delta:
+                                emitted = True
+                                yield delta
+                return
+            except Exception as exc:
+                last_error = exc
+                if emitted:
+                    return
+        raise VisionGradingError(str(last_error)[:200] if last_error else "生成失败")
 
     async def event_stream():
         yield sse({"type": "questions", "items": questions})
