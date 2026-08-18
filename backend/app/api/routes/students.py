@@ -1062,7 +1062,7 @@ def read_my_learning_advice(
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
             model=defaults["grading_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["fallback_models"]],
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
@@ -1173,7 +1173,7 @@ def create_my_practice_sheet(
         parsed, used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
             model=defaults["grading_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["fallback_models"]],
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
@@ -1346,7 +1346,7 @@ def _snap_extract_multi(
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["vision_provider"],
             model=defaults["vision_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["vision_fallback_models"]],
             messages=[
                 {
                     "role": "user",
@@ -1387,7 +1387,7 @@ def _snap_transcribe(image_bytes: bytes, defaults: dict[str, Any]) -> str:
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["vision_provider"],
             model=defaults["vision_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["vision_fallback_models"]],
             messages=[
                 {
                     "role": "user",
@@ -1423,7 +1423,7 @@ def _snap_standard_answer(
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
             model=defaults["grading_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["fallback_models"]],
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
@@ -1462,7 +1462,7 @@ def _snap_grade_call(
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
             model=defaults["grading_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["fallback_models"]],
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
@@ -1503,7 +1503,7 @@ def _snap_solve_and_grade_all(
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["grading_provider"],
             model=defaults["grading_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["fallback_models"]],
             messages=[{"role": "user", "content": prompt}],
         )
     except VisionGradingError as exc:
@@ -1567,7 +1567,7 @@ def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> lis
         parsed, _used_model, _elapsed_ms = call_json_model(
             provider=defaults["vision_provider"],
             model=defaults["vision_model"],
-            fallback_models=[],
+            fallback_models=[str(item) for item in defaults["vision_fallback_models"]],
             messages=[
                 {
                     "role": "user",
@@ -1749,7 +1749,7 @@ def _snap_grade_one(
     parsed, _used_model, _elapsed_ms = call_json_model(
         provider=defaults["grading_provider"],
         model=defaults["grading_model"],
-        fallback_models=[],
+        fallback_models=[str(item) for item in defaults["fallback_models"]],
         messages=[{"role": "user", "content": prompt}],
     )
     try:
