@@ -1,9 +1,4 @@
-import {
-  useMutation,
-  useQueries,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
 import {
   BookOpen,
@@ -50,6 +45,7 @@ import {
   fetchSubmissionRegionCropBlob,
 } from "@/lib/submission-media"
 import { cn } from "@/lib/utils"
+import { workflowApi } from "@/lib/workflow-api"
 import { handleError } from "@/utils"
 
 export const Route = createFileRoute("/_layout/exams_/$examId/workbench")({
@@ -437,28 +433,29 @@ function GradingWorkbench() {
       )
   }, [submissionsQuery.data, scoreSummaryQuery.data])
 
-  // 并行拉取每个工作 submission 的批注，组装「题目 → [学生批注]」横批矩阵
-  const annotationQueries = useQueries({
-    queries: students.map((student) => ({
-      queryKey: ["submission-annotations", examId, student.submissionId],
-      queryFn: () =>
-        ExamsService.readSubmissionAnnotations({
-          examId,
-          submissionId: student.submissionId,
-        }),
-    })),
+  // 横批矩阵数据：一次请求拿全考试批注（替代逐学生 N+1），按 submission 归位
+  const examAnnotationsQuery = useQuery({
+    queryKey: ["exam-annotations", examId],
+    queryFn: () =>
+      workflowApi<{ data: SubmissionAnnotationPublic[] }>(
+        `/exams/${examId}/annotations`,
+      ),
   })
 
-  const annotationsByStudent = useMemo(
-    () =>
-      new Map<string, SubmissionAnnotationPublic[]>(
-        students.map((student, index) => [
-          student.key,
-          annotationQueries[index]?.data?.data ?? [],
-        ]),
-      ),
-    [students, annotationQueries],
-  )
+  const annotationsByStudent = useMemo(() => {
+    const bySubmission = new Map<string, SubmissionAnnotationPublic[]>()
+    for (const annotation of examAnnotationsQuery.data?.data ?? []) {
+      const list = bySubmission.get(annotation.submission_id) ?? []
+      list.push(annotation)
+      bySubmission.set(annotation.submission_id, list)
+    }
+    return new Map<string, SubmissionAnnotationPublic[]>(
+      students.map((student) => [
+        student.key,
+        bySubmission.get(student.submissionId) ?? [],
+      ]),
+    )
+  }, [students, examAnnotationsQuery.data])
 
   const standardAnswersByRegionId = useMemo(
     () =>
@@ -712,7 +709,7 @@ function GradingWorkbench() {
     onError: handleError.bind(showErrorToast),
     onSettled: () => {
       queryClient.invalidateQueries({
-        queryKey: ["submission-annotations", examId],
+        queryKey: ["exam-annotations", examId],
       })
       queryClient.invalidateQueries({
         queryKey: ["exam-score-summary", examId],

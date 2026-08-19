@@ -4303,6 +4303,43 @@ def read_submission_annotation_crop(
 
 
 @router.get(
+    "/{exam_id}/annotations",
+    response_model=SubmissionAnnotationsPublic,
+)
+def read_exam_annotations(
+    session: SessionDep, current_user: CurrentUser, exam_id: uuid.UUID
+) -> Any:
+    """全考试所有答卷的批注（横批工作台用）：一次请求替代逐学生 N+1。
+
+    带 submission_id，前端按现有学生分组归位即可。
+    """
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    statement = (
+        select(SubmissionAnnotation)
+        .join(
+            StudentSubmission,
+            SubmissionAnnotation.submission_id == StudentSubmission.id,  # type: ignore[arg-type]
+        )
+        .where(StudentSubmission.exam_id == exam_id)
+        .order_by(col(SubmissionAnnotation.created_at).asc())
+    )
+    # 共享批卷：被分配的老师只拿负责班级的批注
+    restricted = restricted_assigned_classes(session, current_user, exam)
+    if restricted is not None:
+        statement = statement.where(submission_class_filter(*restricted))
+    annotations = session.exec(statement).all()
+    return SubmissionAnnotationsPublic(
+        data=[
+            SubmissionAnnotationPublic.model_validate(annotation)
+            for annotation in annotations
+        ],
+        count=len(annotations),
+    )
+
+
+@router.get(
     "/{exam_id}/submissions/{submission_id}/annotations",
     response_model=SubmissionAnnotationsPublic,
 )

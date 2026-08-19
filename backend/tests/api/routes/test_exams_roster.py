@@ -152,3 +152,39 @@ def test_reassign_requires_identity_info(client: TestClient, db: Session) -> Non
         json={},
     )
     assert r.status_code == 422
+
+
+def test_exam_annotations_returns_all_submissions_annotations(
+    client: TestClient, db: Session
+) -> None:
+    """横批合并接口：一次返回全考试批注，带 submission_id。"""
+    from app.models import SubmissionAnnotation
+
+    _org, owner, headers = _school(client, db, "横批")
+    exam = _exam(client, headers, "横批考试")
+    sub_a = _submission(db, exam_id=exam["id"], uploader_id=owner.id, student_name="甲")
+    sub_b = _submission(db, exam_id=exam["id"], uploader_id=owner.id, student_name="乙")
+    for submission, label in ((sub_a, "Q1"), (sub_a, "Q2"), (sub_b, "Q1")):
+        db.add(
+            SubmissionAnnotation(
+                submission_id=submission.id,
+                label=label,
+                x=0.1,
+                y=0.1,
+                width=0.2,
+                height=0.2,
+            )
+        )
+    db.commit()
+
+    r = client.get(
+        f"{settings.API_V1_STR}/exams/{exam['id']}/annotations", headers=headers
+    )
+    assert r.status_code == 200, r.text
+    data = r.json()["data"]
+    assert len(data) == 3
+    by_sub = {}
+    for item in data:
+        by_sub.setdefault(item["submission_id"], []).append(item["label"])
+    assert sorted(by_sub[str(sub_a.id)]) == ["Q1", "Q2"]
+    assert by_sub[str(sub_b.id)] == ["Q1"]
