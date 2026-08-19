@@ -1,3 +1,4 @@
+import asyncio
 import base64
 import hashlib
 import json
@@ -1704,36 +1705,74 @@ async def snap_question_stream(
 
     async def event_stream():
         yield sse({"type": "questions", "items": questions})
-        solved: list[dict] = []
-        for index, question in enumerate(questions):
-            yield sse({"type": "answer-start", "index": index})
-            text_parts: list[str] = []
-            error_text: str | None = None
-            try:
-                async for delta in stream_answer(question):
-                    text_parts.append(delta)
-                    yield sse({"type": "answer-delta", "index": index, "text": delta})
-            except Exception as exc:
-                error_text = str(exc)[:200]
-            if text_parts:
-                solved.append({"question": question, "answer": "".join(text_parts)})
-                yield sse({"type": "answer-done", "index": index})
-            else:
-                # 断流或空响应不能标完成——否则前端展示一张空解答卡
-                yield sse(
-                    {
-                        "type": "answer-error",
-                        "index": index,
-                        "text": error_text or "没有生成解答，请重试",
+        # 逐题解答并发 3 路：整页串行要 5-8 分钟（每题 30-60s 长文本），
+        # 并发后约 1/3 时间；事件带 index，前端各卡独立更新，无需保序。
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        semaphore = asyncio.Semaphore(3)
+        solved: dict[int, dict] = {}
+
+        async def worker(index: int, question: str) -> None:
+            async with semaphore:
+                text_parts: list[str] = []
+                error_text: str | None = None
+                await queue.put(sse({"type": "answer-start", "index": index}))
+                try:
+                    async for delta in stream_answer(question):
+                        text_parts.append(delta)
+                        await queue.put(
+                            sse(
+                                {
+                                    "type": "answer-delta",
+                                    "index": index,
+                                    "text": delta,
+                                }
+                            )
+                        )
+                except Exception as exc:
+                    error_text = str(exc)[:200]
+                if text_parts:
+                    solved[index] = {
+                        "question": question,
+                        "answer": "".join(text_parts),
                     }
-                )
+                    await queue.put(sse({"type": "answer-done", "index": index}))
+                else:
+                    # 断流或空响应不能标完成——否则前端展示一张空解答卡
+                    await queue.put(
+                        sse(
+                            {
+                                "type": "answer-error",
+                                "index": index,
+                                "text": error_text or "没有生成解答，请重试",
+                            }
+                        )
+                    )
+                await queue.put(None)  # 本题结束信号
+
+        tasks = [
+            asyncio.create_task(worker(index, question))
+            for index, question in enumerate(questions)
+        ]
+        try:
+            remaining = len(tasks)
+            while remaining:
+                message = await queue.get()
+                if message is None:
+                    remaining -= 1
+                else:
+                    yield message
+        finally:
+            # 客户端断连时取消剩余任务，别让模型调用白跑
+            for task in tasks:
+                task.cancel()
         if solved:
+            ordered = [solved[index] for index in sorted(solved)]
             _save_snap_record(
                 session,
                 current_user.id,
                 mode="solve",
-                payload={"kind": "solve", "items": solved},
-                title_source=solved[0]["question"],
+                payload={"kind": "solve", "items": ordered},
+                title_source=ordered[0]["question"],
             )
         yield sse({"type": "done"})
 
@@ -1821,30 +1860,57 @@ async def snap_grade_stream(
                 ],
             }
         )
-        graded: list[dict] = []
-        for index, (question, answer) in enumerate(items):
-            try:
-                item = await to_thread(
-                    _snap_grade_one,
-                    question_text=question,
-                    student_answer=answer,
-                    max_score=max_score,
-                    defaults=defaults,
-                )
-            except Exception as exc:
-                # 单题失败不拖垮整页：这张卡标错误，其余题继续
-                yield sse(
-                    {
-                        "type": "grade-item-error",
-                        "index": index,
-                        "text": str(exc)[:200],
-                    }
-                )
-                continue
-            graded.append(item)
-            yield sse({"type": "grade-item", "index": index, "item": item})
+        # 并发 3 路判分（与解答流式同一模式）：整页串行约 1 分钟，并发后约 1/3
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+        semaphore = asyncio.Semaphore(3)
+        graded: dict[int, dict] = {}
+
+        async def worker(index: int, question: str, answer: str) -> None:
+            async with semaphore:
+                try:
+                    item = await to_thread(
+                        _snap_grade_one,
+                        question_text=question,
+                        student_answer=answer,
+                        max_score=max_score,
+                        defaults=defaults,
+                    )
+                except Exception as exc:
+                    # 单题失败不拖垮整页：这张卡标错误，其余题继续
+                    await queue.put(
+                        sse(
+                            {
+                                "type": "grade-item-error",
+                                "index": index,
+                                "text": str(exc)[:200],
+                            }
+                        )
+                    )
+                else:
+                    graded[index] = item
+                    await queue.put(
+                        sse({"type": "grade-item", "index": index, "item": item})
+                    )
+                await queue.put(None)  # 本题结束信号
+
+        tasks = [
+            asyncio.create_task(worker(index, question, answer))
+            for index, (question, answer) in enumerate(items)
+        ]
+        try:
+            remaining = len(tasks)
+            while remaining:
+                message = await queue.get()
+                if message is None:
+                    remaining -= 1
+                else:
+                    yield message
+        finally:
+            for task in tasks:
+                task.cancel()
         if graded:
-            first = graded[0]
+            ordered = [graded[index] for index in sorted(graded)]
+            first = ordered[0]
             result = SnapGradePublic(
                 question_text=first["question_text"],
                 student_answer=first["student_answer"],
@@ -1852,7 +1918,7 @@ async def snap_grade_stream(
                 max_score=max_score,
                 comment=first["comment"],
                 items=[
-                    SnapGradeItemPublic(**item, max_score=max_score) for item in graded
+                    SnapGradeItemPublic(**item, max_score=max_score) for item in ordered
                 ],
             ).model_dump(mode="json")
             _save_snap_record(
