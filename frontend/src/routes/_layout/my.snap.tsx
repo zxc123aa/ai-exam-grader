@@ -201,9 +201,9 @@ function MySnapPage() {
   const [streamError, setStreamError] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
 
-  // 流式结束后把结果写进 sessionStorage；清空结果时同步清缓存
+  // 卡片每次更新都写进 sessionStorage——生成中途跳走也要能恢复；
+  // 恢复时进行中的卡片会被标成「中断，可重试本题」。清空结果时同步清缓存
   useEffect(() => {
-    if (streaming) return
     try {
       if (streamCards.length === 0 && gradeCards.length === 0) {
         sessionStorage.removeItem(SNAP_STATE_KEY)
@@ -216,7 +216,7 @@ function MySnapPage() {
     } catch {
       // 存储满了就放弃，缓存只是体验优化
     }
-  }, [mode, streamCards, gradeCards, streaming])
+  }, [mode, streamCards, gradeCards])
 
   const submitSolveStream = async (fileToSubmit: File) => {
     setStreaming(true)
