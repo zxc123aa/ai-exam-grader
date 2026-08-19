@@ -94,7 +94,8 @@ function GettingStarted() {
     },
     {
       title: "导入学生花名册",
-      description: "进入班级后导入学生姓名和学号，可按需创建登录账号。",
+      description:
+        "进入班级后导入学生，每行「姓名,学号」。有学号，拍照收卷才能自动归对人，强烈建议带上。",
       count: data.student_count,
       countLabel: "名学生",
       done: data.student_count > 0,

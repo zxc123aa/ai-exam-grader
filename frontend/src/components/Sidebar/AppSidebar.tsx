@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query"
 import { Link as RouterLink, useRouterState } from "@tanstack/react-router"
 import {
   Activity,
@@ -20,7 +21,7 @@ import {
   Users,
   Workflow,
 } from "lucide-react"
-
+import { OrgService } from "@/client"
 import { SidebarAppearance } from "@/components/Common/Appearance"
 import { Logo } from "@/components/Common/Logo"
 import {
@@ -153,6 +154,22 @@ export function AppSidebar() {
   const canManageCommerce =
     role === "platform_superuser" || role === "platform_admin"
   const isSchoolAdmin = role === "school_owner" || role === "school_admin"
+
+  // 学校开通进度：owner 未完成时侧边栏挂「开通引导」入口，完成即消失
+  const onboardingQuery = useQuery({
+    queryKey: ["org-onboarding"],
+    queryFn: () => OrgService.readOrgOnboarding(),
+    enabled: role === "school_owner",
+  })
+  const onboarding = onboardingQuery.data
+  const onboardingLeft = onboarding
+    ? [
+        onboarding.class_count > 0,
+        onboarding.teacher_count > 0,
+        onboarding.student_count > 0,
+        onboarding.teacher_exam_count > 0,
+      ].filter((done) => !done).length
+    : 0
 
   return (
     <Sidebar collapsible="icon">
@@ -463,6 +480,31 @@ export function AppSidebar() {
                 </SidebarMenuItem>
                 {isSchoolAdmin && (
                   <>
+                    {role === "school_owner" && onboardingLeft > 0 && (
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          tooltip="开通引导"
+                          isActive={pathname.startsWith("/getting-started")}
+                          asChild
+                          className={cn(
+                            "transition-all",
+                            pathname.startsWith("/getting-started") &&
+                              ACTIVE_ITEM_CLASS,
+                          )}
+                        >
+                          <RouterLink
+                            to="/getting-started"
+                            onClick={handleMenuClick}
+                          >
+                            <GraduationCap />
+                            <span>开通引导</span>
+                            <span className="ml-auto rounded-full bg-primary px-1.5 font-medium text-[10px] text-primary-foreground">
+                              {onboardingLeft}
+                            </span>
+                          </RouterLink>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    )}
                     <SidebarMenuItem>
                       <SidebarMenuButton
                         tooltip="用户管理"

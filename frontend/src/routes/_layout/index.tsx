@@ -472,10 +472,45 @@ function Dashboard() {
           </div>
         </>
       ) : (
-        <EmptyState
-          title="还没有考试数据"
-          description="创建考试并导入试卷后，工作台会展示批卷进度与班级成绩"
-        />
+        <section
+          className="rounded-2xl border bg-card p-6"
+          data-testid="first-exam-guide"
+        >
+          <h2 className="font-semibold">第一场考试，三步就好</h2>
+          <ol className="mt-4 grid gap-4 sm:grid-cols-3">
+            {[
+              ["新建考试", "填考试名称、班级和科目，一分钟的事。"],
+              [
+                "导入卷子",
+                "跟着页面顶部的步骤条走：导入模板卷和学生答卷，系统会自动扫描校正。",
+              ],
+              [
+                "确认后批改",
+                "确认识别出的题目和参考答案，点「开始批量批改」，出分后只需复核异常卷。",
+              ],
+            ].map(([title, description], index) => (
+              <li key={title} className="flex gap-3">
+                <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-primary font-semibold text-primary-foreground text-sm">
+                  {index + 1}
+                </span>
+                <div>
+                  <div className="font-medium text-sm">{title}</div>
+                  <p className="mt-1 text-muted-foreground text-xs leading-5">
+                    {description}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-5">
+            <Button asChild>
+              <Link to="/exams">
+                <Upload />
+                新建第一场考试
+              </Link>
+            </Button>
+          </div>
+        </section>
       )}
 
       <section className="rounded-2xl border bg-card p-5 shadow-card">
