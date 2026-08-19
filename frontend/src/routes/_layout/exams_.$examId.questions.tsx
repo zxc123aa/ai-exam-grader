@@ -108,27 +108,28 @@ function questionTypeLabel(value: string | null) {
 }
 
 /**
- * 漏题校验：按题号前缀分组（「三、」「填空」等各自从 1 计数），
- * 组内题号应连续；中间断号说明可能有题没识别出来，提醒老师核对原卷。
+ * 漏题校验：从标签提取「题型 + 第 N 题」（如「选择题第 3 题」），
+ * 同题型内题号应连续；中间断号说明可能有题没识别出来，提醒老师核对原卷。
+ * 标签没有规范「第 N 题」的（大题头、合并块）不参与校验，避免误报。
  */
 function findMissingQuestions(items: RecognitionItem[]): string[] {
+  const LABEL_PATTERN =
+    /(单选题|多选题|选择题|填空题|判断题|计算题|证明题|简答题|论述题|解决问题|操作题|作图题|实验题|解答题)第?(\d+)题?/
   const groups = new Map<string, Set<number>>()
   for (const item of items) {
     // 已排除的题也算入序列：它是被识别出来、老师手动排除的，不算漏识别
-    const match =
-      item.question_key.match(/^(\D*)(\d+)/) ?? item.label.match(/^(\D*)(\d+)/)
+    const match = item.label.match(LABEL_PATTERN)
     if (!match) continue
-    const [, prefix, num] = match
-    const group = groups.get(prefix) ?? new Set<number>()
-    group.add(Number(num))
-    groups.set(prefix, group)
+    const group = groups.get(match[1]) ?? new Set<number>()
+    group.add(Number(match[2]))
+    groups.set(match[1], group)
   }
   const missing: string[] = []
-  for (const [prefix, nums] of groups) {
+  for (const [type, nums] of groups) {
     if (nums.size < 3) continue // 题太少不报，避免误报
     const sorted = [...nums].sort((a, b) => a - b)
     for (let n = sorted[0]; n <= sorted[sorted.length - 1]; n++) {
-      if (!nums.has(n)) missing.push(`${prefix || ""}第 ${n} 题`)
+      if (!nums.has(n)) missing.push(`${type}第 ${n} 题`)
     }
   }
   return missing
