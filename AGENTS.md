@@ -47,6 +47,7 @@
 - 后端：FastAPI + SQLModel + PostgreSQL（alembic）+ dramatiq worker + Redis；数据隔离在 `app/services/org_scope.py`。
 - 批改管线：Gemini 视觉转录学生答案 → 客观题规则引擎 / 主观题 LLM 按评分点判分；低置信度进人工复核。
 - 测试：后端 `cd backend && POSTGRES_DB=app_test .venv/bin/python -m pytest tests/ -q`（1 个环境基线失败：照片预处理）；前端 `npx tsc -p tsconfig.build.json` + `npx biome check --write --unsafe` + `npx playwright test`。
+- 发版回归：部署后跑 `node scripts/smoke-prod.mjs`（公网冒烟：双端登录、核心页面、横批 N+1 回归等 23 项，非零退出即失败；`SMOKE_BASE_URL=http://localhost:5173` 可打本地，账号用 SMOKE_*_EMAIL/PASSWORD 覆盖）。
 - 本地服务：uvicorn :8000（--reload）、vite :5173、dramatiq worker、docker（db/redis/ocr/mailcatcher）。E2E 账号 admin@example.com / changethis（platform_superuser）。
 
 ## 当前数据备注
