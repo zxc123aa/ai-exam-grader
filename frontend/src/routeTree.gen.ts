@@ -32,6 +32,7 @@ import { Route as LayoutPlatformCommerceRouteImport } from './routes/_layout/pla
 import { Route as LayoutPlatformOrgIdRouteImport } from './routes/_layout/platform_.$orgId'
 import { Route as LayoutMyWrongbookSheetRouteImport } from './routes/_layout/my.wrongbook-sheet'
 import { Route as LayoutMyWrongbookRouteImport } from './routes/_layout/my.wrongbook'
+import { Route as LayoutMySnapHistoryRouteImport } from './routes/_layout/my.snap-history'
 import { Route as LayoutMySnapRouteImport } from './routes/_layout/my.snap'
 import { Route as LayoutMyKnowledgeRouteImport } from './routes/_layout/my.knowledge'
 import { Route as LayoutMyExamsRouteImport } from './routes/_layout/my.exams'
@@ -161,6 +162,11 @@ const LayoutMyWrongbookRoute = LayoutMyWrongbookRouteImport.update({
   path: '/my/wrongbook',
   getParentRoute: () => LayoutRoute,
 } as any)
+const LayoutMySnapHistoryRoute = LayoutMySnapHistoryRouteImport.update({
+  id: '/my/snap-history',
+  path: '/my/snap-history',
+  getParentRoute: () => LayoutRoute,
+} as any)
 const LayoutMySnapRoute = LayoutMySnapRouteImport.update({
   id: '/my/snap',
   path: '/my/snap',
@@ -258,6 +264,7 @@ export interface FileRoutesByFullPath {
   '/my/exams': typeof LayoutMyExamsRoute
   '/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/my/snap': typeof LayoutMySnapRoute
+  '/my/snap-history': typeof LayoutMySnapHistoryRoute
   '/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
@@ -295,6 +302,7 @@ export interface FileRoutesByTo {
   '/my/exams': typeof LayoutMyExamsRoute
   '/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/my/snap': typeof LayoutMySnapRoute
+  '/my/snap-history': typeof LayoutMySnapHistoryRoute
   '/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/platform/$orgId': typeof LayoutPlatformOrgIdRoute
@@ -335,6 +343,7 @@ export interface FileRoutesById {
   '/_layout/my/exams': typeof LayoutMyExamsRoute
   '/_layout/my/knowledge': typeof LayoutMyKnowledgeRoute
   '/_layout/my/snap': typeof LayoutMySnapRoute
+  '/_layout/my/snap-history': typeof LayoutMySnapHistoryRoute
   '/_layout/my/wrongbook': typeof LayoutMyWrongbookRoute
   '/_layout/my/wrongbook-sheet': typeof LayoutMyWrongbookSheetRoute
   '/_layout/platform_/$orgId': typeof LayoutPlatformOrgIdRoute
@@ -375,6 +384,7 @@ export interface FileRouteTypes {
     | '/my/exams'
     | '/my/knowledge'
     | '/my/snap'
+    | '/my/snap-history'
     | '/my/wrongbook'
     | '/my/wrongbook-sheet'
     | '/platform/$orgId'
@@ -412,6 +422,7 @@ export interface FileRouteTypes {
     | '/my/exams'
     | '/my/knowledge'
     | '/my/snap'
+    | '/my/snap-history'
     | '/my/wrongbook'
     | '/my/wrongbook-sheet'
     | '/platform/$orgId'
@@ -451,6 +462,7 @@ export interface FileRouteTypes {
     | '/_layout/my/exams'
     | '/_layout/my/knowledge'
     | '/_layout/my/snap'
+    | '/_layout/my/snap-history'
     | '/_layout/my/wrongbook'
     | '/_layout/my/wrongbook-sheet'
     | '/_layout/platform_/$orgId'
@@ -642,6 +654,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof LayoutMyWrongbookRouteImport
       parentRoute: typeof LayoutRoute
     }
+    '/_layout/my/snap-history': {
+      id: '/_layout/my/snap-history'
+      path: '/my/snap-history'
+      fullPath: '/my/snap-history'
+      preLoaderRoute: typeof LayoutMySnapHistoryRouteImport
+      parentRoute: typeof LayoutRoute
+    }
     '/_layout/my/snap': {
       id: '/_layout/my/snap'
       path: '/my/snap'
@@ -786,6 +805,7 @@ interface LayoutRouteChildren {
   LayoutMyExamsRoute: typeof LayoutMyExamsRoute
   LayoutMyKnowledgeRoute: typeof LayoutMyKnowledgeRoute
   LayoutMySnapRoute: typeof LayoutMySnapRoute
+  LayoutMySnapHistoryRoute: typeof LayoutMySnapHistoryRoute
   LayoutMyWrongbookRoute: typeof LayoutMyWrongbookRoute
   LayoutMyWrongbookSheetRoute: typeof LayoutMyWrongbookSheetRoute
   LayoutPlatformOrgIdRoute: typeof LayoutPlatformOrgIdRoute
@@ -811,6 +831,7 @@ const LayoutRouteChildren: LayoutRouteChildren = {
   LayoutMyExamsRoute: LayoutMyExamsRoute,
   LayoutMyKnowledgeRoute: LayoutMyKnowledgeRoute,
   LayoutMySnapRoute: LayoutMySnapRoute,
+  LayoutMySnapHistoryRoute: LayoutMySnapHistoryRoute,
   LayoutMyWrongbookRoute: LayoutMyWrongbookRoute,
   LayoutMyWrongbookSheetRoute: LayoutMyWrongbookSheetRoute,
   LayoutPlatformOrgIdRoute: LayoutPlatformOrgIdRoute,
