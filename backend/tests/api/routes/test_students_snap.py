@@ -95,7 +95,7 @@ def test_snap_grade_returns_score_and_comment(
     headers = _student_headers(client, db, "批改")
     monkeypatch.setattr(
         "app.api.routes.students._snap_extract_multi",
-        lambda *args, **kwargs: [("计算 3+4×2。", "3+4×2=14")],
+        lambda *args, **kwargs: [("计算 3+4×2。", "3+4×2=14", None)],
     )
     calls: list[dict] = []
 
@@ -133,8 +133,8 @@ def test_snap_grade_multiple_questions(
     monkeypatch.setattr(
         "app.api.routes.students._snap_extract_multi",
         lambda *args, **kwargs: [
-            ("计算 3+4×2。", "3+4×2=14"),
-            ("计算 5×6。", "5×6=30"),
+            ("计算 3+4×2。", "3+4×2=14", 5.0),
+            ("计算 5×6。", "5×6=30", 4.0),
         ],
     )
     monkeypatch.setattr(
@@ -155,7 +155,10 @@ def test_snap_grade_multiple_questions(
     body = response.json()
     assert len(body["items"]) == 2
     assert body["items"][0]["score"] == 0
-    assert body["items"][1]["score"] == 10
+    # 卷面分值优先于默认满分：第二题卷面 4 分，模型给的 10 被钳到 4
+    assert body["items"][0]["max_score"] == 5.0
+    assert body["items"][1]["score"] == 4
+    assert body["items"][1]["max_score"] == 4.0
     # 顶层字段是第一题，兼容旧前端
     assert body["score"] == 0
 
@@ -166,7 +169,7 @@ def test_snap_grade_without_student_answer_returns_422(
     headers = _student_headers(client, db, "空作答")
     monkeypatch.setattr(
         "app.api.routes.students._snap_extract_multi",
-        lambda *args, **kwargs: [("计算 3+4×2。", "")],
+        lambda *args, **kwargs: [("计算 3+4×2。", "", None)],
     )
     response = _post_snap(client, headers, mode="grade")
     assert response.status_code == 422, response.text
@@ -396,7 +399,7 @@ def test_snap_grade_stream_grades_item_by_item_and_saves_record(
     headers = _student_headers(client, db, "流式批改")
     monkeypatch.setattr(
         "app.api.routes.students._snap_extract_multi",
-        lambda *args, **kwargs: [("计算 3+4。", "7"), ("计算 5-2。", "2")],
+        lambda *args, **kwargs: [("计算 3+4。", "7", 6.0), ("计算 5-2。", "2", 4.0)],
     )
     grade_calls: list[str] = []
 
@@ -435,7 +438,7 @@ def test_snap_grade_stream_grades_item_by_item_and_saves_record(
     payload = detail.json()["payload"]
     assert payload["kind"] == "grade"
     assert len(payload["result"]["items"]) == 2
-    assert payload["result"]["items"][0]["score"] == 10
+    assert payload["result"]["items"][0]["score"] == 6  # 卷面 6 分封顶
 
 
 def _fake_stream_target(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:

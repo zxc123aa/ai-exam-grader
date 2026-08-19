@@ -1332,19 +1332,22 @@ SNAP_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 def _snap_extract_multi(
     image_bytes: bytes, defaults: dict[str, Any]
-) -> list[tuple[str, str]]:
-    """拍照批改的聚焦识别：读出照片里所有写了答案的题（最多 8 道）。
+) -> list[tuple[str, str, float | None]]:
+    """拍照批改的聚焦识别：读出照片里所有写了答案的题，一道不漏。
 
-    批卷管线的整页结构化提取会逼模型把整页逐字转写，输出 token 是耗时大头
-    （实测整页 80-130 秒）。这里只保留压缩题干（判分够用的关键条件）和学生
-    作答，输出收敛了耗时就下来。
+    返回 (题干, 学生作答, 卷面分值) 三元组；卷面没标分值时为 None，
+    由调用方回退到用户输入的默认满分。只保留压缩题干和学生作答，
+    输出收敛了耗时就下来（批卷管线的整页逐字转写要 80-130 秒）。
     """
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = (
-        "这张照片里有学生作答的试卷内容。请找出所有写了答案的题（最多 8 道），"
+        "这张照片里有学生作答的试卷内容。请找出所有写了答案的题，一道不漏、"
+        "按卷面顺序；选择题可能多达十几道，不要中途跳到后面的大题而漏掉中间的选择题。"
         "每题给出：1) 题干——保留判分需要的条件、设问，选择题必须保留全部选项内容，"
-        "150 字以内；2) 学生的手写作答原文。没写答案的题不要包含。"
-        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"题干（选择题含选项）","student_answer":"学生作答原文"}]}'
+        "150 字以内；2) 学生的手写作答原文；3) 卷面标注的该题分值"
+        "（如大题说明「每题 2 分」或题后「（3 分）」，没标就填 null）。没写答案的题不要包含。"
+        '只返回 JSON，不要 Markdown：{"items":[{"question_text":"题干（选择题含选项）",'
+        '"student_answer":"学生作答原文","max_score":2}]}'
     )
     try:
         parsed, _used_model, _elapsed_ms = call_json_model(
@@ -1368,14 +1371,20 @@ def _snap_extract_multi(
         raise HTTPException(
             status_code=502, detail=f"题目识别失败，请重试：{exc}"
         ) from exc
-    items: list[tuple[str, str]] = []
-    for raw in (parsed.get("items") or [])[:8]:
+    items: list[tuple[str, str, float | None]] = []
+    for raw in (parsed.get("items") or [])[:50]:
         if not isinstance(raw, dict):
             continue
         question_text = str(raw.get("question_text") or "").strip()
         student_answer = str(raw.get("student_answer") or "").strip()
+        try:
+            max_score = float(raw.get("max_score"))
+            if not 0 < max_score <= 100:
+                max_score = None
+        except (TypeError, ValueError):
+            max_score = None
         if question_text:
-            items.append((question_text, student_answer))
+            items.append((question_text, student_answer, max_score))
     return items
 
 
@@ -1483,16 +1492,16 @@ def _snap_grade_call(
 
 
 def _snap_solve_and_grade_all(
-    items: list[tuple[str, str]], max_score: float, defaults: dict[str, Any]
+    items: list[tuple[str, str, float]], defaults: dict[str, Any]
 ) -> list[dict]:
-    """一次推理调用完成多题的独立解答+判分，返回每题 {score, comment}。
+    """一次推理调用完成多题的独立解答+判分，返回每题 {score, comment, max_score}。
 
     每题两个推理调用（解题+判分）串行太慢，合并成一次：模型先在心里独立
-    求解，再对照学生作答给分和评语。
+    求解，再对照学生作答给分和评语。每题满分由卷面分值或默认满分决定。
     """
     payload = [
-        {"question_text": question, "student_answer": answer}
-        for question, answer in items
+        {"question_text": question, "student_answer": answer, "max_score": item_max}
+        for question, answer, item_max in items
     ]
     prompt = (
         "你是严谨的中文阅卷教师。对下面每道题：先独立求出正确答案，再对照学生作答判分。"
@@ -1500,7 +1509,7 @@ def _snap_solve_and_grade_all(
         "评语说人话，指出对在哪里、错在哪里，不要空话。"
         "只返回 JSON，不要 Markdown："
         '{"items":[{"score":0,"comment":"中文评语"}]}，items 顺序与输入一致，'
-        f"score 在 0 到 {max_score} 之间。\n"
+        "每题 score 在 0 到该题 max_score 之间。\n"
         f"题目与学生作答：{json.dumps(payload, ensure_ascii=False)}"
     )
     try:
@@ -1514,7 +1523,7 @@ def _snap_solve_and_grade_all(
         raise HTTPException(status_code=502, detail=f"批改失败，请重试：{exc}") from exc
     results: list[dict] = []
     raw_items = parsed.get("items") or []
-    for index, (question, answer) in enumerate(items):
+    for index, (question, answer, item_max) in enumerate(items):
         raw = raw_items[index] if index < len(raw_items) else None
         if not isinstance(raw, dict):
             raise HTTPException(status_code=502, detail="批改返回内容不完整，请重试")
@@ -1529,7 +1538,8 @@ def _snap_solve_and_grade_all(
             {
                 "question_text": question,
                 "student_answer": answer,
-                "score": min(max(score, 0.0), max_score),
+                "score": min(max(score, 0.0), item_max),
+                "max_score": item_max,
                 "comment": comment,
             }
         )
@@ -1841,11 +1851,16 @@ async def snap_grade_stream(
     extracted = _snap_extract_multi(model_image_bytes, defaults)
     if not extracted:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-    if not any(answer for _question, answer in extracted):
+    if not any(answer for _question, answer, _score in extracted):
         raise HTTPException(
             status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
         )
-    items = [(question, answer) for question, answer in extracted if answer]
+    # 卷面标了分值的用卷面值，没标的回退到用户输入的默认满分
+    items = [
+        (question, answer, paper_score if paper_score is not None else max_score)
+        for question, answer, paper_score in extracted
+        if answer
+    ]
 
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
@@ -1855,8 +1870,12 @@ async def snap_grade_stream(
             {
                 "type": "grade-questions",
                 "items": [
-                    {"question_text": question, "student_answer": answer}
-                    for question, answer in items
+                    {
+                        "question_text": question,
+                        "student_answer": answer,
+                        "max_score": item_max_score,
+                    }
+                    for question, answer, item_max_score in items
                 ],
             }
         )
@@ -1865,14 +1884,16 @@ async def snap_grade_stream(
         semaphore = asyncio.Semaphore(3)
         graded: dict[int, dict] = {}
 
-        async def worker(index: int, question: str, answer: str) -> None:
+        async def worker(
+            index: int, question: str, answer: str, item_max: float
+        ) -> None:
             async with semaphore:
                 try:
                     item = await to_thread(
                         _snap_grade_one,
                         question_text=question,
                         student_answer=answer,
-                        max_score=max_score,
+                        max_score=item_max,
                         defaults=defaults,
                     )
                 except Exception as exc:
@@ -1887,6 +1908,7 @@ async def snap_grade_stream(
                         )
                     )
                 else:
+                    item["max_score"] = item_max
                     graded[index] = item
                     await queue.put(
                         sse({"type": "grade-item", "index": index, "item": item})
@@ -1894,8 +1916,8 @@ async def snap_grade_stream(
                 await queue.put(None)  # 本题结束信号
 
         tasks = [
-            asyncio.create_task(worker(index, question, answer))
-            for index, (question, answer) in enumerate(items)
+            asyncio.create_task(worker(index, question, answer, item_max))
+            for index, (question, answer, item_max) in enumerate(items)
         ]
         try:
             remaining = len(tasks)
@@ -1915,11 +1937,9 @@ async def snap_grade_stream(
                 question_text=first["question_text"],
                 student_answer=first["student_answer"],
                 score=first["score"],
-                max_score=max_score,
+                max_score=first["max_score"],
                 comment=first["comment"],
-                items=[
-                    SnapGradeItemPublic(**item, max_score=max_score) for item in ordered
-                ],
+                items=[SnapGradeItemPublic(**item) for item in ordered],
             ).model_dump(mode="json")
             _save_snap_record(
                 session,
@@ -2039,20 +2059,24 @@ async def snap_question(
         extracted = _snap_extract_multi(model_image_bytes, defaults)
         if not extracted:
             raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-        if not any(answer for _question, answer in extracted):
+        if not any(answer for _question, answer, _score in extracted):
             raise HTTPException(
                 status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
             )
-        extracted = [(question, answer) for question, answer in extracted if answer]
-        graded = _snap_solve_and_grade_all(extracted, max_score, defaults)
+        items = [
+            (question, answer, paper_score if paper_score is not None else max_score)
+            for question, answer, paper_score in extracted
+            if answer
+        ]
+        graded = _snap_solve_and_grade_all(items, defaults)
         first = graded[0]
         result = SnapGradePublic(
             question_text=first["question_text"],
             student_answer=first["student_answer"],
             score=first["score"],
-            max_score=max_score,
+            max_score=first["max_score"],
             comment=first["comment"],
-            items=[SnapGradeItemPublic(**item, max_score=max_score) for item in graded],
+            items=[SnapGradeItemPublic(**item) for item in graded],
         ).model_dump()
     try:
         cache_dir.mkdir(parents=True, exist_ok=True)

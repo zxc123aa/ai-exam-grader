@@ -43,6 +43,8 @@ type GradeCard = {
   question: string
   studentAnswer: string
   score: number | null
+  /** 卷面标注的该题满分；卷面没标时用页面上的默认满分 */
+  maxScore: number | null
   comment: string
   state: "waiting" | "done" | "error"
   error?: string
@@ -296,23 +298,30 @@ function MySnapPage() {
                 data.items as {
                   question_text: string
                   student_answer: string
+                  max_score?: number
                 }[]
               ).map((item) => ({
                 question: item.question_text,
                 studentAnswer: item.student_answer,
                 score: null,
+                maxScore: item.max_score ?? null,
                 comment: "",
                 state: "waiting" as const,
               })),
             )
           } else if (data.type === "grade-item") {
-            const item = data.item as { score: number; comment: string }
+            const item = data.item as {
+              score: number
+              comment: string
+              max_score?: number
+            }
             setGradeCards((cards) =>
               cards.map((card, i) =>
                 i === data.index
                   ? {
                       ...card,
                       score: item.score,
+                      maxScore: item.max_score ?? card.maxScore,
                       comment: item.comment,
                       state: "done",
                     }
@@ -407,7 +416,7 @@ function MySnapPage() {
           body: JSON.stringify({
             question_text: card.question,
             student_answer: card.studentAnswer,
-            max_score: Number(maxScore) || 10,
+            max_score: card.maxScore ?? (Number(maxScore) || 10),
           }),
         },
       )
@@ -566,7 +575,9 @@ function MySnapPage() {
         )}
         {mode === "grade" && (
           <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">每道题满分</span>
+            <span className="text-muted-foreground">
+              默认满分（卷面没标分值时按这个）
+            </span>
             <Input
               data-testid="snap-max-score"
               type="number"
@@ -739,7 +750,7 @@ function MySnapPage() {
                       {formatScore(card.score)}
                     </span>
                     <span className="text-muted-foreground text-sm">
-                      / {maxScore || "10"} 分
+                      / {card.maxScore ?? (maxScore || "10")} 分
                     </span>
                   </div>
                   <ResultSection title="点评">{card.comment}</ResultSection>
