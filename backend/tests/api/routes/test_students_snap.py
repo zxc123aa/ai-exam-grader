@@ -560,3 +560,51 @@ def test_snap_grade_one_regrades_single_question(
     assert body["score"] == 6
     assert body["max_score"] == 10
     assert body["comment"] == "过程对了一半。"
+
+
+def test_snap_record_delete_owner_only(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍题记录可删除：只能删自己的，删完列表里没了。"""
+    headers = _student_headers(client, db, "删记录")
+    payloads = [
+        {"question_text": "2+2 等于几？"},
+        {"answer": "4", "explanation": "二加二等于四。"},
+    ]
+    calls: list[dict] = []
+
+    def fake_call_json_model(**kwargs: object) -> tuple[dict, str, int]:
+        calls.append(kwargs)
+        return payloads[len(calls) - 1], "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+    assert _post_snap(client, headers, mode="solve").status_code == 200
+
+    items = client.get(
+        f"{settings.API_V1_STR}/students/me/snap/records", headers=headers
+    ).json()
+    assert len(items) == 1
+    record_id = items[0]["id"]
+
+    other = _student_headers(client, db, "删旁人")
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/students/me/snap/records/{record_id}",
+            headers=other,
+        ).status_code
+        == 404
+    )
+
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/students/me/snap/records/{record_id}",
+            headers=headers,
+        ).status_code
+        == 204
+    )
+    assert (
+        client.get(
+            f"{settings.API_V1_STR}/students/me/snap/records", headers=headers
+        ).json()
+        == []
+    )

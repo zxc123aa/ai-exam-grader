@@ -22,5 +22,7 @@ export async function workflowApi<T>(path: string, options?: RequestInit) {
     }
     throw new Error(message)
   }
-  return (await response.json()) as T
+  // 204/空响应没有 JSON 体，直接 JSON.parse 会抛错（删除类接口就是 204）
+  const text = await response.text()
+  return (text ? JSON.parse(text) : undefined) as T
 }

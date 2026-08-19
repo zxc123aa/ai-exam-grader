@@ -1,6 +1,6 @@
-import { useQuery } from "@tanstack/react-query"
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { createFileRoute, Link } from "@tanstack/react-router"
-import { Camera, ChevronLeft, History } from "lucide-react"
+import { Camera, ChevronLeft, History, Trash2 } from "lucide-react"
 import { useState } from "react"
 import { PageHead } from "@/components/Common/PageHead"
 import {
@@ -19,10 +19,20 @@ export const Route = createFileRoute("/_layout/my/snap-history")({
 /** 拍题记录：拍题答疑/拍照批改的历史回看。 */
 function MySnapHistoryPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [confirmingId, setConfirmingId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
   const records = useQuery({
     queryKey: ["snap-records"],
     queryFn: () =>
       workflowApi<SnapRecordListItem[]>("/students/me/snap/records?limit=50"),
+  })
+  const remove = useMutation({
+    mutationFn: (id: string) =>
+      workflowApi(`/students/me/snap/records/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      setConfirmingId(null)
+      queryClient.invalidateQueries({ queryKey: ["snap-records"] })
+    },
   })
   const detail = useQuery({
     queryKey: ["snap-record", selectedId],
@@ -80,24 +90,60 @@ function MySnapHistoryPage() {
       )}
       <div className="grid gap-2">
         {records.data?.map((item) => (
-          <button
+          <div
             key={item.id}
-            type="button"
-            data-testid="snap-record-item"
-            className="rounded-[10px] border bg-card px-4 py-3 text-left transition-colors hover:border-primary"
-            onClick={() => setSelectedId(item.id)}
+            className="flex items-center gap-2 rounded-[10px] border bg-card px-4 py-3 transition-colors hover:border-primary"
           >
-            <div className="truncate text-sm">{item.title}</div>
-            <div className="mt-1 text-muted-foreground text-xs">
-              {item.mode === "grade" ? "拍照批改" : "拍题答疑"} ·{" "}
-              {new Date(item.created_at).toLocaleString("zh-CN", {
-                month: "numeric",
-                day: "numeric",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}
-            </div>
-          </button>
+            <button
+              type="button"
+              data-testid="snap-record-item"
+              className="min-w-0 flex-1 text-left"
+              onClick={() => setSelectedId(item.id)}
+            >
+              <div className="truncate text-sm">{item.title}</div>
+              <div className="mt-1 text-muted-foreground text-xs">
+                {item.mode === "grade" ? "拍照批改" : "拍题答疑"} ·{" "}
+                {new Date(item.created_at).toLocaleString("zh-CN", {
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </div>
+            </button>
+            {confirmingId === item.id ? (
+              <span className="flex shrink-0 items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive"
+                  data-testid="snap-record-delete-confirm"
+                  disabled={remove.isPending}
+                  onClick={() => remove.mutate(item.id)}
+                >
+                  确认删除
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setConfirmingId(null)}
+                >
+                  取消
+                </Button>
+              </span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="shrink-0 text-muted-foreground"
+                data-testid="snap-record-delete"
+                aria-label="删除这条记录"
+                onClick={() => setConfirmingId(item.id)}
+              >
+                <Trash2 className="size-4" />
+              </Button>
+            )}
+          </div>
         ))}
       </div>
     </div>

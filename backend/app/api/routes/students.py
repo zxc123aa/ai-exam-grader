@@ -2108,6 +2108,20 @@ def read_my_snap_record(
     return record
 
 
+@router.delete("/me/snap/records/{record_id}", status_code=204)
+def delete_my_snap_record(
+    session: SessionDep,
+    current_user: CurrentUser,
+    record_id: uuid.UUID,
+) -> None:
+    """删除一条拍题记录：只能删自己的。"""
+    record = session.get(SnapRecord, record_id)
+    if record is None or record.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    session.delete(record)
+    session.commit()
+
+
 @router.get("/me/wrongbook/entries/{entry_id}/image")
 def read_my_wrongbook_entry_image(
     session: SessionDep,
