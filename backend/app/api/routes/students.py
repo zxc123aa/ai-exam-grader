@@ -1971,12 +1971,27 @@ async def snap_grade_stream(
         ) -> None:
             async with semaphore:
                 try:
-                    item = await to_thread(
-                        _snap_grade_one,
-                        question_text=question,
-                        student_answer=answer,
-                        max_score=item_max,
-                        defaults=defaults,
+                    # wait_for 兜底：判分调用内部链式重试最坏 12 分钟，
+                    # 挂住会占住并发位拖垮整页——95 秒判超时放掉这张卡
+                    item = await asyncio.wait_for(
+                        to_thread(
+                            _snap_grade_one,
+                            question_text=question,
+                            student_answer=answer,
+                            max_score=item_max,
+                            defaults=defaults,
+                        ),
+                        timeout=95,
+                    )
+                except TimeoutError:
+                    await queue.put(
+                        sse(
+                            {
+                                "type": "grade-item-error",
+                                "index": index,
+                                "text": "批改超时，可重试本题",
+                            }
+                        )
                     )
                 except Exception as exc:
                     # 单题失败不拖垮整页：这张卡标错误，其余题继续
