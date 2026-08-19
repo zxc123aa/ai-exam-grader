@@ -11,7 +11,7 @@ import {
   ScanSearch,
   Upload,
 } from "lucide-react"
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { z } from "zod"
 
 import { ExamsService } from "@/client"
@@ -105,6 +105,33 @@ function formatMs(value?: number) {
 
 function questionTypeLabel(value: string | null) {
   return questionTypes.find(([key]) => key === value)?.[1] ?? "未知"
+}
+
+/**
+ * 漏题校验：按题号前缀分组（「三、」「填空」等各自从 1 计数），
+ * 组内题号应连续；中间断号说明可能有题没识别出来，提醒老师核对原卷。
+ */
+function findMissingQuestions(items: RecognitionItem[]): string[] {
+  const groups = new Map<string, Set<number>>()
+  for (const item of items) {
+    // 已排除的题也算入序列：它是被识别出来、老师手动排除的，不算漏识别
+    const match =
+      item.question_key.match(/^(\D*)(\d+)/) ?? item.label.match(/^(\D*)(\d+)/)
+    if (!match) continue
+    const [, prefix, num] = match
+    const group = groups.get(prefix) ?? new Set<number>()
+    group.add(Number(num))
+    groups.set(prefix, group)
+  }
+  const missing: string[] = []
+  for (const [prefix, nums] of groups) {
+    if (nums.size < 3) continue // 题太少不报，避免误报
+    const sorted = [...nums].sort((a, b) => a - b)
+    for (let n = sorted[0]; n <= sorted[sorted.length - 1]; n++) {
+      if (!nums.has(n)) missing.push(`${prefix || ""}第 ${n} 题`)
+    }
+  }
+  return missing
 }
 
 function QuestionItemRow({
@@ -387,6 +414,14 @@ function QuestionWorkspace() {
     setDirtyIds((current) => new Set(current).add(id))
   }
 
+  const missingQuestions = useMemo(
+    () =>
+      findMissingQuestions(
+        (items.data ?? []).map((item) => drafts[item.id] ?? item),
+      ),
+    [items.data, drafts],
+  )
+
   const createRun = useMutation({
     mutationFn: () =>
       workflowApi<RecognitionRun>(
@@ -632,6 +667,20 @@ function QuestionWorkspace() {
         </div>
       ) : items.data?.length ? (
         <>
+          {missingQuestions.length > 0 && (
+            <div
+              className="rounded-xl border border-amber-500/40 bg-amber-500/5 px-4 py-3 text-sm"
+              data-testid="missing-questions-warning"
+            >
+              <span className="font-medium text-amber-700 dark:text-amber-400">
+                题号不连续，可能漏识别了 {missingQuestions.length} 道题：
+              </span>
+              <span className="text-muted-foreground">
+                {missingQuestions.join("、")}
+                。请对照原卷检查——漏掉的题可以重新识别或联系管理员补录。
+              </span>
+            </div>
+          )}
           <section className="overflow-hidden rounded-2xl border bg-card shadow-card">
             <div className="border-b px-5 py-4">
               <h2 className="font-semibold text-sm">题目与卷面作答</h2>
