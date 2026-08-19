@@ -1848,7 +1848,13 @@ async def snap_question_stream(
         try:
             remaining = len(tasks)
             while remaining:
-                message = await queue.get()
+                # SSE 心跳：worker 全部卡在坏节点重试时可能几分钟无输出，
+                # nginx proxy_read_timeout 300s 会切断长连接——每 15s 一行注释保活
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ": ping\n\n"
+                    continue
                 if message is None:
                     remaining -= 1
                 else:
@@ -2019,7 +2025,13 @@ async def snap_grade_stream(
         try:
             remaining = len(tasks)
             while remaining:
-                message = await queue.get()
+                # SSE 心跳：worker 全部卡在坏节点重试时可能几分钟无输出，
+                # nginx proxy_read_timeout 300s 会切断长连接——每 15s 一行注释保活
+                try:
+                    message = await asyncio.wait_for(queue.get(), timeout=15)
+                except TimeoutError:
+                    yield ": ping\n\n"
+                    continue
                 if message is None:
                     remaining -= 1
                 else:
