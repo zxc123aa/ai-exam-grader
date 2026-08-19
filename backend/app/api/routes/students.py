@@ -1693,7 +1693,7 @@ def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> lis
 async def _stream_answer_deltas(target: Any, question_text: str):
     """逐段 yield 一道题的解答文本。
 
-    中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 3 趟）；
+    中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 4 趟）；
     一旦流出内容就不重试，半截答案直接保留，避免重复段落。
     """
     prompt = (
@@ -1709,7 +1709,7 @@ async def _stream_answer_deltas(target: Any, question_text: str):
         "stream": True,
     }
     last_error: Exception | None = None
-    for _attempt in range(3):
+    for _attempt in range(4):
         emitted = False
         try:
             # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
