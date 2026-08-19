@@ -3455,6 +3455,70 @@ class WrongbookEntriesPublic(SQLModel):
     knowledge_points: list[str] = Field(default_factory=list)
 
 
+class WrongbookCollection(SQLModel, table=True):
+    """学生自建错题集：把错题按主题/用途自由分组（一题可进多个集）。"""
+
+    __table_args__ = (
+        UniqueConstraint("learner_id", "name", name="uq_wrongbookcollection_name"),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    learner_id: uuid.UUID = Field(
+        foreign_key="learnerprofile.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    name: str = Field(max_length=60)
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class WrongbookCollectionItem(SQLModel, table=True):
+    """错题集成员：collection × entry 多对多。"""
+
+    __table_args__ = (
+        UniqueConstraint(
+            "collection_id", "entry_id", name="uq_wrongbookcollectionitem_pair"
+        ),
+    )
+
+    id: uuid.UUID = Field(default_factory=uuid.uuid4, primary_key=True)
+    collection_id: uuid.UUID = Field(
+        foreign_key="wrongbookcollection.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    entry_id: uuid.UUID = Field(
+        foreign_key="wrongquestionentry.id",
+        nullable=False,
+        index=True,
+        ondelete="CASCADE",
+    )
+    created_at: datetime = Field(
+        default_factory=get_datetime_utc,
+        sa_type=DateTime(timezone=True),  # type: ignore
+    )
+
+
+class WrongbookCollectionPublic(SQLModel):
+    id: uuid.UUID
+    name: str
+    entry_count: int = 0
+    created_at: datetime
+
+
+class WrongbookCollectionCreate(SQLModel):
+    name: str = Field(min_length=1, max_length=60)
+
+
+class WrongbookCollectionEntryAdd(SQLModel):
+    entry_id: uuid.UUID
+
+
 class WrongbookEntryDetail(SQLModel):
     entry_id: uuid.UUID
     exam_id: uuid.UUID | None = None

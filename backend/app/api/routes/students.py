@@ -65,6 +65,11 @@ from app.models import (
     StudentSubmission,
     User,
     UserRole,
+    WrongbookCollection,
+    WrongbookCollectionCreate,
+    WrongbookCollectionEntryAdd,
+    WrongbookCollectionItem,
+    WrongbookCollectionPublic,
     WrongbookEntriesPublic,
     WrongbookEntryDetail,
     WrongbookEntryListItem,
@@ -441,6 +446,7 @@ def read_my_wrongbook(
     subject: str | None = None,
     knowledge_point: str | None = None,
     exam_id: uuid.UUID | None = None,
+    collection_id: uuid.UUID | None = None,
     wrong_only: bool = True,
     skip: int = 0,
     limit: int = 50,
@@ -462,6 +468,15 @@ def read_my_wrongbook(
         # JSONB 包含查询，配 GIN 索引；不要把整列取回来在 Python 里判断
         filters.append(
             col(WrongQuestionSource.knowledge_point_names).contains([knowledge_point])
+        )
+    if collection_id:
+        # 错题集过滤：只留该集成员
+        filters.append(
+            col(WrongQuestionEntry.id).in_(
+                select(WrongbookCollectionItem.entry_id).where(
+                    WrongbookCollectionItem.collection_id == collection_id
+                )
+            )
         )
 
     count = session.exec(_entry_source_join(select(func.count())).where(*filters)).one()
@@ -942,6 +957,175 @@ def update_my_wrongbook_entry(
     session.commit()
     session.refresh(entry)
     return _entry_detail(entry, source)
+
+
+@router.delete("/me/wrongbook/entries/{entry_id}", status_code=204)
+def delete_my_wrongbook_entry(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    entry_id: uuid.UUID,
+) -> None:
+    """删除一条错题（复习记录、错题集成员关系级联清掉）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    entry, _source = _owned_entry(session, learner=learner, entry_id=entry_id)
+    session.delete(entry)
+    session.commit()
+
+
+def _owned_collection(
+    session: Session, *, learner: LearnerProfile, collection_id: uuid.UUID
+) -> WrongbookCollection:
+    collection = session.get(WrongbookCollection, collection_id)
+    if collection is None or collection.learner_id != learner.id:
+        raise HTTPException(status_code=404, detail="错题集不存在")
+    return collection
+
+
+@router.get("/me/wrongbook/collections", response_model=list[WrongbookCollectionPublic])
+def list_my_wrongbook_collections(
+    session: SessionDep, current_user: CurrentStudentUser
+) -> Any:
+    """我的错题集列表（带条目数）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    collections = session.exec(
+        select(WrongbookCollection)
+        .where(WrongbookCollection.learner_id == learner.id)
+        .order_by(col(WrongbookCollection.created_at).asc())
+    ).all()
+    counts = dict(
+        session.exec(
+            select(WrongbookCollectionItem.collection_id, func.count())
+            .where(
+                col(WrongbookCollectionItem.collection_id).in_(
+                    [c.id for c in collections] or [uuid.uuid4()]
+                )
+            )
+            .group_by(WrongbookCollectionItem.collection_id)
+        ).all()
+    )
+    return [
+        WrongbookCollectionPublic(
+            id=c.id,
+            name=c.name,
+            entry_count=counts.get(c.id, 0),
+            created_at=c.created_at,
+        )
+        for c in collections
+    ]
+
+
+@router.post("/me/wrongbook/collections", response_model=WrongbookCollectionPublic)
+def create_my_wrongbook_collection(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    body: WrongbookCollectionCreate,
+) -> Any:
+    """新建错题集（同名去重：已存在直接返回原集）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    name = body.name.strip()
+    existing = session.exec(
+        select(WrongbookCollection).where(
+            WrongbookCollection.learner_id == learner.id,
+            WrongbookCollection.name == name,
+        )
+    ).first()
+    if existing:
+        return WrongbookCollectionPublic(
+            id=existing.id,
+            name=existing.name,
+            entry_count=0,
+            created_at=existing.created_at,
+        )
+    collection = WrongbookCollection(learner_id=learner.id, name=name)
+    session.add(collection)
+    session.commit()
+    session.refresh(collection)
+    return WrongbookCollectionPublic(
+        id=collection.id,
+        name=collection.name,
+        entry_count=0,
+        created_at=collection.created_at,
+    )
+
+
+@router.delete("/me/wrongbook/collections/{collection_id}", status_code=204)
+def delete_my_wrongbook_collection(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    collection_id: uuid.UUID,
+) -> None:
+    """删除错题集（只删分组，错题本身保留在错题本里）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    collection = _owned_collection(
+        session, learner=learner, collection_id=collection_id
+    )
+    session.delete(collection)
+    session.commit()
+
+
+@router.post(
+    "/me/wrongbook/collections/{collection_id}/entries",
+    response_model=WrongbookCollectionPublic,
+)
+def add_entry_to_collection(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    collection_id: uuid.UUID,
+    body: WrongbookCollectionEntryAdd,
+) -> Any:
+    """把一条错题移入错题集（重复移入幂等）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    collection = _owned_collection(
+        session, learner=learner, collection_id=collection_id
+    )
+    entry, _source = _owned_entry(session, learner=learner, entry_id=body.entry_id)
+    existing = session.exec(
+        select(WrongbookCollectionItem).where(
+            WrongbookCollectionItem.collection_id == collection.id,
+            WrongbookCollectionItem.entry_id == entry.id,
+        )
+    ).first()
+    if existing is None:
+        session.add(
+            WrongbookCollectionItem(collection_id=collection.id, entry_id=entry.id)
+        )
+        session.commit()
+    count = session.exec(
+        select(func.count())
+        .select_from(WrongbookCollectionItem)
+        .where(WrongbookCollectionItem.collection_id == collection.id)
+    ).one()
+    return WrongbookCollectionPublic(
+        id=collection.id,
+        name=collection.name,
+        entry_count=count,
+        created_at=collection.created_at,
+    )
+
+
+@router.delete(
+    "/me/wrongbook/collections/{collection_id}/entries/{entry_id}", status_code=204
+)
+def remove_entry_from_collection(
+    session: SessionDep,
+    current_user: CurrentStudentUser,
+    collection_id: uuid.UUID,
+    entry_id: uuid.UUID,
+) -> None:
+    """把一条错题移出错题集（错题本身保留）。"""
+    learner, _student = get_current_learner(session=session, current_user=current_user)
+    collection = _owned_collection(
+        session, learner=learner, collection_id=collection_id
+    )
+    item = session.exec(
+        select(WrongbookCollectionItem).where(
+            WrongbookCollectionItem.collection_id == collection.id,
+            WrongbookCollectionItem.entry_id == entry_id,
+        )
+    ).first()
+    if item is not None:
+        session.delete(item)
+        session.commit()
 
 
 def _learning_advice_stats(
@@ -1690,10 +1874,11 @@ def _snap_extract_questions(image_bytes: bytes, defaults: dict[str, Any]) -> lis
     return questions
 
 
-async def _stream_answer_deltas(target: Any, question_text: str):
+async def _stream_answer_deltas(targets: list, question_text: str):
     """逐段 yield 一道题的解答文本。
 
-    中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 4 趟）；
+    中转有坏节点会偶发 500/挂起：没流出任何内容前允许重试（最多 4 趟），
+    每趟在目标链（主模型 + 备用模型）上轮询——同一模型连挂会自动换备用模型；
     一旦流出内容就不重试，半截答案直接保留，避免重复段落。
     """
     prompt = (
@@ -1703,13 +1888,14 @@ async def _stream_answer_deltas(target: Any, question_text: str):
         "不要裸写 \\frac 这类 LaTeX 命令。\n"
         f"题目：{question_text}"
     )
-    payload = {
-        "model": target.upstream_model,
-        "messages": [{"role": "user", "content": prompt}],
-        "stream": True,
-    }
     last_error: Exception | None = None
-    for _attempt in range(4):
+    for attempt in range(4):
+        target = targets[attempt % len(targets)]
+        payload = {
+            "model": target.upstream_model,
+            "messages": [{"role": "user", "content": prompt}],
+            "stream": True,
+        }
         emitted = False
         try:
             # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
@@ -1749,18 +1935,43 @@ async def _stream_answer_deltas(target: Any, question_text: str):
     raise VisionGradingError(str(last_error)[:200] if last_error else "生成失败")
 
 
-def _snap_solve_target(session: Session, defaults: dict[str, Any]) -> Any:
-    """解答模型的运行时目标（整页流式和单题重试共用）。"""
-    provider = str(defaults["grading_provider"])
-    model = str(defaults["grading_model"])
-    channel = session.exec(
-        select(ProviderChannel).where(ProviderChannel.code == provider)
-    ).first()
-    if channel is None:
+def _snap_solve_targets(session: Session, defaults: dict[str, Any]) -> list:
+    """解答模型的目标链：主模型在前，备用模型随后（支持「渠道/模型」跨渠道写法）。
+
+    渠道不存在或模型未配置的备用项直接跳过；一个都解析不出来才报 502。
+    """
+    entries = [f"{defaults['grading_provider']}/{defaults['grading_model']}"]
+    entries += [str(item) for item in defaults["fallback_models"]]
+    targets = []
+    seen: set[tuple] = set()
+    for raw in entries:
+        raw = raw.strip()
+        if not raw:
+            continue
+        if "/" in raw or ":" in raw:
+            sep = "/" if "/" in raw else ":"
+            provider, model = (part.strip() for part in raw.split(sep, 1))
+        else:
+            provider, model = str(defaults["grading_provider"]), raw
+        channel = session.exec(
+            select(ProviderChannel).where(ProviderChannel.code == provider)
+        ).first()
+        if channel is None:
+            continue
+        try:
+            target = provider_gateway.resolve_channel_target(
+                session, channel=channel, canonical_model=model, require_enabled=False
+            )
+        except Exception:
+            continue
+        key = (target.channel_id, target.upstream_model)
+        if key in seen:
+            continue
+        seen.add(key)
+        targets.append(target)
+    if not targets:
         raise HTTPException(status_code=502, detail="模型渠道未配置")
-    return provider_gateway.resolve_channel_target(
-        session, channel=channel, canonical_model=model, require_enabled=False
-    )
+    return targets
 
 
 @router.post("/me/snap/stream")
@@ -1786,13 +1997,13 @@ async def snap_question_stream(
     if not questions:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
 
-    target = _snap_solve_target(session, defaults)
+    targets = _snap_solve_targets(session, defaults)
 
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def stream_answer(question_text: str):
-        async for delta in _stream_answer_deltas(target, question_text):
+        async for delta in _stream_answer_deltas(targets, question_text):
             yield delta
 
     async def event_stream():
@@ -2075,14 +2286,14 @@ async def snap_solve_one_stream(
     del current_user  # 仅做登录校验
     question = body.question_text.strip()
     defaults = get_grading_defaults(session)
-    target = _snap_solve_target(session, defaults)
+    targets = _snap_solve_targets(session, defaults)
 
     def sse(payload: dict) -> str:
         return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
     async def event_stream():
         try:
-            async for delta in _stream_answer_deltas(target, question):
+            async for delta in _stream_answer_deltas(targets, question):
                 yield sse({"type": "answer-delta", "text": delta})
         except Exception as exc:
             yield sse({"type": "error", "text": str(exc)[:200]})

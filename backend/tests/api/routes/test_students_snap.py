@@ -645,3 +645,97 @@ def test_snap_wrongbook_entry_gets_knowledge_points(
     assert mastery.status_code == 200
     names = [item["knowledge_point_name"] for item in mastery.json()["data"]]
     assert "一元一次方程" in names
+
+
+def test_wrongbook_entry_delete_and_collections(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """错题可删除；错题集 CRUD + 移入/移出 + 列表按集过滤。"""
+    from tests.api.routes.test_students_learning_advice import _advice_context
+
+    monkeypatch.setattr(
+        "app.api.routes.students.call_json_model",
+        lambda **_kwargs: ({"knowledge_points": ["运算"]}, "mock-model", 1),
+    )
+    context = _advice_context(client, db, "错题集")
+    headers = context["headers"]
+    created = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/from-snap",
+        headers=headers,
+        json={
+            "question_text": "计算 3+4×2。",
+            "student_answer": "14",
+            "comment": "运算顺序错",
+        },
+    )
+    assert created.status_code == 200, created.text
+    entry_id = created.json()["entry_id"]
+
+    # 建集 + 移入
+    col = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/collections",
+        headers=headers,
+        json={"name": "计算专题"},
+    )
+    assert col.status_code == 200, col.text
+    col_id = col.json()["id"]
+    added = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/collections/{col_id}/entries",
+        headers=headers,
+        json={"entry_id": entry_id},
+    )
+    assert added.status_code == 200, added.text
+    assert added.json()["entry_count"] == 1
+
+    # 按集过滤能查到；按另一个空集过滤查不到
+    in_col = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?collection_id={col_id}",
+        headers=headers,
+    )
+    assert any(i["entry_id"] == entry_id for i in in_col.json()["data"])
+    empty_col = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/collections",
+        headers=headers,
+        json={"name": "空集"},
+    ).json()["id"]
+    not_in = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries?collection_id={empty_col}",
+        headers=headers,
+    )
+    assert not any(i["entry_id"] == entry_id for i in not_in.json()["data"])
+
+    # 移出 → 列表计数回落
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/students/me/wrongbook/collections/{col_id}/entries/{entry_id}",
+            headers=headers,
+        ).status_code
+        == 204
+    )
+    cols = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/collections", headers=headers
+    ).json()
+    assert next(c for c in cols if c["id"] == col_id)["entry_count"] == 0
+
+    # 删错题：之后列表里没了
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/students/me/wrongbook/entries/{entry_id}",
+            headers=headers,
+        ).status_code
+        == 204
+    )
+    remaining = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries", headers=headers
+    ).json()["data"]
+    assert not any(i["entry_id"] == entry_id for i in remaining)
+
+    # 别人的集/条目碰不到
+    other = _student_headers(client, db, "错题集旁人")
+    assert (
+        client.delete(
+            f"{settings.API_V1_STR}/students/me/wrongbook/collections/{col_id}",
+            headers=other,
+        ).status_code
+        == 404
+    )

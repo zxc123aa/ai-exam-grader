@@ -3,18 +3,24 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import {
   BookMarked,
   FileText,
+  FolderPlus,
   Lightbulb,
   Loader2,
   Network,
   Printer,
   RotateCcw,
   SlidersHorizontal,
+  Trash2,
   UserRound,
 } from "lucide-react"
 import type React from "react"
 import { useEffect, useState } from "react"
 import { z } from "zod"
-import type { WrongbookEntryListItem, WrongQuestionErrorReason } from "@/client"
+import type {
+  WrongbookEntriesPublic,
+  WrongbookEntryListItem,
+  WrongQuestionErrorReason,
+} from "@/client"
 import { ApiError, StudentsService } from "@/client"
 import { EmptyState } from "@/components/Common/EmptyState"
 import { PageHead } from "@/components/Common/PageHead"
@@ -29,10 +35,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
 import { Skeleton } from "@/components/ui/skeleton"
 import useCustomToast from "@/hooks/useCustomToast"
 import { fetchWrongbookEntryImageBlob } from "@/lib/submission-media"
 import { cn } from "@/lib/utils"
+import { workflowApi } from "@/lib/workflow-api"
 
 const searchSchema = z.object({
   /** 知识点过滤：知识图谱点某个知识点进来时带上 */
@@ -270,6 +278,14 @@ function EntryDetail({ entryId }: { entryId: string }) {
       <ErrorReasonPicker entryId={entry.entry_id} value={entry.error_reason} />
     </div>
   )
+}
+
+/** 后端错题集模型（生成 client 未更新，先用本地类型）。 */
+type WrongbookCollectionPublic = {
+  id: string
+  name: string
+  entry_count: number
+  created_at: string
 }
 
 function EntryCard({
@@ -843,13 +859,87 @@ function MyWrongbookPage() {
   useEffect(() => {
     if (kp) setKnowledgePoint(kp)
   }, [kp])
-  const query = useQuery({
-    queryKey: ["my-wrongbook", subject, knowledgePoint],
+  // 自定义错题集：选中某个集时列表只显示该集成员
+  const [collectionId, setCollectionId] = useState<string | null>(null)
+  const [creatingCollection, setCreatingCollection] = useState(false)
+  const [collectionName, setCollectionName] = useState("")
+  const [confirmDeleteCollection, setConfirmDeleteCollection] = useState(false)
+  const [confirmDeleteEntry, setConfirmDeleteEntry] = useState<string | null>(
+    null,
+  )
+  const queryClient = useQueryClient()
+  const collectionsQuery = useQuery({
+    queryKey: ["my-wrongbook-collections"],
     queryFn: () =>
-      StudentsService.readMyWrongbook({
-        subject: subject ?? undefined,
-        knowledgePoint: knowledgePoint ?? undefined,
+      workflowApi<WrongbookCollectionPublic[]>(
+        "/students/me/wrongbook/collections",
+      ),
+  })
+  const collections = collectionsQuery.data ?? []
+  const invalidateWrongbook = () => {
+    queryClient.invalidateQueries({ queryKey: ["my-wrongbook"] })
+    queryClient.invalidateQueries({ queryKey: ["my-wrongbook-collections"] })
+  }
+  const createCollection = useMutation({
+    mutationFn: () =>
+      workflowApi("/students/me/wrongbook/collections", {
+        method: "POST",
+        body: JSON.stringify({ name: collectionName.trim() }),
       }),
+    onSuccess: () => {
+      setCollectionName("")
+      setCreatingCollection(false)
+      invalidateWrongbook()
+    },
+  })
+  const deleteCollection = useMutation({
+    mutationFn: (id: string) =>
+      workflowApi(`/students/me/wrongbook/collections/${id}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      setCollectionId(null)
+      setConfirmDeleteCollection(false)
+      invalidateWrongbook()
+    },
+  })
+  const deleteEntry = useMutation({
+    mutationFn: (entryId: string) =>
+      workflowApi(`/students/me/wrongbook/entries/${entryId}`, {
+        method: "DELETE",
+      }),
+    onSuccess: () => {
+      setConfirmDeleteEntry(null)
+      invalidateWrongbook()
+    },
+  })
+  const assignEntry = useMutation({
+    mutationFn: ({
+      entryId,
+      collection,
+    }: {
+      entryId: string
+      collection: string
+    }) =>
+      workflowApi(`/students/me/wrongbook/collections/${collection}/entries`, {
+        method: "POST",
+        body: JSON.stringify({ entry_id: entryId }),
+      }),
+    onSuccess: invalidateWrongbook,
+  })
+
+  const query = useQuery({
+    queryKey: ["my-wrongbook", subject, knowledgePoint, collectionId],
+    queryFn: () => {
+      const params = new URLSearchParams()
+      if (subject) params.set("subject", subject)
+      if (knowledgePoint) params.set("knowledge_point", knowledgePoint)
+      if (collectionId) params.set("collection_id", collectionId)
+      const suffix = params.size ? `?${params}` : ""
+      return workflowApi<WrongbookEntriesPublic>(
+        `/students/me/wrongbook/entries${suffix}`,
+      )
+    },
     retry: (failureCount, error) =>
       !(error instanceof ApiError && error.status === 404) && failureCount < 3,
   })
@@ -1077,6 +1167,106 @@ function MyWrongbookPage() {
             </div>
           )}
 
+          {/* 自定义错题集：全部 + 各集 + 新建 */}
+          <div
+            className="flex flex-wrap items-center gap-2 print:hidden"
+            data-testid="wrongbook-collections"
+          >
+            <span className="text-muted-foreground text-xs">错题集</span>
+            <Button
+              variant={collectionId === null ? "secondary" : "ghost"}
+              size="sm"
+              onClick={() => setCollectionId(null)}
+            >
+              全部
+            </Button>
+            {collections.map((collection) => (
+              <Button
+                key={collection.id}
+                variant={collectionId === collection.id ? "secondary" : "ghost"}
+                size="sm"
+                data-testid={`collection-chip-${collection.name}`}
+                onClick={() => setCollectionId(collection.id)}
+              >
+                {collection.name}（{collection.entry_count}）
+              </Button>
+            ))}
+            {creatingCollection ? (
+              <span className="flex items-center gap-1.5">
+                <Input
+                  data-testid="collection-name-input"
+                  className="h-8 w-36"
+                  placeholder="集名，如 计算专题"
+                  value={collectionName}
+                  onChange={(event) => setCollectionName(event.target.value)}
+                />
+                <Button
+                  size="sm"
+                  data-testid="collection-create-submit"
+                  disabled={
+                    !collectionName.trim() || createCollection.isPending
+                  }
+                  onClick={() => createCollection.mutate()}
+                >
+                  建立
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => {
+                    setCreatingCollection(false)
+                    setCollectionName("")
+                  }}
+                >
+                  取消
+                </Button>
+              </span>
+            ) : (
+              <Button
+                variant="ghost"
+                size="sm"
+                data-testid="collection-create-open"
+                onClick={() => setCreatingCollection(true)}
+              >
+                <FolderPlus className="size-4" />
+                新建错题集
+              </Button>
+            )}
+            {collectionId &&
+              (confirmDeleteCollection ? (
+                <span className="flex items-center gap-1">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-destructive"
+                    data-testid="collection-delete-confirm"
+                    disabled={deleteCollection.isPending}
+                    onClick={() => deleteCollection.mutate(collectionId)}
+                  >
+                    确认删除此集
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setConfirmDeleteCollection(false)}
+                  >
+                    取消
+                  </Button>
+                </span>
+              ) : (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-muted-foreground"
+                  data-testid="collection-delete"
+                  onClick={() => setConfirmDeleteCollection(true)}
+                >
+                  <Trash2 className="size-3.5" />
+                  删除此集
+                </Button>
+              ))}
+          </div>
+
           {entries.length === 0 ? (
             <EmptyState
               icon={BookMarked}
@@ -1089,7 +1279,70 @@ function MyWrongbookPage() {
                 共 {query.data?.count ?? entries.length} 道错题
               </p>
               {entries.map((entry) => (
-                <EntryCard key={entry.entry_id} entry={entry} />
+                <EntryCard
+                  key={entry.entry_id}
+                  entry={entry}
+                  footer={
+                    <div className="mt-3 flex flex-wrap items-center gap-2 border-t pt-3 print:hidden">
+                      {collections.length > 0 && (
+                        <select
+                          className="h-8 rounded-md border bg-background px-2 text-xs"
+                          data-testid={`assign-collection-${entry.entry_id}`}
+                          value=""
+                          onChange={(event) => {
+                            const target = event.target.value
+                            if (target) {
+                              assignEntry.mutate({
+                                entryId: entry.entry_id,
+                                collection: target,
+                              })
+                            }
+                            event.target.value = ""
+                          }}
+                        >
+                          <option value="">移入错题集…</option>
+                          {collections.map((collection) => (
+                            <option key={collection.id} value={collection.id}>
+                              {collection.name}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {confirmDeleteEntry === entry.entry_id ? (
+                        <span className="flex items-center gap-1">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive"
+                            data-testid="entry-delete-confirm"
+                            disabled={deleteEntry.isPending}
+                            onClick={() => deleteEntry.mutate(entry.entry_id)}
+                          >
+                            确认删除
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setConfirmDeleteEntry(null)}
+                          >
+                            取消
+                          </Button>
+                        </span>
+                      ) : (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="ml-auto text-muted-foreground"
+                          data-testid={`entry-delete-${entry.entry_id}`}
+                          onClick={() => setConfirmDeleteEntry(entry.entry_id)}
+                        >
+                          <Trash2 className="size-4" />
+                          删除
+                        </Button>
+                      )}
+                    </div>
+                  }
+                />
               ))}
             </div>
           )}
