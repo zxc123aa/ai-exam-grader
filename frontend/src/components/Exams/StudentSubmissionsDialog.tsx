@@ -49,6 +49,7 @@ import {
   loadImageElement,
   type NormalizedPageQuad,
 } from "@/lib/document-normalizer"
+import { workflowApi } from "@/lib/workflow-api"
 import { handleError } from "@/utils"
 
 function formatBytes(size: number) {
@@ -451,6 +452,12 @@ export function StudentSubmissionsContent({
   const appendInputRef = useRef<HTMLInputElement | null>(null)
   const [appendTarget, setAppendTarget] =
     useState<StudentSubmissionPublic | null>(null)
+  // 改绑学生：归错人时重新归位
+  const [reassignTarget, setReassignTarget] =
+    useState<StudentSubmissionPublic | null>(null)
+  const [reassignName, setReassignName] = useState("")
+  const [reassignIdentifier, setReassignIdentifier] = useState("")
+  const [reassignClass, setReassignClass] = useState("")
   const [localProcessing, setLocalProcessing] = useState(false)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -596,6 +603,30 @@ export function StudentSubmissionsContent({
       }),
     onSuccess: () => {
       showSuccessToast("配准状态已更新")
+    },
+    onError: handleError.bind(showErrorToast),
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey })
+    },
+  })
+
+  // 改绑学生：归错人（错别字/张冠李戴）时重新归位，不用删了重传
+  const reassignMutation = useMutation({
+    mutationFn: () =>
+      workflowApi(
+        `/exams/${exam.id}/submissions/${reassignTarget?.id}/student`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({
+            class_name: reassignClass.trim() || null,
+            student_name: reassignName.trim() || null,
+            student_identifier: reassignIdentifier.trim() || null,
+          }),
+        },
+      ),
+    onSuccess: () => {
+      showSuccessToast("已改绑学生")
+      setReassignTarget(null)
     },
     onError: handleError.bind(showErrorToast),
     onSettled: () => {
@@ -831,6 +862,21 @@ export function StudentSubmissionsContent({
                         : ""}
                     </Tag>
                     <Button
+                      data-testid={`reassign-student-${submission.id}`}
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        setReassignTarget(submission)
+                        setReassignClass(submission.class_name ?? "")
+                        setReassignName(submission.student_name ?? "")
+                        setReassignIdentifier(
+                          submission.student_identifier ?? "",
+                        )
+                      }}
+                    >
+                      改绑
+                    </Button>
+                    <Button
                       data-testid={`confirm-registration-${submission.id}`}
                       variant="outline"
                       size="sm"
@@ -903,6 +949,61 @@ export function StudentSubmissionsContent({
       {previewSubmission && (
         <SubmissionPreview examId={exam.id} submission={previewSubmission} />
       )}
+
+      <Dialog
+        open={reassignTarget !== null}
+        onOpenChange={(open) => !open && setReassignTarget(null)}
+      >
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>改绑学生</DialogTitle>
+            <DialogDescription>
+              把「{reassignTarget?.student_name || "未命名学生"}
+              」这份答卷改绑到正确的学生。填学号最稳（按花名册匹配）；
+              没有学号就填班级+姓名。
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-3">
+            <Input
+              data-testid="reassign-class-input"
+              placeholder="班级（如 001班）"
+              value={reassignClass}
+              onChange={(e) => setReassignClass(e.target.value)}
+            />
+            <Input
+              data-testid="reassign-name-input"
+              placeholder="姓名"
+              value={reassignName}
+              onChange={(e) => setReassignName(e.target.value)}
+            />
+            <Input
+              data-testid="reassign-identifier-input"
+              placeholder="学号（推荐）"
+              value={reassignIdentifier}
+              onChange={(e) => setReassignIdentifier(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setReassignTarget(null)}>
+                取消
+              </Button>
+              <Button
+                data-testid="reassign-submit"
+                disabled={
+                  reassignMutation.isPending ||
+                  (!reassignIdentifier.trim() &&
+                    !(reassignClass.trim() && reassignName.trim()))
+                }
+                onClick={() => reassignMutation.mutate()}
+              >
+                {reassignMutation.isPending ? (
+                  <Loader2 className="animate-spin" />
+                ) : null}
+                确认改绑
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

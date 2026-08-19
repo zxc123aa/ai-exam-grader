@@ -82,6 +82,9 @@ from app.models import (
     QuestionBankEntryPublic,
     QuestionBankPublic,
     QuestionRecognitionRun,
+    RosterCheckRequest,
+    RosterCheckResponse,
+    RosterCheckResult,
     ScoreRelease,
     ScoreReleaseStatus,
     StandardAnswer,
@@ -94,8 +97,10 @@ from app.models import (
     StandardAnswerUpdate,
     StoredFile,
     StoredFilePublic,
+    Student,
     StudentSubmission,
     StudentSubmissionPublic,
+    StudentSubmissionReassign,
     StudentSubmissionRegistrationUpdate,
     StudentSubmissionsPublic,
     StudentSubmissionStatus,
@@ -3227,9 +3232,12 @@ async def upload_student_submission(
             org_id=exam.org_id,
             class_name=class_name,
             student_name=student_name,
+            student_identifier=student_identifier,
         )
         if student is not None:
             submission.student_id = student.id
+            # 以花名册姓名校正快照（学号命中时上传的姓名可能是错别字）
+            submission.student_name = student.name
         session.add(submission)
         session.commit()
     except Exception:
@@ -3245,6 +3253,61 @@ async def upload_student_submission(
     return build_student_submission_public(
         submission=submission, stored_file=active_file
     )
+
+
+@router.post("/{exam_id}/roster-check", response_model=RosterCheckResponse)
+def check_submission_roster(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    body: RosterCheckRequest,
+) -> Any:
+    """上传答卷前比对花名册：标出疑似错别字/不在册的名字，不阻塞上传。
+
+    exact：学号或「班级+姓名」精确命中；fuzzy：班内（未分班则全校）有相似
+    姓名，suggestion 给最像的；missing：无人匹配（上传会触发自动创建）。
+    """
+    import difflib
+
+    exam = get_exam_for_user(
+        session=session, current_user=current_user, exam_id=exam_id
+    )
+    classes = session.exec(
+        select(ClassGroup).where(ClassGroup.org_id == exam.org_id)
+    ).all()
+    students = session.exec(
+        select(Student)
+        .join(ClassGroup, Student.class_id == ClassGroup.id)  # type: ignore[arg-type]
+        .where(ClassGroup.org_id == exam.org_id)
+    ).all()
+    by_class: dict[uuid.UUID, list[Student]] = {}
+    for student in students:
+        by_class.setdefault(student.class_id, []).append(student)
+    by_no = {s.student_no: s for s in students if s.student_no}
+
+    results: list[RosterCheckResult] = []
+    for entry in body.entries:
+        name = (entry.student_name or "").strip()
+        identifier = (entry.student_identifier or "").strip()
+        class_name = (entry.class_name or "").strip()
+        if identifier and identifier in by_no:
+            results.append(RosterCheckResult(status="exact"))
+            continue
+        class_group = next((c for c in classes if c.name == class_name), None)
+        pool = by_class.get(class_group.id, []) if class_group else list(students)
+        if name and any(s.name == name for s in pool):
+            results.append(RosterCheckResult(status="exact"))
+            continue
+        if not name:
+            results.append(RosterCheckResult(status="missing"))
+            continue
+        # 中文名 2-3 字，错一个字 ratio 只有 0.5-0.67，cutoff 放低才抓得到
+        close = difflib.get_close_matches(name, [s.name for s in pool], n=1, cutoff=0.5)
+        if close:
+            results.append(RosterCheckResult(status="fuzzy", suggestion=close[0]))
+        else:
+            results.append(RosterCheckResult(status="missing"))
+    return RosterCheckResponse(results=results)
 
 
 @router.get("/{exam_id}/submissions", response_model=StudentSubmissionsPublic)
@@ -3638,9 +3701,12 @@ async def preprocess_student_submission_photo(
                 org_id=exam.org_id,
                 class_name=class_name,
                 student_name=student_name,
+                student_identifier=student_identifier,
             )
             if student is not None:
                 submission.student_id = student.id
+                # 以花名册姓名校正快照（学号命中时上传的姓名可能是错别字）
+                submission.student_name = student.name
             session.add(submission)
             session.commit()
         except Exception:
@@ -3719,9 +3785,12 @@ async def preprocess_student_submission_photo(
             org_id=exam.org_id,
             class_name=class_name,
             student_name=student_name,
+            student_identifier=student_identifier,
         )
         if student is not None:
             submission.student_id = student.id
+            # 以花名册姓名校正快照（学号命中时上传的姓名可能是错别字）
+            submission.student_name = student.name
         session.add(submission)
         session.commit()
     except Exception:
@@ -3908,6 +3977,60 @@ def read_student_submission(
         exam_id=exam_id,
         submission_id=submission_id,
     )
+    return build_student_submission_public(
+        submission=submission, stored_file=stored_file
+    )
+
+
+@router.patch(
+    "/{exam_id}/submissions/{submission_id}/student",
+    response_model=StudentSubmissionPublic,
+)
+def reassign_student_submission(
+    session: SessionDep,
+    current_user: CurrentUser,
+    exam_id: uuid.UUID,
+    submission_id: uuid.UUID,
+    body: StudentSubmissionReassign,
+) -> Any:
+    """答卷改绑学生：归错人（错别字、张冠李戴）时重新归位，不用删了重传。
+
+    已配准/已批改也允许改绑——批注挂在答卷上不受影响，
+    成绩汇总按 student_id 重算即可。
+    """
+    exam = get_exam_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        require_write=True,
+    )
+    submission, stored_file = get_student_submission_for_user(
+        session=session,
+        current_user=current_user,
+        exam_id=exam_id,
+        submission_id=submission_id,
+        require_write=True,
+    )
+    student = resolve_student_for_submission(
+        session=session,
+        owner_id=exam.owner_id,
+        org_id=exam.org_id,
+        class_name=body.class_name,
+        student_name=body.student_name,
+        student_identifier=body.student_identifier,
+    )
+    if student is None:
+        raise HTTPException(
+            status_code=422, detail="请至少提供班级+姓名或学号中的一个有效信息"
+        )
+    submission.student_id = student.id
+    submission.student_name = student.name
+    submission.student_identifier = body.student_identifier or None
+    submission.class_name = (body.class_name or "").strip() or None
+    submission.updated_at = get_datetime_utc()
+    session.add(submission)
+    session.commit()
+    session.refresh(submission)
     return build_student_submission_public(
         submission=submission, stored_file=stored_file
     )

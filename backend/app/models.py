@@ -1916,6 +1916,35 @@ class StudentSubmissionsPublic(SQLModel):
     count: int
 
 
+class RosterCheckEntry(SQLModel):
+    """上传答卷前花名册比对的单项。"""
+
+    class_name: str | None = None
+    student_name: str | None = None
+    student_identifier: str | None = None
+
+
+class RosterCheckResult(SQLModel):
+    status: Literal["exact", "fuzzy", "missing"]
+    suggestion: str | None = None
+
+
+class RosterCheckRequest(SQLModel):
+    entries: list[RosterCheckEntry] = Field(max_length=500)
+
+
+class RosterCheckResponse(SQLModel):
+    results: list[RosterCheckResult]
+
+
+class StudentSubmissionReassign(SQLModel):
+    """答卷改绑学生：重新按学号/姓名归位。"""
+
+    class_name: str | None = None
+    student_name: str | None = None
+    student_identifier: str | None = None
+
+
 class ExamScoreSummaryQuestion(SQLModel):
     label: str
     score: float | None = None

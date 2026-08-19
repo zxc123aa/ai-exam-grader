@@ -14,6 +14,7 @@ import { Tag } from "@/components/Common/Tag"
 import { Button } from "@/components/ui/button"
 import { Checkbox } from "@/components/ui/checkbox"
 import useCustomToast from "@/hooks/useCustomToast"
+import { workflowApi } from "@/lib/workflow-api"
 
 const SUPPORTED_FILE_PATTERN = /\.(pdf|jpe?g|png|zip)$/i
 const ZIP_FILE_PATTERN = /\.zip$/i
@@ -156,6 +157,10 @@ export function FolderBatchUpload({
   const [skippedCount, setSkippedCount] = useState(0)
   const [includeUngrouped, setIncludeUngrouped] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  /** 花名册比对结果：group.id → 疑似错别字/不在册提示 */
+  const [rosterHints, setRosterHints] = useState<
+    Record<string, { status: string; suggestion: string | null }>
+  >({})
   const inputRef = useRef<HTMLInputElement | null>(null)
   const queryClient = useQueryClient()
   const { showSuccessToast, showErrorToast } = useCustomToast()
@@ -216,7 +221,35 @@ export function FolderBatchUpload({
     setUngrouped(parsed.ungrouped)
     setSkippedCount(parsed.skipped)
     setIncludeUngrouped(false)
+    setRosterHints({})
     setPhase("preview")
+    // 花名册比对：标出疑似错别字/不在册的组，不阻塞上传
+    void (async () => {
+      try {
+        const res = await workflowApi<{
+          results: { status: string; suggestion: string | null }[]
+        }>(`/exams/${examId}/roster-check`, {
+          method: "POST",
+          body: JSON.stringify({
+            entries: parsed.groups.map((group) => ({
+              class_name: group.className || null,
+              student_name: group.studentName,
+            })),
+          }),
+        })
+        const hints: Record<
+          string,
+          { status: string; suggestion: string | null }
+        > = {}
+        parsed.groups.forEach((group, index) => {
+          const result = res.results[index]
+          if (result && result.status !== "exact") hints[group.id] = result
+        })
+        setRosterHints(hints)
+      } catch {
+        // 比对服务异常不影响上传
+      }
+    })()
   }
 
   // 单个学生组内文件顺序上传；第一个文件创建答卷，从第二个起追加到同一份答卷，
@@ -392,6 +425,16 @@ export function FolderBatchUpload({
                 className="flex items-center justify-between gap-3 px-3 py-2 text-sm"
               >
                 <span className="min-w-0 truncate">{groupLabel(group)}</span>
+                {rosterHints[group.id] && (
+                  <span
+                    className="shrink-0 text-amber-600 text-xs dark:text-amber-400"
+                    data-testid="roster-hint"
+                  >
+                    {rosterHints[group.id].status === "fuzzy"
+                      ? `不在花名册，是否是 ${rosterHints[group.id].suggestion}？`
+                      : "不在花名册，将新建学生"}
+                  </span>
+                )}
                 <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                   {group.files.length} 个文件
                 </span>
