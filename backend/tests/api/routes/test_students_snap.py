@@ -611,3 +611,37 @@ def test_snap_record_delete_owner_only(
         ).json()
         == []
     )
+
+
+def test_snap_wrongbook_entry_gets_knowledge_points(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """拍题收进错题本时自动标注知识点，进掌握度统计。"""
+    from tests.api.routes.test_students_learning_advice import _advice_context
+
+    def fake_call_json_model(**_kwargs: object):
+        return {"knowledge_points": ["一元一次方程"]}, "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    context = _advice_context(client, db, "知识点")
+    created = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/from-snap",
+        headers=context["headers"],
+        json={
+            "question_text": "解方程 2x+3=7。",
+            "student_answer": "x=3",
+            "comment": "移项错了",
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["knowledge_point_names"] == ["一元一次方程"]
+
+    # 掌握度统计里能看到这个知识点
+    mastery = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/mastery",
+        headers=context["headers"],
+    )
+    assert mastery.status_code == 200
+    names = [item["knowledge_point_name"] for item in mastery.json()["data"]]
+    assert "一元一次方程" in names

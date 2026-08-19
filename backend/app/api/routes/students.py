@@ -824,6 +824,40 @@ def read_my_wrongbook_entry(
     return _entry_detail(entry, source)
 
 
+def _classify_snap_knowledge_points(
+    question_text: str,
+    defaults: dict[str, Any],
+    candidates: list[str],
+) -> list[str]:
+    """给拍题收录的题目标注知识点（1-3 个），供错题本/知识图谱统计。
+
+    优先复用学生错题本里已有的知识点名称，避免同一知识点多个叫法。
+    """
+    hint = (
+        f"合适的话优先从这些已用名称里选：{'、'.join(candidates[:50])}。"
+        if candidates
+        else ""
+    )
+    prompt = (
+        "你是中学教研老师。给下面的题目标注 1 到 3 个知识点，用课程标准的简明名称"
+        f"（如「一元一次方程」「受力分析」）。{hint}"
+        '只返回 JSON，不要 Markdown：{"knowledge_points":["知识点1"]}\n'
+        f"题目：{question_text[:2000]}"
+    )
+    parsed, _used_model, _elapsed_ms = call_json_model(
+        provider=defaults["grading_provider"],
+        model=defaults["grading_model"],
+        fallback_models=[str(item) for item in defaults["fallback_models"]],
+        messages=[{"role": "user", "content": prompt}],
+    )
+    points = [
+        str(point).strip()
+        for point in (parsed.get("knowledge_points") or [])
+        if str(point).strip()
+    ]
+    return points[:3]
+
+
 @router.post(
     "/me/wrongbook/entries/from-snap",
     response_model=WrongbookEntryDetail,
@@ -836,17 +870,40 @@ def create_my_wrongbook_entry_from_snap(
     """把拍题答疑/拍照批改的题收进错题本。
 
     手工来源，不关联任何考试或发布记录：source/entry 的外部键全留空，
-    题面文本自带。复习调度、知识图谱对这些条目照常生效。
+    题面文本自带。收录时标注知识点，复习调度、知识图谱、掌握度统计
+    对这些条目照常生效。
     """
     student = get_current_student_profile(session=session, current_user=current_user)
     learner, _student = get_current_learner(session=session, current_user=current_user)
     now = get_datetime_utc()
+    # 知识点标注：best-effort，模型异常不耽误收录
+    knowledge_points: list[str] = []
+    try:
+        recent_sources = session.exec(
+            select(WrongQuestionSource.knowledge_point_names)
+            .join(
+                WrongQuestionEntry,
+                WrongQuestionEntry.source_id == WrongQuestionSource.id,  # type: ignore[arg-type]
+            )
+            .where(WrongQuestionEntry.learner_id == learner.id)
+            .limit(100)
+        ).all()
+        candidates = list(
+            dict.fromkeys(
+                name for names in recent_sources for name in (names or [])
+            )
+        )
+        knowledge_points = _classify_snap_knowledge_points(
+            entry_in.question_text, get_grading_defaults(session), candidates
+        )
+    except Exception:
+        logger.exception("拍题知识点标注失败，按无知识点收录")
     source = WrongQuestionSource(
         exam_title="拍题答疑",
         question_label="拍题",
         question_text=entry_in.question_text,
         scoring_points=[],
-        knowledge_point_names=[],
+        knowledge_point_names=knowledge_points,
         released_at=now,
     )
     session.add(source)
