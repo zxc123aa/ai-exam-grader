@@ -159,6 +159,9 @@ def test_learning_advice_returns_structured_suggestion(
     assert "功和功率" in prompt
     assert "concept" in prompt
     assert "calculation" in prompt
+    # 具体错题明细（题干摘录）也进了提示词，模型才能点名「第几题错在哪」
+    assert "wrong_questions" in prompt
+    assert "一物体做匀速直线运动" in prompt
 
 
 def test_learning_advice_incomplete_payload_returns_502(

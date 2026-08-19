@@ -1039,11 +1039,32 @@ def _learning_advice_stats(
         # exam_date 是 date 对象，json.dumps 不可序列化，统一转 ISO 字符串
         if exam["exam_date"] is not None:
             exam["exam_date"] = exam["exam_date"].isoformat()
+    # 具体错题明细（最近 12 道）：让模型能点名「第几题错在哪」，
+    # 而不是只对着知识点计数写套话
+    wrong_questions = []
+    for entry, source, _review in sorted(
+        rows, key=lambda row: row[0].released_at, reverse=True
+    )[:12]:
+        wrong_questions.append(
+            {
+                "question_label": entry.question_label,
+                "exam_title": source.exam_title,
+                "question_text": (source.question_text or "")[:120],
+                "student_answer": (entry.student_answer_text or "")[:80],
+                "knowledge_points": source.knowledge_point_names or [],
+                "lost_points": (
+                    round(max(0.0, float(entry.max_score) - float(entry.score or 0)), 1)
+                    if entry.max_score
+                    else None
+                ),
+            }
+        )
     return {
         "wrong_total": len(rows),
         "knowledge_points": point_rows,
         "error_reasons": dict(reasons),
         "recent_exams": recent_exams,
+        "wrong_questions": wrong_questions,
     }
 
 
@@ -1107,13 +1128,19 @@ def read_my_learning_advice(
 
     prompt = (
         "你是一位耐心的中学老师，正在根据学生的错题记录写学习建议。"
-        "要求：说人话；具体到知识点和出错次数；禁止空话套话"
-        "（不要写「努力学习」「继续加油」这类话）。"
+        "硬性要求："
+        "1) overall 必须点名具体题目和它们共同的错误原因，"
+        "例如「第 4、6 题都把电场力方向判断反了」这种写法；"
+        "2) 每个 focus_point 的 advice 先讲清这个知识点错在哪一步，"
+        "再给可执行动作（复习哪个具体点、做几道什么题）；"
+        "3) weekly_plan 每条是具体动作，可以引用「错题本复习」和"
+        "「变式练习」（本产品能按知识点一键生成变式练习卷，直接让学生去生成）；"
+        "4) 禁止空话套话——「努力学习」「加强练习」「提升综合运用能力」一律不许出现。"
         "只返回 JSON，不要 Markdown："
-        '{"overall":"一段总述，点名最薄弱的知识点和它出错的次数",'
+        '{"overall":"一段总述，点名最薄弱的知识点、出错次数和典型错题",'
         '"focus_points":[{"knowledge_point":"知识点名","times":出错次数,'
-        '"advice":"具体到题型或操作的建议，比如先背公式再做哪类题"}],'
-        '"weekly_plan":["3-5条本周可执行的动作"]}。\n'
+        '"advice":"错在哪一步 + 先复习什么再做哪类题"}],'
+        '"weekly_plan":["3-5条本周可执行的具体动作"]}。\n'
         f"错题统计：{json.dumps(stats, ensure_ascii=False)}"
     )
     defaults = get_grading_defaults(session)

@@ -535,6 +535,18 @@ function LearningAdviceCard() {
                           错了 {point.times} 次
                         </span>
                       )}
+                      <Link
+                        to="/my/wrongbook-sheet"
+                        search={{
+                          kps: point.knowledge_point,
+                          mode: "variants",
+                          range: "90d",
+                          limit: 5,
+                        }}
+                        className="ml-auto text-primary text-xs hover:underline"
+                      >
+                        生成变式练习 →
+                      </Link>
                     </div>
                     <p className="mt-1.5 text-sm leading-6">{point.advice}</p>
                   </li>
