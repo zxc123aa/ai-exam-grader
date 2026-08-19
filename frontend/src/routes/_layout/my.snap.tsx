@@ -31,6 +31,59 @@ export const Route = createFileRoute("/_layout/my/snap")({
 
 type SnapMode = "solve" | "grade"
 
+/** 答疑（solve）流式卡：解答逐段流进对应卡片。 */
+type StreamCard = {
+  question: string
+  answer: string
+  state: "waiting" | "streaming" | "done" | "error"
+  error?: string
+}
+/** 批改（grade）流式卡：判完一题填一题的分数和评语。 */
+type GradeCard = {
+  question: string
+  studentAnswer: string
+  score: number | null
+  comment: string
+  state: "waiting" | "done" | "error"
+  error?: string
+}
+
+/**
+ * 页面状态缓存：跳到错题本再回来，识别结果不丢。
+ * sessionStorage——关掉标签页自动清，不污染长期存储。
+ */
+const SNAP_STATE_KEY = "snap-page-state"
+
+function loadSnapPageState(): {
+  mode: SnapMode
+  streamCards: StreamCard[]
+  gradeCards: GradeCard[]
+} | null {
+  try {
+    const raw = sessionStorage.getItem(SNAP_STATE_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw)
+    const streamCards = (parsed.streamCards ?? []).map((card: StreamCard) =>
+      // 流式中途离开的状态已死：标成错误，可「重试本题」
+      card.state === "streaming" || card.state === "waiting"
+        ? { ...card, state: "error" as const, error: "生成中断，可重试本题" }
+        : card,
+    )
+    const gradeCards = (parsed.gradeCards ?? []).map((card: GradeCard) =>
+      card.state === "waiting"
+        ? { ...card, state: "error" as const, error: "批改中断，可重试本题" }
+        : card,
+    )
+    return {
+      mode: parsed.mode === "grade" ? "grade" : "solve",
+      streamCards,
+      gradeCards,
+    }
+  } catch {
+    return null
+  }
+}
+
 /** 手机/平板提供「拍照」直拍；桌面浏览器只给「上传图片」。 */
 function isTouchDevice(): boolean {
   if (typeof window === "undefined") return false
@@ -114,7 +167,9 @@ async function readSnapStreamJson(
 }
 
 function MySnapPage() {
-  const [mode, setMode] = useState<SnapMode>("solve")
+  const [mode, setMode] = useState<SnapMode>(
+    () => loadSnapPageState()?.mode ?? "solve",
+  )
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [maxScore, setMaxScore] = useState("10")
@@ -133,28 +188,33 @@ function MySnapPage() {
     return () => URL.revokeObjectURL(url)
   }, [file])
 
-  // 答疑（solve）走流式：每题一张卡，解答逐段流进对应卡片
-  type StreamCard = {
-    question: string
-    answer: string
-    state: "waiting" | "streaming" | "done" | "error"
-    error?: string
-  }
-  /** 批改（grade）流式卡：判完一题填一题的分数和评语。 */
-  type GradeCard = {
-    question: string
-    studentAnswer: string
-    score: number | null
-    comment: string
-    state: "waiting" | "done" | "error"
-    error?: string
-  }
-  const [streamCards, setStreamCards] = useState<StreamCard[]>([])
-  const [gradeCards, setGradeCards] = useState<GradeCard[]>([])
+  const [streamCards, setStreamCards] = useState<StreamCard[]>(
+    () => loadSnapPageState()?.streamCards ?? [],
+  )
+  const [gradeCards, setGradeCards] = useState<GradeCard[]>(
+    () => loadSnapPageState()?.gradeCards ?? [],
+  )
   const [cardView, setCardView] = useState<"all" | "single">("all")
   const [cardIndex, setCardIndex] = useState(0)
   const [streamError, setStreamError] = useState<string | null>(null)
   const [streaming, setStreaming] = useState(false)
+
+  // 流式结束后把结果写进 sessionStorage；清空结果时同步清缓存
+  useEffect(() => {
+    if (streaming) return
+    try {
+      if (streamCards.length === 0 && gradeCards.length === 0) {
+        sessionStorage.removeItem(SNAP_STATE_KEY)
+      } else {
+        sessionStorage.setItem(
+          SNAP_STATE_KEY,
+          JSON.stringify({ mode, streamCards, gradeCards }),
+        )
+      }
+    } catch {
+      // 存储满了就放弃，缓存只是体验优化
+    }
+  }, [mode, streamCards, gradeCards, streaming])
 
   const submitSolveStream = async (fileToSubmit: File) => {
     setStreaming(true)
