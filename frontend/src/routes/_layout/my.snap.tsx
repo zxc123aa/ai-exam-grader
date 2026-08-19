@@ -1,7 +1,6 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
-import { createFileRoute } from "@tanstack/react-router"
+import { useQueryClient } from "@tanstack/react-query"
+import { createFileRoute, Link } from "@tanstack/react-router"
 import {
-  BookMarked,
   Camera,
   CircleAlert,
   History,
@@ -11,10 +10,15 @@ import {
   Sparkles,
 } from "lucide-react"
 import { useEffect, useRef, useState } from "react"
-import type { SnapGradePublic, SnapSolvePublic } from "@/client"
 import { OpenAPI } from "@/client"
 import { MarkdownMath } from "@/components/Common/MarkdownMath"
 import { PageHead } from "@/components/Common/PageHead"
+import {
+  formatQuestionText,
+  formatScore,
+  ResultSection,
+  SaveToWrongbookButton,
+} from "@/components/Common/SnapRecordView"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -26,24 +30,6 @@ export const Route = createFileRoute("/_layout/my/snap")({
 })
 
 type SnapMode = "solve" | "grade"
-type SnapResult = SnapSolvePublic | SnapGradePublic
-
-/** 服务端拍题历史（snaprecord）：列表项 + 详情载荷。 */
-type SnapRecordListItem = {
-  id: string
-  mode: string
-  title: string
-  created_at: string
-}
-type SnapRecordPayload =
-  | { kind: "solve"; items: { question: string; answer: string }[] }
-  | {
-      kind: "solve"
-      question_text: string
-      answer: string
-      explanation: string
-    }
-  | { kind: "grade"; result: SnapGradePublic }
 
 /** 手机/平板提供「拍照」直拍；桌面浏览器只给「上传图片」。 */
 function isTouchDevice(): boolean {
@@ -52,148 +38,6 @@ function isTouchDevice(): boolean {
     window.matchMedia("(pointer: coarse)").matches ||
     /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent)
   )
-}
-
-function formatScore(value: number): string {
-  return Number.isInteger(value) ? String(value) : value.toFixed(1)
-}
-
-function ResultSection({
-  title,
-  children,
-}: {
-  title: string
-  children: React.ReactNode
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <div className="font-medium text-muted-foreground text-xs">{title}</div>
-      <div className="whitespace-pre-wrap text-sm leading-relaxed">
-        {children}
-      </div>
-    </div>
-  )
-}
-
-/** 把拍到的题收进错题本：成功后记 state 置灰。 */
-function SaveToWrongbookButton({
-  questionText,
-  studentAnswer,
-  comment,
-}: {
-  questionText: string
-  studentAnswer?: string
-  comment?: string
-}) {
-  const [saved, setSaved] = useState(false)
-  const save = useMutation({
-    mutationFn: () =>
-      workflowApi("/students/me/wrongbook/entries/from-snap", {
-        method: "POST",
-        body: JSON.stringify({
-          question_text: questionText,
-          student_answer: studentAnswer ?? "",
-          comment: comment ?? "",
-        }),
-      }),
-    onSuccess: () => setSaved(true),
-  })
-  return (
-    <span className="inline-flex items-center gap-2">
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={save.isPending || saved || !questionText.trim()}
-        onClick={() => save.mutate()}
-      >
-        <BookMarked className="size-4" />
-        {saved ? "已收进错题本" : save.isPending ? "保存中…" : "收进错题本"}
-      </Button>
-      {save.isError && (
-        <span className="text-destructive text-xs">保存失败，请重试</span>
-      )}
-    </span>
-  )
-}
-
-function SnapResultCard({ result }: { result: SnapResult }) {
-  // 批改模式：整页多题时逐题展示
-  if ("student_answer" in result && (result.items?.length ?? 0) > 1) {
-    return (
-      <div className="grid gap-4" data-testid="snap-result">
-        {result.items!.map((item, index) => (
-          <div
-            key={`snap-item-${index}`}
-            className="grid gap-4 rounded-[10px] border bg-card p-5"
-          >
-            <ResultSection title={`第 ${index + 1} 题`}>
-              {item.question_text}
-            </ResultSection>
-            <ResultSection title="你的作答">
-              {item.student_answer}
-            </ResultSection>
-            <div className="flex items-baseline gap-1.5 border-t pt-4">
-              <span className="font-bold text-3xl tracking-tight">
-                {formatScore(item.score)}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                / {formatScore(item.max_score)} 分
-              </span>
-            </div>
-            <ResultSection title="点评">{item.comment}</ResultSection>
-            <SaveToWrongbookButton
-              questionText={item.question_text}
-              studentAnswer={item.student_answer}
-              comment={item.comment}
-            />
-          </div>
-        ))}
-      </div>
-    )
-  }
-  return (
-    <div
-      className="grid gap-4 rounded-[10px] border bg-card p-5"
-      data-testid="snap-result"
-    >
-      <ResultSection title="题目">{result.question_text}</ResultSection>
-      {"student_answer" in result ? (
-        <>
-          <ResultSection title="你的作答">
-            {result.student_answer}
-          </ResultSection>
-          <div className="flex items-baseline gap-1.5 border-t pt-4">
-            <span className="font-bold text-3xl tracking-tight">
-              {formatScore(result.score)}
-            </span>
-            <span className="text-muted-foreground text-sm">
-              / {formatScore(result.max_score)} 分
-            </span>
-          </div>
-          <ResultSection title="点评">{result.comment}</ResultSection>
-          <SaveToWrongbookButton
-            questionText={result.question_text}
-            studentAnswer={result.student_answer}
-            comment={result.comment}
-          />
-        </>
-      ) : (
-        <>
-          <ResultSection title="参考答案">{result.answer}</ResultSection>
-          <ResultSection title="讲解">{result.explanation}</ResultSection>
-          <SaveToWrongbookButton
-            questionText={result.question_text}
-            comment={`参考答案：${result.answer}`}
-          />
-        </>
-      )}
-    </div>
-  )
-}
-
-/** 连排选项拆行：「A.条形 B.柱形」→ 每个选项一行，题目更好读。 */
-function formatQuestionText(text: string): string {
-  return text.replace(/(?<!^)\s+([A-F])[.、]\s*/gm, "\n$1. ")
 }
 
 /** SSE 事件流读取：逐事件回调。 */
@@ -269,64 +113,12 @@ async function readSnapStreamJson(
   await consumeSse(response, onEvent)
 }
 
-/** 历史记录详情：三种载荷——流式多题、单题答疑、拍照批改。 */
-function SnapRecordView({ payload }: { payload: SnapRecordPayload }) {
-  if (payload.kind === "grade") {
-    return <SnapResultCard result={payload.result} />
-  }
-  if ("items" in payload) {
-    return (
-      <div className="grid gap-4">
-        {payload.items.map((item, index) => (
-          <div
-            key={`record-item-${index}`}
-            className="grid gap-4 rounded-[10px] border bg-card p-5"
-          >
-            <ResultSection title={`第 ${index + 1} 题`}>
-              <span className="whitespace-pre-wrap">
-                {formatQuestionText(item.question)}
-              </span>
-            </ResultSection>
-            <ResultSection title="解答">
-              <MarkdownMath text={item.answer} className="text-sm" />
-            </ResultSection>
-          </div>
-        ))}
-      </div>
-    )
-  }
-  return (
-    <SnapResultCard
-      result={{
-        mode: "solve",
-        question_text: payload.question_text,
-        answer: payload.answer,
-        explanation: payload.explanation,
-      }}
-    />
-  )
-}
-
 function MySnapPage() {
   const [mode, setMode] = useState<SnapMode>("solve")
   const [file, setFile] = useState<File | null>(null)
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [maxScore, setMaxScore] = useState("10")
-  const [selectedRecordId, setSelectedRecordId] = useState<string | null>(null)
   const queryClient = useQueryClient()
-  const records = useQuery({
-    queryKey: ["snap-records"],
-    queryFn: () =>
-      workflowApi<SnapRecordListItem[]>("/students/me/snap/records"),
-  })
-  const recordDetail = useQuery({
-    queryKey: ["snap-record", selectedRecordId],
-    queryFn: () =>
-      workflowApi<{ payload: SnapRecordPayload }>(
-        `/students/me/snap/records/${selectedRecordId}`,
-      ),
-    enabled: Boolean(selectedRecordId),
-  })
   const cameraInputRef = useRef<HTMLInputElement>(null)
   const albumInputRef = useRef<HTMLInputElement>(null)
   const touchDevice = isTouchDevice()
@@ -584,7 +376,6 @@ function MySnapPage() {
   const pickFile = (selected: File | null) => {
     if (!selected) return
     setFile(selected)
-    setSelectedRecordId(null)
     setStreamCards([])
     setGradeCards([])
     setStreamError(null)
@@ -925,58 +716,15 @@ function MySnapPage() {
         </div>
       )}
 
-      {selectedRecordId && recordDetail.data && (
-        <div className="grid gap-2" data-testid="snap-record-detail">
-          <div className="flex items-center justify-between">
-            <div className="font-medium text-muted-foreground text-xs">
-              历史记录
-            </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setSelectedRecordId(null)}
-            >
-              收起
-            </Button>
-          </div>
-          <SnapRecordView payload={recordDetail.data.payload} />
-        </div>
-      )}
-
-      {(records.data?.length ?? 0) > 0 && (
-        <div className="grid gap-2">
-          <div className="flex items-center gap-1.5 font-medium text-muted-foreground text-xs">
-            <History className="size-3.5" />
-            历史记录
-          </div>
-          <div className="grid gap-2">
-            {records.data!.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                data-testid="snap-record-item"
-                className={`truncate rounded-[10px] border bg-card px-4 py-2.5 text-left text-sm transition-colors hover:border-primary ${selectedRecordId === item.id ? "border-primary" : ""}`}
-                onClick={() => {
-                  setStreamCards([])
-                  setGradeCards([])
-                  setSelectedRecordId(item.id)
-                }}
-              >
-                <span className="mr-2 text-muted-foreground text-xs">
-                  {item.mode === "grade" ? "批改" : "答疑"} ·{" "}
-                  {new Date(item.created_at).toLocaleString("zh-CN", {
-                    month: "numeric",
-                    day: "numeric",
-                    hour: "2-digit",
-                    minute: "2-digit",
-                  })}
-                </span>
-                {item.title}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
+      <div className="flex justify-center">
+        <Link
+          to="/my/snap-history"
+          className="inline-flex items-center gap-1.5 text-muted-foreground text-sm transition-colors hover:text-foreground"
+        >
+          <History className="size-4" />
+          查看拍题记录
+        </Link>
+      </div>
     </div>
   )
 }

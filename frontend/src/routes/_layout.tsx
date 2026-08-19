@@ -83,6 +83,7 @@ function pageTitle(pathname: string) {
   // 学生端路径优先：/my/exams 的 exams 段不能被误判为「导入试卷」
   if (pathname.startsWith("/my")) {
     if (pathname === "/my/snap") return "拍题答疑"
+    if (pathname === "/my/snap-history") return "拍题记录"
     return pathname === "/my/exams" ? "我的成绩" : "成绩报告"
   }
   const segments = pathname.split("/").filter(Boolean)

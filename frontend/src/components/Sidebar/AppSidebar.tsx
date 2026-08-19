@@ -7,6 +7,7 @@ import {
   Camera,
   FileText,
   GraduationCap,
+  History,
   LayoutDashboard,
   Network,
   NotebookPen,
@@ -184,16 +185,33 @@ export function AppSidebar() {
               <SidebarMenuItem>
                 <SidebarMenuButton
                   tooltip="拍题答疑"
-                  isActive={pathname.startsWith("/my/snap")}
+                  isActive={pathname === "/my/snap"}
                   asChild
                   className={cn(
                     "transition-all",
-                    pathname.startsWith("/my/snap") && ACTIVE_ITEM_CLASS,
+                    pathname === "/my/snap" && ACTIVE_ITEM_CLASS,
                   )}
                 >
                   <RouterLink to="/my/snap" onClick={handleMenuClick}>
                     <Camera />
                     <span>拍题答疑</span>
+                  </RouterLink>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  tooltip="拍题记录"
+                  isActive={pathname.startsWith("/my/snap-history")}
+                  asChild
+                  className={cn(
+                    "transition-all",
+                    pathname.startsWith("/my/snap-history") &&
+                      ACTIVE_ITEM_CLASS,
+                  )}
+                >
+                  <RouterLink to="/my/snap-history" onClick={handleMenuClick}>
+                    <History />
+                    <span>拍题记录</span>
                   </RouterLink>
                 </SidebarMenuButton>
               </SidebarMenuItem>
