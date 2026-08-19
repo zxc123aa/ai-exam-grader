@@ -291,19 +291,25 @@ function EntryCard({
     <div className="rounded-2xl bg-card p-5 shadow-card">
       <div className="flex flex-wrap items-baseline gap-2">
         <span className="font-semibold">{entry.question_label}</span>
-        <span
-          className={cn(
-            "font-semibold",
-            rate != null && rate < 40
-              ? "text-red-600 dark:text-red-400"
-              : "text-amber-600 dark:text-amber-400",
-          )}
-        >
-          {formatScore(entry.score)}
-        </span>
-        <span className="text-muted-foreground text-sm">
-          / {formatScore(entry.max_score)} 分
-        </span>
+        {entry.max_score != null ? (
+          <>
+            <span
+              className={cn(
+                "font-semibold",
+                rate != null && rate < 40
+                  ? "text-red-600 dark:text-red-400"
+                  : "text-amber-600 dark:text-amber-400",
+              )}
+            >
+              {formatScore(entry.score)}
+            </span>
+            <span className="text-muted-foreground text-sm">
+              / {formatScore(entry.max_score)} 分
+            </span>
+          </>
+        ) : (
+          <span className="text-muted-foreground text-sm">未评分</span>
+        )}
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
           {(entry.review_count ?? 0) > 0 && (
             <Tag variant="neutral">复习 {entry.review_count} 次</Tag>
@@ -672,7 +678,9 @@ function CramSection({ subject }: { subject: string | null }) {
               {order + 1}. {row.exam_title} {row.question_label}
             </span>
             <span className="ml-2 text-muted-foreground">
-              {formatScore(row.score)} / {formatScore(row.max_score)} 分
+              {row.max_score != null
+                ? `${formatScore(row.score)} / ${formatScore(row.max_score)} 分`
+                : "未评分"}
             </span>
             {(row.knowledge_point_names ?? []).length > 0 && (
               <span className="ml-2 text-muted-foreground text-xs">

@@ -857,7 +857,8 @@ def create_my_wrongbook_entry_from_snap(
         student_user_id=current_user.id,
         student_name=student.name,
         question_label="拍题",
-        score=0.0,
+        # 拍题收录没有判分上下文：分数留空，别写 0 分误导（前端显示「未评分」）
+        score=None,
         is_wrong=True,
         student_answer_text=entry_in.student_answer or None,
         teacher_comment=entry_in.comment or None,

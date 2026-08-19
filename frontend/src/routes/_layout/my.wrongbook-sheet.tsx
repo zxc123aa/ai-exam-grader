@@ -138,10 +138,19 @@ function VariantPracticeSection({
   }, [masteryQuery.data, initialKnowledgePoint])
 
   const create = useMutation({
-    mutationFn: () =>
-      StudentsService.createMyPracticeSheet({
-        requestBody: { knowledge_point: knowledgePoint, count },
-      }),
+    mutationFn: async () => {
+      // 出题是一次模型调用（通常几十秒）：客户端 2 分钟兜底，
+      // 后端挂起时按钮不能永远转圈
+      const timeout = new Promise<never>((_resolve, reject) =>
+        setTimeout(() => reject(new Error("出题超时，请重试")), 120_000),
+      )
+      return Promise.race([
+        StudentsService.createMyPracticeSheet({
+          requestBody: { knowledge_point: knowledgePoint, count },
+        }),
+        timeout,
+      ])
+    },
     onSuccess: (sheet) => {
       setActiveId(sheet.id)
       sheetsQuery.refetch()
@@ -204,9 +213,22 @@ function VariantPracticeSection({
           以你在这个知识点上做错过的题为种子，换情境、换数值、换问法出新题。
         </p>
         {create.isError && (
-          <p className="text-destructive text-sm">
-            生成失败：{String(create.error)}
-          </p>
+          <div className="flex items-center gap-2 text-destructive text-sm">
+            <span className="flex-1">
+              生成失败：
+              {create.error instanceof Error
+                ? create.error.message
+                : String(create.error)}
+            </span>
+            <Button
+              variant="ghost"
+              size="sm"
+              disabled={!knowledgePoint}
+              onClick={() => create.mutate()}
+            >
+              重试
+            </Button>
+          </div>
         )}
         {sheets.length > 0 && (
           <div className="flex flex-wrap gap-2 border-t pt-3">
