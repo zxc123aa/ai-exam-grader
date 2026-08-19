@@ -889,9 +889,7 @@ def create_my_wrongbook_entry_from_snap(
             .limit(100)
         ).all()
         candidates = list(
-            dict.fromkeys(
-                name for names in recent_sources for name in (names or [])
-            )
+            dict.fromkeys(name for names in recent_sources for name in (names or []))
         )
         knowledge_points = _classify_snap_knowledge_points(
             entry_in.question_text, get_grading_defaults(session), candidates
