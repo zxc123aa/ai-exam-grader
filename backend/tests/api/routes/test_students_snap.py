@@ -739,3 +739,37 @@ def test_wrongbook_entry_delete_and_collections(
         ).status_code
         == 404
     )
+
+
+def test_snap_grade_stream_marks_unanswered_without_model_call(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """未作答的题直接出 0 分卡（不调模型），其余题正常判分。"""
+    headers = _student_headers(client, db, "未作答")
+    monkeypatch.setattr(
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [
+            ("计算 3+4。", "7", 5.0),
+            ("应用题第 9 题。", "未作答", 5.0),
+        ],
+    )
+    calls: list[str] = []
+
+    def fake_call_json_model(**kwargs: object):
+        messages = kwargs["messages"]
+        calls.append(str(messages[0]["content"]))  # type: ignore[index]
+        return {"score": 5, "comment": "正确。"}, "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/grade/stream",
+        headers=headers,
+        files={"image": ("question.png", PNG_BYTES, "image/png")},
+        data={"max_score": "5"},
+    )
+    assert response.status_code == 200, response.text
+    body = response.text
+    assert "未作答，记 0 分" in body
+    assert len(calls) == 1  # 只有有作答的那题调了模型
+    assert "3+4" in calls[0]

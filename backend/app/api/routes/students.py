@@ -1607,13 +1607,15 @@ def _snap_extract_multi(
     """
     image = base64.b64encode(image_bytes).decode("ascii")
     prompt = (
-        "这张照片里有学生作答的试卷内容。请找出所有写了答案的题，一道不漏、"
+        "这张照片里有学生作答的试卷内容。请找出卷面上印有的所有题目，一道不漏、"
         "按卷面顺序；选择题可能多达十几道，不要中途跳到后面的大题而漏掉中间的选择题。"
         "每题给出：1) 题干——保留判分需要的条件、设问，选择题必须保留全部选项内容，"
-        "150 字以内；2) 学生的手写作答原文；3) 卷面标注的该题分值"
-        "（如大题说明「每题 2 分」或题后「（3 分）」，没标就填 null）。没写答案的题不要包含。"
+        "150 字以内；2) 学生的手写作答——必须原样照抄，写错也不许纠正，"
+        "禁止把学生的错误答案改成正确答案；看不清写「无法辨认」；"
+        "没写答案的题填「未作答」，同样列出；3) 卷面标注的该题分值"
+        "（如大题说明「每题 2 分」或题后「（3 分）」，没标就填 null）。"
         '只返回 JSON，不要 Markdown：{"items":[{"question_text":"题干（选择题含选项）",'
-        '"student_answer":"学生作答原文","max_score":2}]}'
+        '"student_answer":"学生作答原文或未作答","max_score":2}]}'
     )
     try:
         parsed, _used_model, _elapsed_ms = call_json_model(
@@ -1652,6 +1654,12 @@ def _snap_extract_multi(
         if question_text:
             items.append((question_text, student_answer, max_score))
     return items
+
+
+def _is_unanswered(student_answer: str) -> bool:
+    """未作答判定：空或模型标的「未作答」（长度放宽防变体）。"""
+    text = student_answer.strip().strip("（）()")
+    return not text or (text.startswith("未作答") and len(text) <= 8)
 
 
 def _snap_transcribe(image_bytes: bytes, defaults: dict[str, Any]) -> str:
@@ -2177,7 +2185,7 @@ async def snap_grade_stream(
     extracted = _snap_extract_multi(model_image_bytes, defaults)
     if not extracted:
         raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-    if not any(answer for _question, answer, _score in extracted):
+    if not any(not _is_unanswered(answer) for _question, answer, _score in extracted):
         raise HTTPException(
             status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
         )
@@ -2185,7 +2193,6 @@ async def snap_grade_stream(
     items = [
         (question, answer, paper_score if paper_score is not None else max_score)
         for question, answer, paper_score in extracted
-        if answer
     ]
 
     def sse(payload: dict) -> str:
@@ -2198,7 +2205,9 @@ async def snap_grade_stream(
                 "items": [
                     {
                         "question_text": question,
-                        "student_answer": answer,
+                        "student_answer": (
+                            "（未作答）" if _is_unanswered(answer) else answer
+                        ),
                         "max_score": item_max_score,
                     }
                     for question, answer, item_max_score in items
@@ -2214,6 +2223,26 @@ async def snap_grade_stream(
             index: int, question: str, answer: str, item_max: float
         ) -> None:
             async with semaphore:
+                if _is_unanswered(answer):
+                    # 未作答：直接出 0 分卡，不浪费模型调用
+                    graded[index] = {
+                        "question_text": question,
+                        "student_answer": "（未作答）",
+                        "score": 0.0,
+                        "max_score": item_max,
+                        "comment": "未作答，记 0 分",
+                    }
+                    await queue.put(
+                        sse(
+                            {
+                                "type": "grade-item",
+                                "index": index,
+                                "item": graded[index],
+                            }
+                        )
+                    )
+                    await queue.put(None)
+                    return
                 try:
                     # wait_for 兜底：判分调用内部链式重试最坏 12 分钟，
                     # 挂住会占住并发位拖垮整页——95 秒判超时放掉这张卡
@@ -2406,16 +2435,34 @@ async def snap_question(
         extracted = _snap_extract_multi(model_image_bytes, defaults)
         if not extracted:
             raise HTTPException(status_code=422, detail="没认出题目，请拍清楚一点再试")
-        if not any(answer for _question, answer, _score in extracted):
+        if not any(
+            not _is_unanswered(answer) for _question, answer, _score in extracted
+        ):
             raise HTTPException(
                 status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
             )
+        # 未作答的题直接给 0 分卡（不调模型）；有作答的走模型判分
         items = [
             (question, answer, paper_score if paper_score is not None else max_score)
             for question, answer, paper_score in extracted
-            if answer
         ]
-        graded = _snap_solve_and_grade_all(items, defaults)
+        to_grade = [item for item in items if not _is_unanswered(item[1])]
+        graded_answered = _snap_solve_and_grade_all(to_grade, defaults)
+        answered_iter = iter(graded_answered)
+        graded = []
+        for question, answer, item_max in items:
+            if _is_unanswered(answer):
+                graded.append(
+                    {
+                        "question_text": question,
+                        "student_answer": "（未作答）",
+                        "score": 0.0,
+                        "max_score": item_max,
+                        "comment": "未作答，记 0 分",
+                    }
+                )
+            else:
+                graded.append(next(answered_iter))
         first = graded[0]
         result = SnapGradePublic(
             question_text=first["question_text"],
