@@ -29,7 +29,8 @@ export type SnapRecordPayload =
     }
   | { kind: "grade"; result: SnapGradePublic }
 
-export function formatScore(value: number): string {
+export function formatScore(value: number | null | undefined): string {
+  if (value == null) return "—"
   return Number.isInteger(value) ? String(value) : value.toFixed(1)
 }
 
@@ -113,12 +114,20 @@ export function SnapResultCard({ result }: { result: SnapResult }) {
               {item.student_answer}
             </ResultSection>
             <div className="flex items-baseline gap-1.5 border-t pt-4">
-              <span className="font-bold text-3xl tracking-tight">
-                {formatScore(item.score)}
-              </span>
-              <span className="text-muted-foreground text-sm">
-                / {formatScore(item.max_score)} 分
-              </span>
+              {item.score == null ? (
+                <span className="font-medium text-amber-600 text-sm dark:text-amber-400">
+                  请人工评分
+                </span>
+              ) : (
+                <>
+                  <span className="font-bold text-3xl tracking-tight">
+                    {formatScore(item.score)}
+                  </span>
+                  <span className="text-muted-foreground text-sm">
+                    / {formatScore(item.max_score)} 分
+                  </span>
+                </>
+              )}
             </div>
             <ResultSection title="点评">{item.comment}</ResultSection>
             <SaveToWrongbookButton
@@ -143,12 +152,20 @@ export function SnapResultCard({ result }: { result: SnapResult }) {
             {result.student_answer}
           </ResultSection>
           <div className="flex items-baseline gap-1.5 border-t pt-4">
-            <span className="font-bold text-3xl tracking-tight">
-              {formatScore(result.score)}
-            </span>
-            <span className="text-muted-foreground text-sm">
-              / {formatScore(result.max_score)} 分
-            </span>
+            {result.score == null ? (
+              <span className="font-medium text-amber-600 text-sm dark:text-amber-400">
+                请人工评分
+              </span>
+            ) : (
+              <>
+                <span className="font-bold text-3xl tracking-tight">
+                  {formatScore(result.score)}
+                </span>
+                <span className="text-muted-foreground text-sm">
+                  / {formatScore(result.max_score)} 分
+                </span>
+              </>
+            )}
           </div>
           <ResultSection title="点评">{result.comment}</ResultSection>
           <SaveToWrongbookButton

@@ -810,3 +810,29 @@ def test_grade_one_cache_same_answer_same_score(
     assert first["score"] == 3
     assert second["score"] == 3  # 缓存命中，不是 9
     assert len(calls) == 1
+
+
+def test_snap_grade_stream_marks_drawing_for_manual_review(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """绘图作答标「请人工评分」，不硬判、不调模型。"""
+    headers = _student_headers(client, db, "绘图")
+    monkeypatch.setattr(
+        "app.api.routes.students._snap_extract_multi",
+        lambda *args, **kwargs: [("作图题：画出对称轴。", "绘图作答", 5.0)],
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(
+        "app.api.routes.students.call_json_model",
+        lambda **kwargs: calls.append(1) or ({"score": 5, "comment": "x"}, "m", 1),
+    )
+
+    response = client.post(
+        f"{settings.API_V1_STR}/students/me/snap/grade/stream",
+        headers=headers,
+        files={"image": ("question.png", PNG_BYTES, "image/png")},
+        data={"max_score": "5"},
+    )
+    assert response.status_code == 200, response.text
+    assert "请对照原卷人工评分" in response.text
+    assert not calls  # 绘图题不调模型

@@ -311,7 +311,7 @@ function MySnapPage() {
             )
           } else if (data.type === "grade-item") {
             const item = data.item as {
-              score: number
+              score: number | null
               comment: string
               max_score?: number
             }
@@ -760,6 +760,15 @@ function MySnapPage() {
                     comment={card.comment}
                   />
                 </>
+              ) : card.state === "done" ? (
+                // 绘图作答：不硬判，提示人工评分
+                <div className="grid gap-3 border-t pt-4">
+                  <div className="flex items-center gap-2 text-amber-600 text-sm dark:text-amber-400">
+                    <CircleAlert className="size-4 shrink-0" />
+                    请人工评分
+                  </div>
+                  <ResultSection title="说明">{card.comment}</ResultSection>
+                </div>
               ) : card.state === "error" ? (
                 <div className="flex items-center gap-2 border-t pt-4 text-destructive text-sm">
                   <CircleAlert className="size-4 shrink-0" />

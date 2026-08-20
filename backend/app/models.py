@@ -3615,7 +3615,8 @@ class SnapSolvePublic(SQLModel):
 class SnapGradeItemPublic(SQLModel):
     question_text: str
     student_answer: str
-    score: float
+    # 绘图作答为 None：不硬判，提示人工评分
+    score: float | None = None
     max_score: float
     comment: str
 
@@ -3629,7 +3630,8 @@ class SnapGradePublic(SQLModel):
     mode: Literal["grade"] = "grade"
     question_text: str
     student_answer: str
-    score: float
+    # 绘图作答为 None：不硬判，提示人工评分
+    score: float | None = None
     max_score: float
     comment: str
     items: list[SnapGradeItemPublic] = Field(default_factory=list)

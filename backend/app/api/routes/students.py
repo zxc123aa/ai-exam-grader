@@ -1612,7 +1612,9 @@ def _snap_extract_multi(
         "每题给出：1) 题干——保留判分需要的条件、设问，选择题必须保留全部选项内容，"
         "150 字以内；2) 学生的手写作答——必须原样照抄，写错也不许纠正，"
         "禁止把学生的错误答案改成正确答案；看不清写「无法辨认」；"
-        "没写答案的题填「未作答」，同样列出；3) 卷面标注的该题分值"
+        "没写答案的题填「未作答」，同样列出；如果学生答的是图形/作图"
+        "（无法用文字照抄的绘图作答），填「绘图作答」，不要臆造文字答案；"
+        "3) 卷面标注的该题分值"
         "（如大题说明「每题 2 分」或题后「（3 分）」，没标就填 null）。"
         '只返回 JSON，不要 Markdown：{"items":[{"question_text":"题干（选择题含选项）",'
         '"student_answer":"学生作答原文或未作答","max_score":2}]}'
@@ -1654,6 +1656,12 @@ def _snap_extract_multi(
         if question_text:
             items.append((question_text, student_answer, max_score))
     return items
+
+
+def _is_drawing_answer(student_answer: str) -> bool:
+    """绘图作答判定：模型按约定标的「绘图作答」（长度放宽防变体）。"""
+    text = student_answer.strip().strip("（）()")
+    return text.startswith("绘图作答") and len(text) <= 10
 
 
 def _is_unanswered(student_answer: str) -> bool:
@@ -2244,6 +2252,26 @@ async def snap_grade_stream(
             index: int, question: str, answer: str, item_max: float
         ) -> None:
             async with semaphore:
+                if _is_drawing_answer(answer):
+                    # 绘图作答：不硬判，明确标注请人工评分（报告 #06/#11/#17）
+                    graded[index] = {
+                        "question_text": question,
+                        "student_answer": "（绘图作答）",
+                        "score": None,
+                        "max_score": item_max,
+                        "comment": "绘图作答暂不支持自动批改，请对照原卷人工评分",
+                    }
+                    await queue.put(
+                        sse(
+                            {
+                                "type": "grade-item",
+                                "index": index,
+                                "item": graded[index],
+                            }
+                        )
+                    )
+                    await queue.put(None)
+                    return
                 if _is_unanswered(answer):
                     # 未作答：直接出 0 分卡，不浪费模型调用
                     graded[index] = {
@@ -2462,17 +2490,31 @@ async def snap_question(
             raise HTTPException(
                 status_code=422, detail="没看到你的作答，请拍到写了答案的区域再试"
             )
-        # 未作答的题直接给 0 分卡（不调模型）；有作答的走模型判分
+        # 未作答给 0 分卡、绘图作答标人工评分（都不调模型）；其余走模型判分
         items = [
             (question, answer, paper_score if paper_score is not None else max_score)
             for question, answer, paper_score in extracted
         ]
-        to_grade = [item for item in items if not _is_unanswered(item[1])]
+        to_grade = [
+            item
+            for item in items
+            if not _is_unanswered(item[1]) and not _is_drawing_answer(item[1])
+        ]
         graded_answered = _snap_solve_and_grade_all(to_grade, defaults)
         answered_iter = iter(graded_answered)
         graded = []
         for question, answer, item_max in items:
-            if _is_unanswered(answer):
+            if _is_drawing_answer(answer):
+                graded.append(
+                    {
+                        "question_text": question,
+                        "student_answer": "（绘图作答）",
+                        "score": None,
+                        "max_score": item_max,
+                        "comment": "绘图作答暂不支持自动批改，请对照原卷人工评分",
+                    }
+                )
+            elif _is_unanswered(answer):
                 graded.append(
                     {
                         "question_text": question,
