@@ -929,8 +929,14 @@ def create_my_wrongbook_entry_from_snap(
         student_name=student.name,
         question_label="拍题",
         # 拍题收录没有判分上下文：分数留空，别写 0 分误导（前端显示「未评分」）
-        score=None,
-        is_wrong=True,
+        score=entry_in.score,
+        max_score=entry_in.max_score,
+        # 满分收藏不算错题（不污染掌握度）；无分数上下文按错题收
+        is_wrong=not (
+            entry_in.max_score is not None
+            and entry_in.score is not None
+            and entry_in.score >= entry_in.max_score
+        ),
         student_answer_text=entry_in.student_answer or None,
         teacher_comment=entry_in.comment or None,
         score_source="manual",

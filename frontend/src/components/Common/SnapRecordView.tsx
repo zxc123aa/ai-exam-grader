@@ -61,10 +61,14 @@ export function SaveToWrongbookButton({
   questionText,
   studentAnswer,
   comment,
+  score,
+  maxScore,
 }: {
   questionText: string
   studentAnswer?: string
   comment?: string
+  score?: number | null
+  maxScore?: number | null
 }) {
   const [saved, setSaved] = useState(false)
   const save = useMutation({
@@ -75,6 +79,8 @@ export function SaveToWrongbookButton({
           question_text: questionText,
           student_answer: studentAnswer ?? "",
           comment: comment ?? "",
+          ...(score != null ? { score } : {}),
+          ...(maxScore != null ? { max_score: maxScore } : {}),
         }),
       }),
     onSuccess: () => setSaved(true),
@@ -130,11 +136,15 @@ export function SnapResultCard({ result }: { result: SnapResult }) {
               )}
             </div>
             <ResultSection title="点评">{item.comment}</ResultSection>
-            <SaveToWrongbookButton
-              questionText={item.question_text}
-              studentAnswer={item.student_answer}
-              comment={item.comment}
-            />
+            {item.score != null && item.score < item.max_score && (
+              <SaveToWrongbookButton
+                questionText={item.question_text}
+                studentAnswer={item.student_answer}
+                comment={item.comment}
+                score={item.score}
+                maxScore={item.max_score}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -168,11 +178,15 @@ export function SnapResultCard({ result }: { result: SnapResult }) {
             )}
           </div>
           <ResultSection title="点评">{result.comment}</ResultSection>
-          <SaveToWrongbookButton
-            questionText={result.question_text}
-            studentAnswer={result.student_answer}
-            comment={result.comment}
-          />
+          {result.score != null && result.score < result.max_score && (
+            <SaveToWrongbookButton
+              questionText={result.question_text}
+              studentAnswer={result.student_answer}
+              comment={result.comment}
+              score={result.score}
+              maxScore={result.max_score}
+            />
+          )}
         </>
       ) : (
         <>

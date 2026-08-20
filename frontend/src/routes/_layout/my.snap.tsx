@@ -754,11 +754,16 @@ function MySnapPage() {
                     </span>
                   </div>
                   <ResultSection title="点评">{card.comment}</ResultSection>
-                  <SaveToWrongbookButton
-                    questionText={card.question}
-                    studentAnswer={card.studentAnswer}
-                    comment={card.comment}
-                  />
+                  {/* 满分题不收：判对了还进错题本只会污染学情数据（报告 #01） */}
+                  {card.score < (card.maxScore ?? Infinity) && (
+                    <SaveToWrongbookButton
+                      questionText={card.question}
+                      studentAnswer={card.studentAnswer}
+                      comment={card.comment}
+                      score={card.score}
+                      maxScore={card.maxScore}
+                    />
+                  )}
                 </>
               ) : card.state === "done" ? (
                 // 绘图作答：不硬判，提示人工评分

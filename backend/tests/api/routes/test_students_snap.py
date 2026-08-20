@@ -836,3 +836,36 @@ def test_snap_grade_stream_marks_drawing_for_manual_review(
     assert response.status_code == 200, response.text
     assert "请对照原卷人工评分" in response.text
     assert not calls  # 绘图题不调模型
+
+
+def test_full_score_snap_entry_not_marked_wrong(
+    client: TestClient, db: Session, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """满分收藏不算错题：不污染掌握度（#01）。"""
+    from tests.api.routes.test_students_learning_advice import _advice_context
+
+    monkeypatch.setattr(
+        "app.api.routes.students.call_json_model",
+        lambda **_kwargs: ({"knowledge_points": []}, "mock-model", 1),
+    )
+    context = _advice_context(client, db, "满分收藏")
+    created = client.post(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries/from-snap",
+        headers=context["headers"],
+        json={
+            "question_text": "计算 3+4。",
+            "student_answer": "7",
+            "comment": "正确",
+            "score": 5,
+            "max_score": 5,
+        },
+    )
+    assert created.status_code == 200, created.text
+    assert created.json()["is_wrong"] is False
+
+    # 默认错题列表（wrong_only）不应出现满分收藏
+    listed = client.get(
+        f"{settings.API_V1_STR}/students/me/wrongbook/entries",
+        headers=context["headers"],
+    ).json()["data"]
+    assert not any(i["entry_id"] == created.json()["entry_id"] for i in listed)

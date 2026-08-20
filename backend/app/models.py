@@ -3149,6 +3149,9 @@ class WrongbookSnapEntryCreate(SQLModel):
     question_text: str = Field(min_length=1, max_length=20000)
     student_answer: str = Field(default="", max_length=12000)
     comment: str = Field(default="", max_length=2000)
+    # 批改卡片带分：满分收藏不算错题（不污染学情，报告 #01）
+    score: float | None = Field(default=None, ge=0)
+    max_score: float | None = Field(default=None, ge=0)
 
 
 class PracticeSheetItemPublic(SQLModel):
