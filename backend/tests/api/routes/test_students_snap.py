@@ -869,3 +869,30 @@ def test_full_score_snap_entry_not_marked_wrong(
         headers=context["headers"],
     ).json()["data"]
     assert not any(i["entry_id"] == created.json()["entry_id"] for i in listed)
+
+
+def test_standard_answer_backfills_final_answer_when_only_explanation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """模型只给过程没给最终答案时，自动用过程补出最终答案（#02）。"""
+    from app.api.routes.students import _snap_standard_answer
+
+    payloads = [
+        {"answer": "", "explanation": "先算 4×2=8，再算 3+8。"},  # 第一次：只有过程
+        {"answer": "11"},  # 补救调用：只要最终答案
+    ]
+    calls: list[dict] = []
+
+    def fake_call_json_model(**kwargs: object):
+        calls.append(kwargs)
+        return payloads[len(calls) - 1], "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    answer, explanation = _snap_standard_answer(
+        "计算 3+4×2。",
+        {"grading_provider": "p", "grading_model": "m", "fallback_models": []},
+    )
+    assert answer == "11"
+    assert "4×2=8" in explanation
+    assert len(calls) == 2

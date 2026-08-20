@@ -1733,6 +1733,28 @@ def _snap_standard_answer(
         ) from exc
     answer = str(parsed.get("answer") or "").strip()
     explanation = str(parsed.get("explanation") or "").strip()
+    if not answer and explanation:
+        # 只给了过程没给最终答案（报告 #02）：别直接报错，
+        # 用过程作上下文补一次「只要最终答案」
+        try:
+            follow_up, _m2, _e2 = call_json_model(
+                provider=defaults["grading_provider"],
+                model=defaults["grading_model"],
+                fallback_models=[str(item) for item in defaults["fallback_models"]],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": (
+                            "根据下面的解题过程，只输出最终答案（一句话，不要过程）。"
+                            '只返回 JSON：{"answer":"最终答案"}\n'
+                            f"题目：{question_text}\n解题过程：{explanation[:3000]}"
+                        ),
+                    }
+                ],
+            )
+            answer = str(follow_up.get("answer") or "").strip()
+        except VisionGradingError:
+            pass  # 补救失败走原报错
     if not answer or not explanation:
         raise HTTPException(status_code=502, detail="解答生成失败，请重试")
     return answer, explanation
@@ -1793,8 +1815,10 @@ def _snap_solve_and_grade_all(
     ]
     prompt = (
         "你是严谨的中文阅卷教师。对下面每道题：先独立求出正确答案，再对照学生作答判分。"
-        "结果正确但过程有瑕疵酌情扣少量分；结果错误只看有价值步骤给步骤分；"
-        "评语说人话，指出对在哪里、错在哪里，不要空话。"
+        "选择题/判断题只判结果对错（对=满分，错=0 分，不设步骤分）；"
+        "计算题/解答题结果正确但过程有瑕疵或缺关键步骤扣少量过程分，"
+        "结果错误只看有价值步骤给步骤分，只写结果没写过程时结果错不给步骤分，"
+        "所有题按同一标准执行；评语说人话，指出对在哪里、错在哪里，不要空话。"
         "只返回 JSON，不要 Markdown："
         '{"items":[{"score":0,"comment":"中文评语"}]}，items 顺序与输入一致，'
         "每题 score 在 0 到该题 max_score 之间。\n"
@@ -2150,7 +2174,7 @@ def _snap_grade_one(
     模型抖动/备用链换模型不再导致同卷连批给分漂移。
     """
     cache_key = hashlib.sha256(
-        f"v1|{question_text}|{student_answer}|{max_score}".encode()
+        f"v2|{question_text}|{student_answer}|{max_score}".encode()
     ).hexdigest()
     cache_dir = Path(settings.STORAGE_CACHE_DIR) / "snap-grade"
     cache_path = cache_dir / f"{cache_key}.json"
@@ -2161,9 +2185,13 @@ def _snap_grade_one(
     except (OSError, ValueError):
         pass
     prompt = (
-        "你是严谨的中文阅卷教师。先独立求出正确答案，再对照学生作答判分。"
-        "结果正确但过程有瑕疵酌情扣少量分；结果错误只看有价值步骤给步骤分；"
-        "评语说人话，指出对在哪里、错在哪里，不要空话。"
+        "你是严谨的中文阅卷教师。先独立求出正确答案，再对照学生作答判分。评分规则："
+        "1) 选择题/判断题只判结果对错：对给满分，错给 0 分，不设步骤分；"
+        "2) 计算题/解答题：结果正确但过程有瑕疵或缺少关键步骤，扣少量过程分；"
+        "结果错误只看过程中有价值的步骤给步骤分；只写结果没写过程的，"
+        "结果对给大部分分、结果错不给步骤分——所有题按同一标准执行，"
+        "不要这题扣过程分那题不扣；"
+        "3) 评语说人话，指出对在哪里、错在哪里，不要空话。"
         "只返回 JSON，不要 Markdown："
         '{"score":0,"comment":"中文评语"}，'
         f"score 在 0 到 {max_score} 之间。\n"
