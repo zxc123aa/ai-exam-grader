@@ -1891,11 +1891,26 @@ async def _stream_answer_deltas(targets: list, question_text: str):
     last_error: Exception | None = None
     for attempt in range(4):
         target = targets[attempt % len(targets)]
-        payload = {
-            "model": target.upstream_model,
-            "messages": [{"role": "user", "content": prompt}],
-            "stream": True,
-        }
+        native = target.protocol == "gemini_native"
+        if native:
+            url = provider_gateway.gemini_native_endpoint(
+                target.base_url, target.upstream_model, stream=True
+            )
+            headers = provider_gateway.gemini_auth_headers(target.api_key)
+            payload = {
+                "contents": provider_gateway.gemini_native_contents(
+                    [{"role": "user", "content": prompt}]
+                ),
+                "generationConfig": {"maxOutputTokens": 4096},
+            }
+        else:
+            url = provider_gateway.endpoint(target)
+            headers = {"Authorization": f"Bearer {target.api_key}"}
+            payload = {
+                "model": target.upstream_model,
+                "messages": [{"role": "user", "content": prompt}],
+                "stream": True,
+            }
         emitted = False
         try:
             # read 60s：坏节点挂起时快速失败换下一趟，不让学生干等 3 分钟
@@ -1903,10 +1918,7 @@ async def _stream_answer_deltas(targets: list, question_text: str):
                 timeout=httpx.Timeout(60.0, connect=10.0)
             ) as client:
                 async with client.stream(
-                    "POST",
-                    provider_gateway.endpoint(target),
-                    headers={"Authorization": f"Bearer {target.api_key}"},
-                    json=payload,
+                    "POST", url, headers=headers, json=payload
                 ) as response:
                     if response.status_code != 200:
                         raise VisionGradingError(f"模型服务返回 {response.status_code}")
@@ -1918,10 +1930,25 @@ async def _stream_answer_deltas(targets: list, question_text: str):
                             break
                         try:
                             chunk = json.loads(data)
-                            choices = chunk.get("choices") or []
-                            if not choices:
-                                continue  # 末包只带 usage
-                            delta = choices[0].get("delta", {}).get("content")
+                            if native:
+                                # Gemini 原生 SSE：candidates[0].content.parts[].text
+                                delta = "".join(
+                                    str(part["text"])
+                                    for part in (
+                                        (chunk.get("candidates") or [{}])[0]
+                                        .get("content", {})
+                                        .get("parts")
+                                        or []
+                                    )
+                                    if isinstance(part, dict)
+                                    and part.get("text")
+                                    and not part.get("thought")
+                                )
+                            else:
+                                choices = chunk.get("choices") or []
+                                if not choices:
+                                    continue  # 末包只带 usage
+                                delta = choices[0].get("delta", {}).get("content")
                         except ValueError:
                             continue
                         if delta:

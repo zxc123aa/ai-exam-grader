@@ -43,6 +43,9 @@ class _ResolvedCallTarget:
     base_url: str
     api_key: str
     timeout_seconds: int
+    protocol: provider_gateway.ProviderProtocol = (
+        provider_gateway.ProviderProtocol.OPENAI_CHAT
+    )
     dynamic: provider_gateway.RuntimeTarget | None = None
 
 
@@ -369,6 +372,7 @@ def _resolved_call_targets(
                         base_url=target.base_url,
                         api_key=target.api_key,
                         timeout_seconds=target.timeout_seconds,
+                        protocol=target.protocol,
                         dynamic=target,
                     )
                 )
@@ -462,6 +466,29 @@ def _post_legacy_model(
     *,
     messages: list[dict],
 ) -> httpx.Response:
+    if target.protocol == provider_gateway.ProviderProtocol.GEMINI_NATIVE:
+        # Gemini 原生协议：响应规整成 OpenAI 格式，既有解析/计费零改动
+        raw = httpx.post(
+            provider_gateway.gemini_native_endpoint(
+                target.base_url, target.upstream_model
+            ),
+            headers=provider_gateway.gemini_auth_headers(target.api_key),
+            json={
+                "contents": provider_gateway.gemini_native_contents(messages),
+                "generationConfig": {
+                    "temperature": _temperature_for(target.provider, target.model),
+                    "maxOutputTokens": settings.MODEL_MAX_OUTPUT_TOKENS,
+                },
+            },
+            timeout=target.timeout_seconds,
+            follow_redirects=False,
+        )
+        if raw.status_code < 400:
+            payload = provider_gateway.gemini_native_to_openai(
+                raw.json(), target.upstream_model
+            )
+            return httpx.Response(200, json=payload)
+        return raw
     return httpx.post(
         _endpoint(target.base_url),
         headers={

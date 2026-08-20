@@ -82,13 +82,20 @@ def _runtime_target(
         )
     except ProviderSecurityError as exc:
         raise ProviderGatewayError(str(exc)) from exc
+    protocol = channel.protocol
+    if mapping.protocol:
+        # 映射级协议覆盖渠道（同渠道不同模型走不同协议，如 gemini 原生）
+        try:
+            protocol = ProviderProtocol(mapping.protocol)
+        except ValueError:
+            pass
     return RuntimeTarget(
         provider=channel.code,
         canonical_model=mapping.canonical_model,
         upstream_model=mapping.upstream_model,
         base_url=base_url,
         api_key=api_key,
-        protocol=channel.protocol,
+        protocol=protocol,
         channel_id=channel.id,
         route_policy_id=route_policy_id,
         route_version_id=route_version_id,
@@ -428,11 +435,109 @@ def endpoint(target: RuntimeTarget) -> str:
     base = target.base_url.rstrip("/")
     if target.protocol == ProviderProtocol.OPENAI_RESPONSES:
         return f"{base}/responses" if base.endswith("/v1") else f"{base}/v1/responses"
+    if target.protocol == ProviderProtocol.GEMINI_NATIVE:
+        return gemini_native_endpoint(base, target.upstream_model)
     return (
         f"{base}/chat/completions"
         if base.endswith("/v1")
         else f"{base}/v1/chat/completions"
     )
+
+
+def gemini_native_endpoint(
+    base_url: str, upstream_model: str, *, stream: bool = False
+) -> str:
+    """Gemini 原生 generateContent 地址（stream 时走 SSE 变体）。"""
+    base = base_url.rstrip("/")
+    if base.endswith("/v1"):
+        base = base[: -len("/v1")]
+    action = "streamGenerateContent" if stream else "generateContent"
+    suffix = "?alt=sse" if stream else ""
+    return f"{base}/v1beta/models/{upstream_model}:{action}{suffix}"
+
+
+def gemini_auth_headers(api_key: str) -> dict[str, str]:
+    """原生协议双头：中转认 Authorization，Google 官方认 x-goog-api-key。"""
+    return {
+        "Authorization": f"Bearer {api_key}",
+        "x-goog-api-key": api_key,
+        "Content-Type": "application/json",
+    }
+
+
+def gemini_native_contents(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """OpenAI messages → Gemini contents（图片转 inline_data；system 并入 user）。"""
+    contents: list[dict[str, Any]] = []
+    for message in messages:
+        role = message.get("role")
+        if role in ("system", "user"):
+            gemini_role = "user"
+        elif role == "assistant":
+            gemini_role = "model"
+        else:
+            continue
+        raw_content = message.get("content")
+        blocks = (
+            raw_content
+            if isinstance(raw_content, list)
+            else [{"type": "text", "text": str(raw_content or "")}]
+        )
+        parts: list[dict[str, Any]] = []
+        for block in blocks:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "text":
+                parts.append({"text": str(block.get("text") or "")})
+            elif block.get("type") == "image_url":
+                url = str((block.get("image_url") or {}).get("url") or "")
+                if url.startswith("data:"):
+                    header, _, data = url.partition(",")
+                    mime = header[len("data:") :].split(";")[0] or "image/png"
+                    parts.append({"inline_data": {"mime_type": mime, "data": data}})
+        if parts:
+            contents.append({"role": gemini_role, "parts": parts})
+    return contents
+
+
+def gemini_native_text(payload: dict[str, Any]) -> str:
+    """从原生响应取文本（跳过 thoughtSignature/thought 部分）。"""
+    candidates = payload.get("candidates") or []
+    if not candidates:
+        raise ProviderGatewayError("上游响应缺少 candidates")
+    parts = ((candidates[0] or {}).get("content") or {}).get("parts") or []
+    texts = [
+        str(part["text"])
+        for part in parts
+        if isinstance(part, dict) and part.get("text") and not part.get("thought")
+    ]
+    if not texts:
+        raise ProviderGatewayError("上游响应缺少文本内容")
+    return "".join(texts)
+
+
+def gemini_native_to_openai(payload: dict[str, Any], model: str) -> dict[str, Any]:
+    """原生响应规整成 OpenAI chat 格式，兼容既有解析和计费。"""
+    text = gemini_native_text(payload)
+    usage_meta = payload.get("usageMetadata") or {}
+    usage = {
+        "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+        "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+        "total_tokens": usage_meta.get("totalTokenCount", 0),
+    }
+    return {
+        "id": str(payload.get("responseId") or ""),
+        "model": model,
+        "choices": [
+            {
+                "index": 0,
+                "message": {"role": "assistant", "content": text},
+                "finish_reason": (payload.get("candidates") or [{}])[0].get(
+                    "finishReason"
+                ),
+            }
+        ],
+        "usage": usage,
+    }
 
 
 def _responses_input(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -470,6 +575,14 @@ def request_payload(
             "input": _responses_input(messages),
             "max_output_tokens": settings.MODEL_MAX_OUTPUT_TOKENS,
         }
+    if target.protocol == ProviderProtocol.GEMINI_NATIVE:
+        return {
+            "contents": gemini_native_contents(messages),
+            "generationConfig": {
+                "temperature": temperature,
+                "maxOutputTokens": settings.MODEL_MAX_OUTPUT_TOKENS,
+            },
+        }
     return {
         "model": target.upstream_model,
         "temperature": temperature,
@@ -479,6 +592,8 @@ def request_payload(
 
 
 def response_content(protocol: ProviderProtocol, payload: dict[str, Any]) -> str:
+    if protocol == ProviderProtocol.GEMINI_NATIVE:
+        return gemini_native_text(payload)
     if protocol == ProviderProtocol.OPENAI_CHAT:
         choices = payload.get("choices")
         if not isinstance(choices, list) or not choices:

@@ -576,6 +576,9 @@ class ProviderChannelStatus(StrEnum):
 class ProviderProtocol(StrEnum):
     OPENAI_CHAT = "openai_chat"
     OPENAI_RESPONSES = "openai_responses"
+    # Gemini 原生 generateContent 协议（中转对 gemini 的 OpenAI 翻译层不可靠，
+    # 原生路径稳定；Google 官方 API 直连也走这个）
+    GEMINI_NATIVE = "gemini_native"
 
 
 class ProviderHealthStatus(StrEnum):
@@ -4264,6 +4267,8 @@ class ProviderModelMapping(SQLModel, table=True):
     supports_vision: bool = True
     supports_structured_output: bool = True
     usage_metering_verified: bool = False
+    # 空 = 跟随渠道协议；gemini_native 时该模型走原生 generateContent 协议
+    protocol: str | None = Field(default=None, max_length=30)
     usage_verified_at: datetime | None = Field(
         default=None, sa_type=DateTime(timezone=True)
     )  # type: ignore
