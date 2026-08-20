@@ -773,3 +773,40 @@ def test_snap_grade_stream_marks_unanswered_without_model_call(
     assert "未作答，记 0 分" in body
     assert len(calls) == 1  # 只有有作答的那题调了模型
     assert "3+4" in calls[0]
+
+
+def test_grade_one_cache_same_answer_same_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """同一（题目+作答+满分）连判两次必须同分：第二次走缓存不调模型。"""
+    from app.api.routes.students import _snap_grade_one
+
+    defaults = {
+        "grading_provider": "pomoai",
+        "grading_model": "gpt-5.6-sol",
+        "fallback_models": [],
+    }
+    calls: list[int] = []
+    scores = iter([3, 9])  # 模型若被调两次会给不同分
+
+    def fake_call_json_model(**_kwargs: object):
+        calls.append(1)
+        return {"score": next(scores), "comment": "点评"}, "mock-model", 1
+
+    monkeypatch.setattr("app.api.routes.students.call_json_model", fake_call_json_model)
+
+    first = _snap_grade_one(
+        question_text="计算 3+4。",
+        student_answer="7",
+        max_score=5,
+        defaults=defaults,
+    )
+    second = _snap_grade_one(
+        question_text="计算 3+4。",
+        student_answer="7",
+        max_score=5,
+        defaults=defaults,
+    )
+    assert first["score"] == 3
+    assert second["score"] == 3  # 缓存命中，不是 9
+    assert len(calls) == 1

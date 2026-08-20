@@ -2130,7 +2130,22 @@ def _snap_grade_one(
     max_score: float,
     defaults: dict[str, Any],
 ) -> dict:
-    """单题「独立解答+判分」：流式批改的每题单元，判完立即推给前端。"""
+    """单题「独立解答+判分」：流式批改的每题单元，判完立即推给前端。
+
+    同一（题目+作答+满分）命中判分缓存直接复用——同一作答必须同分（报告 #10）；
+    模型抖动/备用链换模型不再导致同卷连批给分漂移。
+    """
+    cache_key = hashlib.sha256(
+        f"v1|{question_text}|{student_answer}|{max_score}".encode()
+    ).hexdigest()
+    cache_dir = Path(settings.STORAGE_CACHE_DIR) / "snap-grade"
+    cache_path = cache_dir / f"{cache_key}.json"
+    try:
+        cached = json.loads(cache_path.read_bytes())
+        if isinstance(cached, dict) and cached.get("comment"):
+            return cached
+    except (OSError, ValueError):
+        pass
     prompt = (
         "你是严谨的中文阅卷教师。先独立求出正确答案，再对照学生作答判分。"
         "结果正确但过程有瑕疵酌情扣少量分；结果错误只看有价值步骤给步骤分；"
@@ -2153,12 +2168,18 @@ def _snap_grade_one(
     comment = str(parsed.get("comment") or "").strip()
     if not comment:
         raise VisionGradingError("批改失败，请重试")
-    return {
+    result = {
         "question_text": question_text,
         "student_answer": student_answer,
         "score": min(max(score, 0.0), max_score),
         "comment": comment,
     }
+    try:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_path.write_bytes(json.dumps(result, ensure_ascii=False).encode())
+    except OSError:
+        pass
+    return result
 
 
 @router.post("/me/snap/grade/stream")
