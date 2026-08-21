@@ -56,7 +56,13 @@ function AnswerImage({
     return () => URL.revokeObjectURL(url)
   }, [data])
 
-  if (isError) return null
+  if (isError) {
+    return (
+      <div className="flex h-24 w-full max-w-md items-center justify-center rounded-lg border border-dashed text-muted-foreground text-xs">
+        答题图暂不可用
+      </div>
+    )
+  }
   if (isPending || !contentUrl) {
     return <Skeleton className="h-24 w-full max-w-md rounded-lg" />
   }

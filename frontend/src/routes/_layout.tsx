@@ -84,7 +84,11 @@ function pageTitle(pathname: string) {
   if (pathname.startsWith("/my")) {
     if (pathname === "/my/snap") return "拍题答疑"
     if (pathname === "/my/snap-history") return "拍题记录"
-    return pathname === "/my/exams" ? "我的成绩" : "成绩报告"
+    if (pathname === "/my/wrongbook") return "我的错题本"
+    if (pathname === "/my/knowledge") return "知识图谱"
+    if (pathname === "/my/wrongbook-sheet") return "错题练习卷"
+    if (pathname === "/my/exams") return "我的成绩"
+    return "成绩报告"
   }
   const segments = pathname.split("/").filter(Boolean)
   for (let i = segments.length - 1; i >= 0; i--) {

@@ -371,6 +371,7 @@ function ExamReportPage() {
                 </span>
                 <ProgressBar
                   tone={band.tone}
+                  className="min-w-0 flex-1"
                   value={
                     scored.length > 0 ? (band.count / scored.length) * 100 : 0
                   }
