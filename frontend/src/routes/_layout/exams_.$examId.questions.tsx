@@ -108,6 +108,21 @@ function questionTypeLabel(value: string | null) {
 }
 
 /**
+ * 识别批次报错翻译成人话：httpx 异常原文（内网地址/HTTP 状态/MDN 链接）
+ * 不给老师看；原文仍在「批次详情（调试）」里可查。
+ */
+function friendlyRecognitionError(raw: string): string {
+  if (
+    /Client error|Server error|httpx|Traceback|developer\.mozilla/i.test(raw)
+  ) {
+    if (/400/.test(raw)) return "卷子文件格式未被识别服务接受，请检查文件后重试"
+    if (/5\d\d/.test(raw)) return "识别服务暂时不可用，请稍后重试"
+    return "识别服务暂时不可用，请稍后重试"
+  }
+  return raw
+}
+
+/**
  * 漏题校验：从标签提取「题型 + 第 N 题」（如「选择题第 3 题」），
  * 同题型内题号应连续；中间断号说明可能有题没识别出来，提醒老师核对原卷。
  * 标签没有规范「第 N 题」的（大题头、合并块）不参与校验，避免误报。
@@ -655,7 +670,7 @@ function QuestionWorkspace() {
           </details>
           {current.error_message && (
             <div className="rounded-xl border border-destructive px-4 py-3 text-destructive text-sm">
-              {current.error_message}
+              {friendlyRecognitionError(current.error_message)}
             </div>
           )}
         </section>
