@@ -565,7 +565,7 @@ def _call_model_with_route(
         workflow_purpose=workflow_purpose,
     )
     if not candidates:
-        raise VisionGradingError("没有可用的模型通道")
+        raise VisionGradingError("识别服务暂时不可用，请稍后重试")
     last_error: Exception | None = None
     # 每个候选通道走两遍：中转单节点偶发 5xx/断连占一半时，单趟全挂会让用户
     # 看到「模型服务暂时异常」；原地多给一轮，瞬时故障基本被吃掉。

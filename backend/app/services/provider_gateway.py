@@ -250,42 +250,46 @@ def resolve_targets(
                         ProviderChannel.status == ProviderChannelStatus.ACTIVE,
                     )
                 ).all()
+            # 健康过滤：全员熔断时兜底放开——熔断多半是几分钟前的坏窗口，
+            # 全部跳过会让用户看到「没有可用通道」，宁试勿废
+            eligible_rows = []
+            circuit_skipped = []
             for target, mapping, channel, health in rows:
                 if _health_is_eligible(health):
-                    snapshot_mapping = mapping
-                    snapshot_channel = channel
-                    if published_version:
-                        snapshot_mapping = mapping.model_copy(
-                            update={
-                                "canonical_model": target.canonical_model,
-                                "upstream_model": target.upstream_model,
-                            }
-                        )
-                        snapshot_channel = channel.model_copy(
-                            update={
-                                "code": target.channel_code,
-                                "protocol": target.protocol,
-                                "base_url": target.base_url,
-                            }
-                        )
-                    candidates.append(
-                        (
-                            (
-                                target.tier
-                                if published_version
-                                else target.priority + channel.priority
-                            ),
-                            target.weight * channel.weight,
-                            health.latency_ewma_ms if health else None,
-                            (
-                                target.cost_micrormb_per_million
-                                if published_version
-                                else 0
-                            ),
-                            snapshot_channel,
-                            snapshot_mapping,
-                        )
+                    eligible_rows.append((target, mapping, channel, health))
+                else:
+                    circuit_skipped.append((target, mapping, channel, health))
+            for target, mapping, channel, health in eligible_rows or circuit_skipped:
+                snapshot_mapping = mapping
+                snapshot_channel = channel
+                if published_version:
+                    snapshot_mapping = mapping.model_copy(
+                        update={
+                            "canonical_model": target.canonical_model,
+                            "upstream_model": target.upstream_model,
+                        }
                     )
+                    snapshot_channel = channel.model_copy(
+                        update={
+                            "code": target.channel_code,
+                            "protocol": target.protocol,
+                            "base_url": target.base_url,
+                        }
+                    )
+                candidates.append(
+                    (
+                        (
+                            target.tier
+                            if published_version
+                            else target.priority + channel.priority
+                        ),
+                        target.weight * channel.weight,
+                        health.latency_ewma_ms if health else None,
+                        (target.cost_micrormb_per_million if published_version else 0),
+                        snapshot_channel,
+                        snapshot_mapping,
+                    )
+                )
         else:
             statement = (
                 select(ProviderChannel, ProviderModelMapping, ProviderHealthState)
@@ -311,18 +315,25 @@ def resolve_targets(
             if provider != SCHOOL_ROUTE_PROVIDER:
                 statement = statement.where(ProviderChannel.code == provider)
             rows = session.exec(statement).all()
+            # 与上面同规：全员熔断时兜底放开
+            eligible_rows = []
+            circuit_skipped = []
             for channel, mapping, health in rows:
                 if _health_is_eligible(health):
-                    candidates.append(
-                        (
-                            channel.priority,
-                            channel.weight,
-                            health.latency_ewma_ms if health else None,
-                            0,
-                            channel,
-                            mapping,
-                        )
+                    eligible_rows.append((channel, mapping, health))
+                else:
+                    circuit_skipped.append((channel, mapping, health))
+            for channel, mapping, health in eligible_rows or circuit_skipped:
+                candidates.append(
+                    (
+                        channel.priority,
+                        channel.weight,
+                        health.latency_ewma_ms if health else None,
+                        0,
+                        channel,
+                        mapping,
                     )
+                )
 
         routing_mode = (
             published_version.routing_mode
