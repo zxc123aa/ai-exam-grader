@@ -129,6 +129,18 @@ async function errorMessage(response: Response): Promise<string> {
   return `请求失败（${response.status}）`
 }
 
+/** fetch 网络层错误翻成人话（断网/弱网时浏览器抛 TypeError: Failed to fetch）。 */
+async function snapFetch(path: string, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, init)
+  } catch (error) {
+    if (error instanceof TypeError) {
+      throw new Error("网络连接失败，请检查网络后重试")
+    }
+    throw error
+  }
+}
+
 /** 拍题流式接口（表单传图）：发图片、逐事件回调。 */
 async function readSnapStream(
   path: string,
@@ -140,7 +152,7 @@ async function readSnapStream(
   body.set("image", file)
   for (const [key, value] of Object.entries(fields)) body.set(key, value)
   const token = localStorage.getItem("access_token")
-  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
+  const response = await snapFetch(path, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
     body,
@@ -156,7 +168,7 @@ async function readSnapStreamJson(
   onEvent: (data: { type: string; [key: string]: unknown }) => void,
 ): Promise<void> {
   const token = localStorage.getItem("access_token")
-  const response = await fetch(`${OpenAPI.BASE || ""}/api/v1${path}`, {
+  const response = await snapFetch(path, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
