@@ -846,8 +846,9 @@ def extract_answer_images(
 ) -> VisionExtraction:
     if not image_bytes_list:
         raise VisionGradingError("题目没有可识别的区域图片")
-    prompt = f"""你是中文考试阅卷 OCR。请识别图片中的一块试卷，区分印刷题目和考生手写内容。不要补写图片中不存在的内容；看不清的位置写“[无法辨认]”。只返回 JSON：
+    prompt = f"""你是中文考试阅卷 OCR，只誊写不评判。请识别图片中的一块试卷，区分印刷题目和考生手写内容。不要补写图片中不存在的内容；看不清的位置写“[无法辨认]”，拿不准标存疑，不要猜。只返回 JSON：
 {{"questionNumber":"题号","question":"完整题干和选项（含公式尽量用纯文本）","studentAnswer":"考生回答原文；没有则为空","answerType":"选择题|填空题|计算题|实验题|未知","confidence":0到1,"notes":"图示、跨页或辨认风险"}}
+考生手写内容必须原样照抄，写错也不许纠正：禁止把错误答案改成正确答案，禁止约分、化简、分数小数互化等任何形式的顺手改写（考生写 5/7 就抄 5/7，即使正确答案是 5/6）；手写数字逐位核对，两位数别读成一位数，分数线上下别读反；数字后面的单位字一个不漏（万、千、百、个、本、元、千克、平方分米等）。
 题号优先读取图片中的印刷题号，候选题号仅供校验。同一道题可能有多张按顺序给出的连续区域，必须合并理解，保留完整手写计算过程，不把它混入题干。逐项检查题干、A/B/C/D 等选项和作答是否完整；只要所有区域合并后仍截断文字、缺少可见选项或存在“[无法辨认]”，confidence 不得高于 0.6，并在 notes 明确说明。候选题号：{question_label}。"""
     content: list[dict] = [{"type": "text", "text": prompt}]
     for index, image_bytes in enumerate(image_bytes_list, start=1):
