@@ -625,7 +625,13 @@ def _call_model_with_route(
             payload = response.json()
             if not isinstance(payload, dict):
                 raise VisionGradingError("模型未返回有效对象")
-            usage = payload.get("usage")
+            usage = (
+                provider_gateway.usage_from_payload(
+                    candidate.dynamic.protocol, payload
+                )
+                if candidate.dynamic
+                else payload.get("usage")
+            )
             content = (
                 provider_gateway.response_content(candidate.dynamic.protocol, payload)
                 if candidate.dynamic

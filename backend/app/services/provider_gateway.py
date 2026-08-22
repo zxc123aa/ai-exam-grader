@@ -630,6 +630,28 @@ def response_content(protocol: ProviderProtocol, payload: dict[str, Any]) -> str
     return "\n".join(texts)
 
 
+def usage_from_payload(
+    protocol: ProviderProtocol, payload: dict[str, Any]
+) -> dict[str, Any] | None:
+    """按协议取用量：OpenAI 系在 usage，Gemini 原生在 usageMetadata。
+
+    之前统一读 usage，原生通道永远取不到 → 每次成功调用都被记成
+    「未返回可计费用量」→ usage_metering_verified 被翻回 False →
+    动态路由静默跳过该模型（gemini-3.7-flash 曾因此整条掉出候选）。
+    """
+    if protocol == ProviderProtocol.GEMINI_NATIVE:
+        meta = payload.get("usageMetadata")
+        if not isinstance(meta, dict) or not meta:
+            return None
+        return {
+            "prompt_tokens": meta.get("promptTokenCount", 0),
+            "completion_tokens": meta.get("candidatesTokenCount", 0),
+            "total_tokens": meta.get("totalTokenCount", 0),
+        }
+    usage = payload.get("usage")
+    return usage if isinstance(usage, dict) and usage else None
+
+
 def probe_target(target: RuntimeTarget) -> tuple[int, bool, str | None]:
     started = time.perf_counter()
     with httpx.Client(
@@ -667,7 +689,7 @@ def probe_target(target: RuntimeTarget) -> tuple[int, bool, str | None]:
     if not isinstance(payload, dict):
         raise ProviderGatewayError("上游响应格式无效")
     response_content(target.protocol, payload)
-    usage = payload.get("usage")
+    usage = usage_from_payload(target.protocol, payload)
     headers = response.headers
     request_id = (
         headers.get("x-request-id")
