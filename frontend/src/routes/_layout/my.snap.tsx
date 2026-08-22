@@ -48,6 +48,9 @@ type GradeCard = {
   comment: string
   state: "waiting" | "done" | "error"
   error?: string
+  /** 未作答卡的参考答案（点「看参考答案」流式生成） */
+  referenceAnswer?: string
+  solving?: boolean
 }
 
 /**
@@ -454,6 +457,52 @@ function MySnapPage() {
     }
   }
 
+  // 未作答卡看参考答案：复用单题解答流式接口
+  const solveReference = async (index: number) => {
+    const card = gradeCards[index]
+    if (!card) return
+    setGradeCards((cards) =>
+      cards.map((c, i) =>
+        i === index ? { ...c, solving: true, referenceAnswer: "" } : c,
+      ),
+    )
+    try {
+      await readSnapStreamJson(
+        "/students/me/snap/solve-one/stream",
+        { question_text: card.question },
+        (data) => {
+          if (data.type === "answer-delta") {
+            setGradeCards((cards) =>
+              cards.map((c, i) =>
+                i === index
+                  ? {
+                      ...c,
+                      referenceAnswer:
+                        (c.referenceAnswer ?? "") + (data.text as string),
+                    }
+                  : c,
+              ),
+            )
+          } else if (data.type === "done") {
+            setGradeCards((cards) =>
+              cards.map((c, i) => (i === index ? { ...c, solving: false } : c)),
+            )
+          } else if (data.type === "error") {
+            throw new Error(data.text as string)
+          }
+        },
+      )
+    } catch {
+      setGradeCards((cards) =>
+        cards.map((c, i) =>
+          i === index
+            ? { ...c, solving: false, referenceAnswer: undefined }
+            : c,
+        ),
+      )
+    }
+  }
+
   const pickFile = (selected: File | null) => {
     if (!selected) return
     setFile(selected)
@@ -766,6 +815,37 @@ function MySnapPage() {
                     </span>
                   </div>
                   <ResultSection title="点评">{card.comment}</ResultSection>
+                  {/* 未作答卡给「看参考答案」出口：不然学生对着 0 分无所适从（报告 #05） */}
+                  {card.studentAnswer === "（未作答）" && (
+                    <div className="grid gap-2">
+                      {card.referenceAnswer === undefined ? (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="w-fit"
+                          disabled={card.solving}
+                          data-testid="grade-show-answer"
+                          onClick={() => solveReference(index)}
+                        >
+                          {card.solving ? (
+                            <>
+                              <Loader2 className="animate-spin" />
+                              生成中…
+                            </>
+                          ) : (
+                            "看参考答案"
+                          )}
+                        </Button>
+                      ) : (
+                        <ResultSection title="参考答案">
+                          <MarkdownMath
+                            text={card.referenceAnswer}
+                            className="text-sm"
+                          />
+                        </ResultSection>
+                      )}
+                    </div>
+                  )}
                   {/* 满分题不收：判对了还进错题本只会污染学情数据（报告 #01） */}
                   {card.score < (card.maxScore ?? Infinity) && (
                     <SaveToWrongbookButton

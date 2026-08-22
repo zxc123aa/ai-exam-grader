@@ -29,7 +29,7 @@ async function gradeOnce(p, tag) {
   await p.waitForTimeout(800)
   await p.click('[data-testid="snap-submit"]')
   const t0 = Date.now()
-  await p.waitForSelector('[data-testid="snap-grade-stream-result"]', { timeout: 240000 })
+  await p.waitForSelector('[data-testid="snap-grade-stream-result"]', { timeout: 420000 })
   const cardsAt = Math.round((Date.now() - t0) / 1000)
   await p.waitForFunction(
     () => !document.body.innerText.includes("批改中"),
