@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import {
   ArrowDown,
   ArrowUp,
+  ChevronDown,
+  ChevronRight,
   FileText,
   FileUp,
   ImageIcon,
@@ -204,14 +206,19 @@ function PreprocessingPreview({
     setIsLoading(true)
     Promise.all(
       availableKinds.map(async ({ kind }) => {
-        const response = await fetch(
-          `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${document.id}/preprocessing-preview/${kind}`,
-          { headers: authHeaders() },
-        )
-        if (!response.ok) return [kind, null] as const
-        const url = URL.createObjectURL(await response.blob())
-        objectUrls.push(url)
-        return [kind, url] as const
+        try {
+          const response = await fetch(
+            `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${document.id}/preprocessing-preview/${kind}`,
+            { headers: authHeaders() },
+          )
+          if (!response.ok) return [kind, null] as const
+          const url = URL.createObjectURL(await response.blob())
+          objectUrls.push(url)
+          return [kind, url] as const
+        } catch {
+          // 弱网下偶发连接被掐：按加载失败展示，别让未处理拒绝冒成 JS 异常
+          return [kind, null] as const
+        }
       }),
     )
       .then((entries) => {
@@ -327,14 +334,19 @@ function SplitPagePreview({
     setIsLoading(true)
     Promise.all(
       Array.from({ length: pageCount }, async (_, index) => {
-        const response = await fetch(
-          `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${documentId}/pages/${index + 1}/image`,
-          { headers: authHeaders() },
-        )
-        if (!response.ok) return null
-        const url = URL.createObjectURL(await response.blob())
-        objectUrls.push(url)
-        return url
+        try {
+          const response = await fetch(
+            `${OpenAPI.BASE || ""}/api/v1/exams/${examId}/files/${documentId}/pages/${index + 1}/image`,
+            { headers: authHeaders() },
+          )
+          if (!response.ok) return null
+          const url = URL.createObjectURL(await response.blob())
+          objectUrls.push(url)
+          return url
+        } catch {
+          // 弱网下偶发连接被掐：按加载失败展示，别让未处理拒绝冒成 JS 异常
+          return null
+        }
       }),
     )
       .then((nextUrls) => {
@@ -380,6 +392,48 @@ function SplitPagePreview({
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+/**
+ * 预览按需展开：默认不加载大图。
+ * 以前打开文件列表就对每份卷子并行拉全部页图，慢网络下直接打满连接、
+ * 连页面跳转都被饿死——改成老师点「预览」才挂载加载。
+ */
+function DocumentPreviews({
+  examId,
+  document,
+}: {
+  examId: string
+  document: ExamDocumentPublic
+}) {
+  const [expanded, setExpanded] = useState(false)
+  if (isDocumentPreprocessing(document)) return null
+  return (
+    <div className="grid gap-2">
+      <div className="ml-11">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+          onClick={() => setExpanded((next) => !next)}
+        >
+          {expanded ? <ChevronDown /> : <ChevronRight />}
+          预览（质检/分割）
+        </Button>
+      </div>
+      {expanded && (
+        <>
+          <PreprocessingPreview examId={examId} document={document} />
+          <SplitPagePreview
+            examId={examId}
+            documentId={document.id}
+            pageCount={document.page_count ?? 1}
+          />
+        </>
       )}
     </div>
   )
@@ -1547,19 +1601,7 @@ export function ExamFilesContent({
                             : ""}
                         </div>
                       )}
-                      {!isDocumentPreprocessing(document) && (
-                        <>
-                          <PreprocessingPreview
-                            examId={exam.id}
-                            document={document}
-                          />
-                          <SplitPagePreview
-                            examId={exam.id}
-                            documentId={document.id}
-                            pageCount={document.page_count ?? 1}
-                          />
-                        </>
-                      )}
+                      <DocumentPreviews examId={exam.id} document={document} />
                     </div>
                   )
                 },
